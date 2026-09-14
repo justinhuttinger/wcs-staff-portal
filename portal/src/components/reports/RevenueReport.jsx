@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, getRevenueSummary } from '../../lib/api'
+import { getRevenueSummary, getRevenueAnalysis } from '../../lib/api'
 import { exportCSV } from '../../lib/export'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
@@ -122,7 +122,7 @@ function ComparisonCard({ label, current, comparison }) {
 // folds those into priority categories — Dues first — against the same span a
 // month and a year ago, and opens any row into its last six months.
 //
-// So this draws that, from the same builder: GET /revenue/analysis is
+// So this draws that, from the same builder: GET /reports/revenue/analysis is
 // lib/revenueAnalysisReport, the same code behind GET /analytics/revenue, with
 // this report's gate and this report's club scoping in front of it. Two
 // audiences, one definition of what a month of Dues was.
@@ -144,7 +144,7 @@ function RevenueAnalysis({ startDate, endDate, locationSlug }) {
       if (startDate) p.set('start_date', startDate)
       if (endDate) p.set('end_date', endDate)
       if (locationSlug) p.set('location_slug', locationSlug)
-      return api(`/revenue/analysis?${p.toString()}`, { cache: true, signal })
+      return getRevenueAnalysis(Object.fromEntries(p), { cache: true, signal })
     },
     [startDate, endDate, locationSlug]
   )
@@ -321,37 +321,6 @@ export default function RevenueReport({ startDate, endDate, locationSlug }) {
                 </div>
               )
             })}
-          </div>
-        </div>
-      )}
-
-      {/* Dues & Fees against Discretionary. Two very different kinds of money
-          sit in the one total above — dues are contracted and predictable,
-          discretionary is sold again every month — and a total that moved tells
-          you nothing about which one did. Above the profit-centre table because
-          it is the shape of the month; the table is where you go once you know
-          which half to look at. */}
-      {data.by_revenue_class?.length > 0 && (
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Dues vs Discretionary</p>
-          <div className="space-y-2">
-            {data.by_revenue_class.map(c => (
-              <div key={c.name} className="flex items-center gap-3 text-sm">
-                <span className="text-text-primary w-40 flex-shrink-0 truncate" title={c.name}>{c.name}</span>
-                <span className="flex-1 h-2.5 rounded-full bg-bg overflow-hidden min-w-[3rem]">
-                  <span
-                    className="block h-full rounded-full bg-wcs-red/70"
-                    style={{ width: `${Math.max(2, (c.pct_of_total || 0) * 100)}%` }}
-                  />
-                </span>
-                <span className="font-semibold text-text-primary tabular-nums w-28 text-right">
-                  ${Math.round(c.total).toLocaleString()}
-                </span>
-                <span className="text-xs text-text-muted tabular-nums w-12 text-right">
-                  {Math.round((c.pct_of_total || 0) * 100)}%
-                </span>
-              </div>
-            ))}
           </div>
         </div>
       )}

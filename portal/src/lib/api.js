@@ -777,10 +777,6 @@ export async function getPTHealth(params = {}, options = {}) {
   return api('/reports/pt-health' + (qs ? '?' + qs : ''), options)
 }
 
-export async function getVIPReport(params = {}, options = {}) {
-  const qs = new URLSearchParams(params).toString()
-  return api('/reports/vip' + (qs ? '?' + qs : ''), options)
-}
 
 export async function getSalespersonStats(params = {}, options = {}) {
   const qs = new URLSearchParams(params).toString()
@@ -1647,6 +1643,18 @@ export async function getRevenueProfitCenterMtdTrend(params = {}, options = {}) 
   if (params.location_slug) qs.set('location_slug', params.location_slug)
   if (params.profit_center) qs.set('profit_center', params.profit_center)
   return api(`/reports/revenue/profit-center-mtd-trend?${qs.toString()}`, options)
+}
+
+// The profit centres folded into their priority categories, against the same
+// span a month and a year ago. Mounted under /reports/revenue with every other
+// revenue report route -- /revenue is the webhook + upload router, which is a
+// different thing entirely and where an earlier version of this call 404'd.
+export async function getRevenueAnalysis(params = {}, options = {}) {
+  const qs = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') qs.set(k, v)
+  }
+  return api(`/reports/revenue/analysis?${qs.toString()}`, options)
 }
 
 export async function getRevenueImports(limit = 20) {
