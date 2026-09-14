@@ -10,7 +10,9 @@ const {
 } = require('../lib/dayOneReporting')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildAttritionAnalysis } = require('../lib/attritionAnalysis')
-const { cannotUseAch, loadCategoryMap } = require('../lib/analyticsMemberFilters')
+const {
+  cannotUseAch, loadCategoryMap, parseExcludedCategories, isCategoryExcluded, filterNote,
+} = require('../lib/analyticsMemberFilters')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { parseLocationSlugParam } = require('../utils/locationSlug')
 const { resolveScopedSlugs } = require('../services/locationScope')
@@ -50,6 +52,20 @@ async function resolveLocationFilter(req) {
   }
 
   return null // no filter = all locations
+}
+
+// ---------------------------------------------------------------------------
+// Helper: which membership categories this request asked to leave out, plus the
+// map needed to apply it.
+//
+// Loaded together because one is useless without the other, and skipped
+// entirely when nothing is unticked -- the default costs no query.
+// ---------------------------------------------------------------------------
+async function resolveCategoryExclusion(req) {
+  const excluded = parseExcludedCategories(req.query.exclude_categories)
+  if (excluded.length === 0) return { excluded, categoryMap: null, note: undefined }
+  const categoryMap = await loadCategoryMap(supabaseAdmin).catch(() => null)
+  return { excluded, categoryMap, note: filterNote({ excludedCategories: excluded }) }
 }
 
 // ---------------------------------------------------------------------------
@@ -222,9 +238,13 @@ router.get('/membership', async (req, res) => {
     // Filter out non-member types AND renewals (since_date < sign_date means a renewal,
     // not a new sale; ABC's "New Member Sales" report excludes those, so we do too).
     const skipTypes = await getSkipList()
+    const categoryFilter = await resolveCategoryExclusion(req)
     const filteredMembers = abcMembers.filter(m =>
       !skipTypes.has((m.membership_type || '').toLowerCase())
       && m.since_date && m.sign_date && m.since_date >= m.sign_date
+      // Unticked categories narrow on top of the skip list; with everything
+      // ticked this is exactly the set it was before the filter existed.
+      && !isCategoryExcluded(m, categoryFilter.categoryMap, categoryFilter.excluded)
     )
 
     // --- 2. GHL enrichment: contact id + same_day_sale by email ---
@@ -428,6 +448,9 @@ router.get('/membership', async (req, res) => {
       tours_unavailable: tours.unavailable,
       by_date: byDateArr,
       by_salesperson: bySalesperson,
+      // Named on the face of the report: a screenshot with Insurance unticked
+      // is otherwise indistinguishable from a collapse.
+      filter_note: categoryFilter.note,
       contacts,
     })
   } catch (err) {
@@ -664,6 +687,28 @@ router.get('/pt', async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// GET /reports/membership-categories
+//
+// The categories actually in use, so the tick boxes are the mapping rather than
+// a list in the frontend that drifts from it. Manager-gated like the reports
+// that use it -- the admin endpoint that also returns this is admin-only and
+// carries the unmapped-types list, which is a job to do rather than a filter.
+// ---------------------------------------------------------------------------
+router.get('/membership-categories', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('abc_membership_categories')
+      .select('category')
+    if (error) throw new Error(error.message)
+    const categories = [...new Set((data || []).map(r => r.category).filter(Boolean))].sort()
+    res.json({ categories })
+  } catch (err) {
+    console.error('[reports] /membership-categories error:', err.message)
+    res.status(500).json({ error: 'Failed to load membership categories' })
+  }
+})
+
+// ---------------------------------------------------------------------------
 // GET /reports/club-health
 // Query params: start_date, end_date, location_id, location_slug
 // ---------------------------------------------------------------------------
@@ -707,9 +752,12 @@ router.get('/club-health', async (req, res) => {
       abcFrom += 1000
     }
     const skipTypes = await getSkipList()
+    const categoryFilter = await resolveCategoryExclusion(req)
+    const excludeCat = m => isCategoryExcluded(m, categoryFilter.categoryMap, categoryFilter.excluded)
     const filteredMembers = abcMembers.filter(m =>
       !skipTypes.has((m.membership_type || '').toLowerCase())
       && m.since_date && m.sign_date && m.since_date >= m.sign_date
+      && !excludeCat(m)
     )
 
     // GHL enrichment for same_day_sale
@@ -892,7 +940,8 @@ router.get('/club-health', async (req, res) => {
       if (page.length < 1000) break
       activeFrom += 1000
     }
-    const activeFiltered = activeMembers.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
+    const activeFiltered = activeMembers.filter(m =>
+      !skipTypes.has((m.membership_type || '').toLowerCase()) && !excludeCat(m))
 
     const activeAgreementsByType = {}
     const activeMembersByType = {}
@@ -937,7 +986,8 @@ router.get('/club-health', async (req, res) => {
         if (page.length < 1000) break
         cFrom += 1000
       }
-      const cancelFiltered = cancelRows.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
+      const cancelFiltered = cancelRows.filter(m =>
+        !skipTypes.has((m.membership_type || '').toLowerCase()) && !excludeCat(m))
       cancelsInPeriodMembers = cancelFiltered.length
       cancelsInPeriodAgreements = new Set(cancelFiltered.map(m => m.agreement_number).filter(Boolean)).size
     }
@@ -981,6 +1031,7 @@ router.get('/club-health', async (req, res) => {
     res.json({
       total_memberships: filteredMembers.length,
       total_agreements: uniqueAgreements,
+      filter_note: categoryFilter.note,
       total_vips: totalVips || 0,
       total_same_day_sales: totalSameDaySales,
       total_day_ones_booked: totalDayOnesBooked,
@@ -1066,7 +1117,12 @@ router.get('/cancels', async (req, res) => {
       if (page.length < 1000) break
       cFrom += 1000
     }
-    const cancelFiltered = cancelRows.filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
+    const cancelCategoryFilter = await resolveCategoryExclusion(req)
+    const cancelFiltered = cancelRows.filter(m =>
+      !skipTypes.has((m.membership_type || '').toLowerCase())
+      // Narrows on top of the skip list. With everything ticked this is the
+      // same set it was before the filter existed.
+      && !isCategoryExcluded(m, cancelCategoryFilter.categoryMap, cancelCategoryFilter.excluded))
 
     // Insurance plans are non-dues-paying members — broken out so the UI can
     // filter All / Membership / Insurance. Insurance = membership type
@@ -1269,6 +1325,7 @@ router.get('/cancels', async (req, res) => {
     }
 
     res.json({
+      filter_note: cancelCategoryFilter.note,
       total_members: allAgg.members,
       total_agreements: allAgg.agreements,
       by_status: allAgg.by_status,

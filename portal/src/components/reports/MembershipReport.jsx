@@ -163,7 +163,7 @@ const COLUMN_DRILLS = {
   same_day_sale:  { set: 'club-health-sales', filter: 'same-day', title: 'Same day sales' },
 }
 
-export default function MembershipReport({ startDate, endDate, locationSlug, canDrill = false }) {
+export default function MembershipReport({ startDate, endDate, locationSlug, canDrill = false, excludedCategories = [] }) {
   const [sortBy, setSortBy] = useState('alpha')
   const [search, setSearch] = useState('')
 
@@ -173,9 +173,10 @@ export default function MembershipReport({ startDate, endDate, locationSlug, can
       if (startDate) params.start_date = startDate
       if (endDate) params.end_date = endDate
       if (locationSlug && locationSlug !== 'all') params.location_slug = locationSlug
+      if (excludedCategories.length) params.exclude_categories = excludedCategories.join(',')
       return getMembershipReport(params, { cache: true, signal })
     },
-    [startDate, endDate, locationSlug]
+    [startDate, endDate, locationSlug, excludedCategories.join(',')]
   )
 
   if (loading) return <DesktopLoading variant="report" />
