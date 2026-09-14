@@ -27,7 +27,11 @@ export default function DrillNumber({
       title={title}
       params={params}
       rounded="rounded"
-      className="inline-block w-auto px-1 -mx-1 hover:underline decoration-dotted underline-offset-2"
+      // Inline and unaligned, so the cell's own text-center decides where the
+      // number sits. Anything width- or alignment-bearing here fights the
+      // column and wins, which is not what a table wants.
+      layout="inline-block align-middle"
+      className="px-1 -mx-1 hover:underline decoration-dotted underline-offset-2"
     >
       <span className={className}>{value}</span>
     </Drillable>
