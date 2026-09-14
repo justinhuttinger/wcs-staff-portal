@@ -24,6 +24,7 @@ import KpiReport from './reports/KpiReport'
 import AuditsReport from './reports/AuditsReport'
 import OperandioReport from './reports/OperandioReport'
 import ReportInfoButton from './ReportInfoButton'
+import MembershipCategoryFilter from './reports/MembershipCategoryFilter'
 import DataFreshnessStamp from './reports/DataFreshnessStamp'
 import ReportDetailView from './reports/ReportDetailView'
 import { roleAtLeast } from '../lib/roles'
@@ -261,6 +262,10 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
   const [cancelsPlanType, setCancelsPlanType] = useState('all')
   // Summary vs. line-by-line "See Detail" view for the active report.
   const [detailView, setDetailView] = useState(false)
+  // Membership categories the viewer has UNTICKED. Empty is the default and
+  // means no filtering at all, so these reports open on the same numbers they
+  // always showed.
+  const [excludedCategories, setExcludedCategories] = useState([])
   const reportHasDetail = hasReportDetail(activeReport)
 
   // Always land on the summary when switching reports; not every report has a
@@ -268,6 +273,12 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
   useEffect(() => {
     setDetailView(false)
   }, [activeReport])
+
+  // Reports whose handler honours the category tick boxes. Listed rather than
+  // shown everywhere, because a filter that visibly does nothing on the report
+  // you are looking at is worse than no filter.
+  const CATEGORY_FILTER_REPORTS = ['club-health', 'membership', 'cancels']
+  const showCategoryFilter = CATEGORY_FILTER_REPORTS.includes(activeReport)
 
   // Audits and Till are strictly per-club (no All pill) — snap to the first club
   // when arriving on one with the all-locations selection.
@@ -453,6 +464,12 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
                 {activeReport && (
                   <ReportInfoButton info={getReportInfo(activeReport)} />
                 )}
+                {showCategoryFilter && (
+                  <MembershipCategoryFilter
+                    excluded={excludedCategories}
+                    onChange={setExcludedCategories}
+                  />
+                )}
                 {/* Summary vs. line-by-line detail toggle (only for reports
                     that carry row-level records). */}
                 {reportHasDetail && (
@@ -616,13 +633,13 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
         {!(reportHasDetail && detailView) && (
         <>
         {activeReport === 'club-health' && (
-            <ClubHealthReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={canDrill} />
+            <ClubHealthReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={canDrill} excludedCategories={excludedCategories} />
           )}
           {activeReport === 'membership' && (
-            <MembershipReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={canDrill} />
+            <MembershipReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={canDrill} excludedCategories={excludedCategories} />
           )}
           {activeReport === 'cancels' && (
-            <CancelsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} planType={cancelsPlanType} />
+            <CancelsReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} planType={cancelsPlanType}  excludedCategories={excludedCategories}/>
           )}
           {activeReport === 'pt' && (
             <PTReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={canDrill} />

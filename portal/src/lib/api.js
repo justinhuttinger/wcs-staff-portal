@@ -1796,6 +1796,12 @@ export async function getCompliancePeople(params = {}, options = {}) {
 // right now: an assignment that went overdue in August is still overdue today.
 // The filters that apply are club, course and status.
 
+// The membership categories in use, for the tick-box filter. Manager-gated,
+// unlike the admin mapping endpoint which also carries the unmapped list.
+export async function getMembershipCategories(options = {}) {
+  return api('/reports/membership-categories', options)
+}
+
 export async function getTrainingSummary(params = {}, options = {}) {
   return api('/reports/training/summary' + complianceQs(params), options)
 }

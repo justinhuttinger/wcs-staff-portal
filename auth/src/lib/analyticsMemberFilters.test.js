@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const {
   parseCategory, parseBasis, filterNote, matchesFilters, MEMBER_CATEGORIES,
+  parseExcludedCategories, isCategoryExcluded, categoryOf,
 } = require('./analyticsMemberFilters')
 
 test('category defaults to all and rejects anything unknown', () => {
@@ -126,4 +127,72 @@ test('the basis rule is unaffected by the map', () => {
   const secondary = { membership_type: 'SINGLE', is_primary_member: false }
   assert.strictEqual(matchesFilters(secondary, { category: 'all', basis: 'agreements', categoryMap: CATEGORY_MAP }), false)
   assert.strictEqual(matchesFilters(secondary, { category: 'all', basis: 'members', categoryMap: CATEGORY_MAP }), true)
+})
+
+// ---------------------------------------------------------------------------
+// The tick-box filter.
+//
+// EXCLUSION, NOT AN ALLOW-LIST. Everything ticked has to mean "no filter" so
+// the reports open on the numbers they always showed. These tests exist because
+// reading it the other way is an easy mistake that would move every figure on
+// three reports on the day it shipped.
+// ---------------------------------------------------------------------------
+
+const TICKBOX_MAP = new Map([
+  ['a2 core', 'Insurance'],
+  ['std monthly', 'Dues'],
+  ['summer pass', 'Temp'],
+])
+const tickboxMember = type => ({ membership_type: type })
+
+test('nothing unticked filters nothing', () => {
+  assert.deepEqual(parseExcludedCategories(''), [])
+  assert.deepEqual(parseExcludedCategories(undefined), [])
+  for (const type of ['A2 CORE', 'STD MONTHLY', 'SUMMER PASS', 'SOMETHING NEW']) {
+    assert.equal(isCategoryExcluded(tickboxMember(type), TICKBOX_MAP, []), false, type)
+  }
+})
+
+test('unticking one category removes that one and nothing else', () => {
+  const excluded = parseExcludedCategories('Insurance')
+  assert.equal(isCategoryExcluded(tickboxMember('A2 CORE'), TICKBOX_MAP, excluded), true)
+  assert.equal(isCategoryExcluded(tickboxMember('STD MONTHLY'), TICKBOX_MAP, excluded), false)
+  assert.equal(isCategoryExcluded(tickboxMember('SUMMER PASS'), TICKBOX_MAP, excluded), false)
+})
+
+// The reason this is exclusion-based. An unmapped type belongs to no category,
+// so an allow-list would silently drop it the moment anything was unticked.
+test('a membership type nobody has mapped is never excluded', () => {
+  for (const excluded of [['Insurance'], ['Insurance', 'Temp'], ['Insurance', 'Temp', 'Dues']]) {
+    assert.equal(
+      isCategoryExcluded(tickboxMember('BRAND NEW PLAN'), TICKBOX_MAP, excluded), false,
+      `unmapped dropped when excluding ${excluded.join('+')}`
+    )
+  }
+  assert.equal(categoryOf(tickboxMember('BRAND NEW PLAN'), TICKBOX_MAP), null)
+})
+
+test('case and spacing do not change what is unticked', () => {
+  assert.deepEqual(parseExcludedCategories(' insurance , TEMP '), ['Insurance', 'Temp'])
+})
+
+// A typo must widen, never narrow: a filter that fails closed reads as "we have
+// no members", which is the worst way for one to fail.
+test('an unrecognised category is ignored rather than honoured', () => {
+  assert.deepEqual(parseExcludedCategories('Insurnace'), [])
+  assert.deepEqual(parseExcludedCategories('Insurance,nonsense'), ['Insurance'])
+})
+
+test('duplicates collapse', () => {
+  assert.deepEqual(parseExcludedCategories('Dues,dues,DUES'), ['Dues'])
+})
+
+test('an array is accepted as well as a comma list', () => {
+  assert.deepEqual(parseExcludedCategories(['Dues', 'Temp']), ['Dues', 'Temp'])
+})
+
+// With no map loaded nothing can be categorised, so nothing is excluded -- the
+// filter degrades to off rather than to empty.
+test('no category map means no filtering', () => {
+  assert.equal(isCategoryExcluded(tickboxMember('A2 CORE'), null, ['Insurance']), false)
 })
