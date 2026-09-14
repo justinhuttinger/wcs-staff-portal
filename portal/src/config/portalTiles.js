@@ -71,6 +71,7 @@ export const CUSTOM_REPORT_CATALOG = [
   { key: 'deactivated-pt',    label: 'Deactivated PT' },
   { key: 'pt-health',         label: 'PT Health' },
   { key: 'kpis',              label: 'KPIs' },
+  { key: 'training',          label: 'Training' },
   { key: 'meta-ads',          label: 'Meta Ads' },
   { key: 'google-marketing',  label: 'Google' },
   { key: 'email-marketing',   label: 'Email Marketing' },

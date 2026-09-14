@@ -88,6 +88,84 @@ async function fetchLocations() {
   return data.locations || []
 }
 
+// ---------------------------------------------------------------------------
+// Training
+//
+// The shape here was mapped against the live schema (introspection is off in
+// prod; GraphQL validates a whole document before any resolver runs, so a
+// selection set of candidate names reports exactly which ones are wrong).
+// What exists on a UserTrainingCourse is: id, dueAt, status and course. That
+// is the whole type.
+//
+// THERE IS NO ASSIGNED DATE ON THE API. See assignedAtFromId below for what we
+// do about that.
+//
+// usersTrainingCourses takes ONE user id, so a full sweep is one request per
+// member of staff. That is 133 requests at time of writing and is why the sync
+// runs on a schedule into Postgres rather than on report load.
+// ---------------------------------------------------------------------------
+
+/** Every user Operandio will show us, active and otherwise. */
+async function fetchUsers() {
+  const data = await graphql(`query {
+    users { id fullName email status locations { id name } groups { id name } }
+  }`)
+  return data.users || []
+}
+
+/** Every training course defined in the org, including retired ones. */
+async function fetchTrainingCourses() {
+  const data = await graphql(`query {
+    trainingCourses { count list { id name description type inactive } }
+  }`)
+  return data.trainingCourses?.list || []
+}
+
+/** One user's training assignments, with progress. */
+async function fetchUserTrainingCourses(userId) {
+  const data = await graphql(`query($u: ID!) {
+    usersTrainingCourses(user: $u) {
+      id
+      dueAt
+      status {
+        completedAt
+        percentComplete
+        score { percent }
+      }
+      course { id name type inactive }
+    }
+  }`, { u: userId })
+  return data.usersTrainingCourses || []
+}
+
+/**
+ * When an assignment was handed out, recovered from its own id.
+ *
+ * Operandio does not expose an assigned date on UserTrainingCourse — probed
+ * against eighteen plausible field names, none of them exist. But the ids are
+ * Mongo ObjectIds, whose first four bytes are a Unix timestamp, and that
+ * timestamp IS the moment the assignment row was created.
+ *
+ * Checked against live data before relying on it: across all 47 assignments of
+ * the one course in use, dueAt minus this value is 7.00 days to the second,
+ * every time. That is a "due a week after assignment" rule showing through, and
+ * it is not a coincidence you get from a wrong decode.
+ *
+ * Returns null for anything that is not a 24-character hex ObjectId, and for
+ * timestamps outside a sane range, so a future id format degrades to "unknown"
+ * rather than to 1970.
+ */
+function assignedAtFromId(id) {
+  const hex = String(id || '')
+  if (!/^[0-9a-f]{24}$/i.test(hex)) return null
+  const seconds = parseInt(hex.slice(0, 8), 16)
+  if (!Number.isFinite(seconds)) return null
+  const ms = seconds * 1000
+  // Operandio did not exist before 2010 and this cannot be in the future.
+  if (ms < Date.UTC(2010, 0, 1) || ms > Date.now() + 86400e3) return null
+  return new Date(ms).toISOString()
+}
+
 const JOB_FIELDS = `
   id
   processName
@@ -341,6 +419,7 @@ module.exports = {
   graphql, getToken, scheduleDate, fetchLocations, fetchJobs, fetchProcesses,
   fetchShiftsOverlapping, SHIFT_LOOKBACK_HOURS,
   fetchJobStepDetail,
+  fetchUsers, fetchTrainingCourses, fetchUserTrainingCourses, assignedAtFromId,
   listKnowledgeArticles, createKnowledgeArticle, updateKnowledgeArticle,
   fetchKnowledgeContent, deleteKnowledge,
 }
