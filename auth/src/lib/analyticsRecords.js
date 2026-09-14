@@ -5,6 +5,7 @@ const { isChaseable } = require('./pastDueReport')
 const { isInsuranceType, tenureMonths } = require('./attritionAnalysis')
 const { classifyCalendarEvent, KIND, KIND_LABEL } = require('./calendarEventKind')
 const { loadOutcomeRulesOrNone, onlyTours } = require('./tourOutcomeRules')
+const { cannotUseAch, loadCategoryMap } = require('./analyticsMemberFilters')
 
 // ---------------------------------------------------------------------------
 // The rows behind the numbers.
@@ -607,6 +608,223 @@ const SETS = {
     },
   },
 
+  // -- Club Health ----------------------------------------------------------
+  //
+  // CLUB HEALTH COUNTS ITS MEMBERSHIP DIFFERENTLY TO ANALYTICS, and these sets
+  // exist because of that rather than in spite of it.
+  //
+  // Analytics counts a new member on since_date, the day the membership
+  // started. Club Health counts on sign_date, the day the paperwork was signed,
+  // and additionally requires since_date >= sign_date. Those are different
+  // cohorts in any given month, so pointing Club Health's cards at
+  // 'new-members' would open a list whose length did not match the number that
+  // was clicked, which is the one failure a drill-down must never have.
+  //
+  // Neither definition is being corrected here. The reports disagree on purpose
+  // and that argument is not this change's to settle; what this does is make
+  // each number open the rows IT counted.
+
+  'club-health-sales': {
+    label: 'Memberships Sold',
+    columns: [
+      { key: 'member', label: 'Member', format: T.text },
+      { key: 'type', label: 'Membership', format: T.text },
+      { key: 'signed', label: 'Signed', format: T.date },
+      { key: 'started', label: 'Started', format: T.date },
+      { key: 'agreement', label: 'Agreement', format: T.text },
+      { key: 'dues', label: 'Monthly Dues', format: T.money },
+      { key: 'method', label: 'Payment', format: T.text },
+      { key: 'sameDay', label: 'Same Day', format: T.text },
+      { key: 'salesperson', label: 'Sold By', format: T.text },
+    ],
+    // The predicates are GET /reports/club-health's own, in the same order:
+    // active, a sign_date inside the window, the skip list, and since_date on
+    // or after sign_date. Change one there and this list stops matching.
+    async load({ start, end, clubNumbers, person, filter, exclude }) {
+      const q = lazySupabase()
+        .from('abc_members')
+        .select('first_name, last_name, membership_type, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method, sales_person_name, email, club_number')
+        .eq('is_active', true)
+        .not('sign_date', 'is', null)
+        .gte('sign_date', start)
+        .lte('sign_date', end)
+      if (clubNumbers) q.in('club_number', clubNumbers)
+      const [rows, skip] = await Promise.all([fetchAllRows(q), skipList(exclude)])
+
+      let kept = rows
+        .filter(r => !isExcludedType(r.membership_type, skip))
+        .filter(r => r.since_date && r.sign_date && r.since_date >= r.sign_date)
+        .filter(r => matchesPerson(r.sales_person_name, person))
+
+      // Same Day Sale lives in GHL, not ABC, and the report joins the two on
+      // email. Skipped entirely when there is nothing to join, because it is
+      // one query per fifty addresses.
+      const sameDayByEmail = kept.length
+        ? await sameDaySaleByEmail(kept.map(r => r.email))
+        : new Map()
+      const isSameDay = r => sameDayByEmail.get(String(r.email || '').toLowerCase()) === 'Sale'
+
+      if (filter === 'same-day') kept = kept.filter(isSameDay)
+
+      // The ACH share is a rate over the plans that COULD be on ACH, so the
+      // list behind it is its numerator: a dues plan actually drafting. The
+      // insurance and temp exclusion is the shared rule, imported rather than
+      // restated.
+      if (filter === 'ach') {
+        const categoryMap = await loadCategoryMap(lazySupabase()).catch(() => null)
+        kept = kept.filter(r =>
+          r.agreement_payment_method === ACH_PAYMENT_METHOD && !cannotUseAch(r, categoryMap))
+      }
+
+      return kept
+        .map(r => ({
+          member: name(r.first_name, r.last_name),
+          type: r.membership_type || '-',
+          signed: String(r.sign_date).slice(0, 10),
+          started: String(r.since_date).slice(0, 10),
+          agreement: r.agreement_number || '-',
+          dues: money(r.next_due_amount),
+          method: r.agreement_payment_method || '-',
+          sameDay: isSameDay(r) ? 'Yes' : '-',
+          salesperson: r.sales_person_name ? displayName(r.sales_person_name) : '-',
+        }))
+        .sort((a, b) => b.signed.localeCompare(a.signed))
+    },
+  },
+
+  'club-health-active': {
+    label: 'Active Members',
+    columns: [
+      { key: 'member', label: 'Member', format: T.text },
+      { key: 'type', label: 'Membership', format: T.text },
+      { key: 'agreement', label: 'Agreement', format: T.text },
+      { key: 'joined', label: 'Started', format: T.date },
+      { key: 'dues', label: 'Monthly Dues', format: T.money },
+      { key: 'method', label: 'Payment', format: T.text },
+    ],
+    // THE ONE SET WITH NO DATE WINDOW, because the card above it has none
+    // either: Club Health's Active Members block is the roster as it stands
+    // now, whatever range is on screen. start and end are accepted and ignored
+    // rather than rejected, so the caller does not have to special-case one
+    // card, and the route's cache key still varies with them - which costs a
+    // repeat fetch when the dates change and is the honest trade for not
+    // pretending this figure is date-scoped.
+    async load({ clubNumbers, exclude }) {
+      const q = lazySupabase()
+        .from('abc_members')
+        .select('first_name, last_name, membership_type, agreement_number, since_date, next_due_amount, agreement_payment_method, club_number')
+        .eq('is_active', true)
+      if (clubNumbers) q.in('club_number', clubNumbers)
+      const [rows, skip] = await Promise.all([fetchAllRows(q), skipList(exclude)])
+      return rows
+        .filter(r => !isExcludedType(r.membership_type, skip))
+        .map(r => ({
+          member: name(r.first_name, r.last_name),
+          type: r.membership_type || '-',
+          agreement: r.agreement_number || '-',
+          joined: r.since_date ? String(r.since_date).slice(0, 10) : null,
+          dues: money(r.next_due_amount),
+          method: r.agreement_payment_method || '-',
+        }))
+        .sort((a, b) => String(b.joined || '').localeCompare(String(a.joined || '')))
+    },
+  },
+
+  'club-health-cancels': {
+    label: 'Cancels',
+    columns: [
+      { key: 'member', label: 'Member', format: T.text },
+      { key: 'type', label: 'Membership', format: T.text },
+      { key: 'left', label: 'Left', format: T.date },
+      { key: 'status', label: 'Status', format: T.text },
+      { key: 'agreement', label: 'Agreement', format: T.text },
+      { key: 'joined', label: 'Joined', format: T.date },
+      { key: 'months', label: 'Months', format: T.int },
+    ],
+    // NOT 'lost-members'. That set also drops the members the conditional
+    // membership rule says were not live, because the Analytics card it sits
+    // behind does. Club Health's Cancels card does not apply that rule, so
+    // applying it here would return fewer rows than the number clicked.
+    async load({ start, end, clubNumbers, exclude }) {
+      const q = lazySupabase()
+        .from('abc_members')
+        .select('first_name, last_name, membership_type, member_status, member_status_date, since_date, agreement_number, club_number')
+        .in('member_status', LOST_STATUSES)
+        .gte('member_status_date', start)
+        .lte('member_status_date', end)
+      if (clubNumbers) q.in('club_number', clubNumbers)
+      const [rows, skip] = await Promise.all([fetchAllRows(q), skipList(exclude)])
+      return rows
+        .filter(r => !isExcludedType(r.membership_type, skip))
+        .map(r => ({
+          member: name(r.first_name, r.last_name),
+          type: r.membership_type || '-',
+          left: String(r.member_status_date).slice(0, 10),
+          status: r.member_status,
+          agreement: r.agreement_number || '-',
+          joined: r.since_date ? String(r.since_date).slice(0, 10) : null,
+          months: tenureMonths(r.since_date, r.member_status_date),
+        }))
+        .sort((a, b) => b.left.localeCompare(a.left))
+    },
+  },
+
+  'club-health-vips': {
+    label: 'VIP Referrals',
+    columns: [
+      { key: 'member', label: 'Contact', format: T.text },
+      { key: 'date', label: 'Created', format: T.date },
+      { key: 'employee', label: 'Credited To', format: T.text },
+    ],
+    // NOT the 'vips' set. That one reads vip_credits, the table the referral
+    // module writes. Club Health's Total VIPs is count_vips_by_team_member,
+    // which counts GHL contacts carrying the per-location custom field
+    // `contact.vip_team_member` - an older and larger population. Same rule as
+    // the two sets above: the list has to be the one the card counted.
+    //
+    // The RPC aggregates, so it cannot return the rows. This walks the same
+    // definition one location at a time, which the per-location field ids
+    // force anyway.
+    async load({ start, end, slugs, person }) {
+      const locationIds = await ghlLocationIdsForSlugs(slugs)
+      if (locationIds.length === 0) return []
+
+      const { data: defs, error: defErr } = await lazySupabase()
+        .from('ghl_custom_field_defs')
+        .select('id, location_id')
+        .eq('field_key', 'contact.vip_team_member')
+        .in('location_id', locationIds)
+      if (defErr) throw new Error(defErr.message)
+
+      const out = []
+      for (const def of defs || []) {
+        const rows = await fetchAllRows(
+          lazySupabase()
+            .from('ghl_contacts_v2')
+            .select('first_name, last_name, created_at_ghl, custom_fields')
+            .eq('location_id', def.location_id)
+            .gte('created_at_ghl', start + 'T00:00:00Z')
+            .lte('created_at_ghl', end + 'T23:59:59.999Z')
+            .not('custom_fields->>' + def.id, 'is', null)
+        )
+        for (const r of rows) {
+          const who = String((r.custom_fields || {})[def.id] || '').trim()
+          if (!who) continue
+          out.push({
+            member: name(r.first_name, r.last_name),
+            date: String(r.created_at_ghl).slice(0, 10),
+            employee: displayName(who),
+            _raw: who,
+          })
+        }
+      }
+      return out
+        .filter(r => matchesPerson(r._raw, person))
+        .map(({ _raw, ...r }) => r)
+        .sort((a, b) => b.date.localeCompare(a.date))
+    },
+  },
+
   'tours': {
     label: 'Tours',
     columns: [
@@ -762,6 +980,43 @@ async function contactNames(ids) {
     for (const c of data || []) out.set(c.id, name(c.first_name, c.last_name))
   }
   return out
+}
+
+/**
+ * Same Day Sale, per email address, off the resolved-custom-field view.
+ *
+ * Chunked at fifty exactly as GET /reports/club-health chunks it, so the two
+ * ask the same question of the same view.
+ */
+async function sameDaySaleByEmail(emails) {
+  const unique = [...new Set((emails || []).map(e => String(e || '').toLowerCase()).filter(Boolean))]
+  const out = new Map()
+  for (let i = 0; i < unique.length; i += 50) {
+    const { data, error } = await lazySupabase()
+      .from('ghl_contacts_report')
+      .select('email, same_day_sale')
+      .in('email', unique.slice(i, i + 50))
+    if (error) throw new Error(error.message)
+    for (const r of data || []) {
+      if (r.email) out.set(String(r.email).toLowerCase(), r.same_day_sale)
+    }
+  }
+  return out
+}
+
+/**
+ * GHL location ids for club slugs, matched on the location NAME the way
+ * utils/vipsByTeamMember matches them, because ghl_locations has no slug.
+ */
+async function ghlLocationIdsForSlugs(slugs) {
+  const ids = []
+  for (const slug of slugs || []) {
+    const { data } = await lazySupabase()
+      .from('ghl_locations').select('id')
+      .ilike('name', '%' + slug + '%').limit(1).maybeSingle()
+    if (data && data.id) ids.push(data.id)
+  }
+  return ids
 }
 
 /** Page a PostgREST query out in full: it truncates at 1000 rows silently. */

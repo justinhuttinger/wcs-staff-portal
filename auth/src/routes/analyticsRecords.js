@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { resolveScopedSlugs } = require('../services/locationScope')
 const { wrapSWR } = require('../services/memoryCache')
 const { loadRecordSet, setKeys, clubNumbersFor, DEFAULT_LIMIT, MAX_LIMIT } = require('../lib/analyticsRecords')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
@@ -20,11 +21,23 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 // Cached like the reports it sits behind: the same click from three people in a
 // meeting should cost one query, and these windows do not change minute to
 // minute.
+//
+// WHO CAN CALL IT, AND FOR WHICH CLUBS
+//
+// This used to be corporate and above, which was right while every caller was
+// an Analytics report — those are corporate-only anyway. Club Health, in
+// Reporting, is a manager report, and its cards now drill here too.
+//
+// So the gate is manager, and the clubs are no longer the caller's to choose:
+// `clubs` is intersected with the clubs the caller is actually assigned, the
+// same resolveScopedSlugs every /reports handler uses. A manager sees their own
+// club's rows and nothing else, whatever they put in the query string.
+// Corporate and above resolve to no scope and are unaffected.
 // ---------------------------------------------------------------------------
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('corporate'))
+router.use(requireRole('manager'))
 
 const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000
@@ -44,10 +57,21 @@ router.get('/', async (req, res) => {
     if (start > end) return res.status(400).json({ error: 'start must not be after end' })
 
     const clubsParam = String(req.query.clubs || 'all')
-    const slugs = clubsParam === 'all'
+    const asked = clubsParam === 'all'
       ? CLUBS.map(c => c.slug)
       : clubsParam.split(',').map(s => s.trim().toLowerCase()).filter(s => CLUB_BY_SLUG[s])
-    if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    if (asked.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+
+    // A restricted role gets an explicit slug list back and never "all", so an
+    // intersection is the whole rule: ask for seven clubs, get the ones you are
+    // assigned. An all-club role resolves to null and keeps what it asked for.
+    const scoped = await resolveScopedSlugs(req)
+    const slugs = scoped.slugs
+      ? asked.filter(s => scoped.slugs.includes(s))
+      : asked
+    // Asked only for clubs they cannot see. An empty list would silently widen
+    // to every club further down, so it is refused here instead.
+    if (slugs.length === 0) return res.status(403).json({ error: 'no access to the requested clubs' })
 
     // Trimmed to nothing means "everybody", which is what a club-wide card wants.
     const person = String(req.query.person || '').trim() || null
