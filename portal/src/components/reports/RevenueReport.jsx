@@ -93,6 +93,26 @@ function DeltaChip({ current, prior }) {
 // (oldest-left, newest-right) along the x-axis, MTD totals on the y. Highlights
 // the most recent month and the previous month with circles + labels so the
 // reader can see "vs last MTD" at a glance.
+function ComparisonCard({ label, current, comparison }) {
+  if (!comparison) return <StatCard label={label} value="—" sub="no data" />
+  const delta = current - (comparison.total || 0)
+  const positive = delta >= 0
+  return (
+    <div className="bg-surface rounded-xl border border-border p-4">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">{label}</p>
+      <p className={`text-2xl font-bold mt-1 ${positive ? 'text-green-600' : 'text-red-600'}`}>
+        {positive ? '+' : '−'}{fmtMoney(Math.abs(delta))}
+      </p>
+      <p className="text-xs text-text-muted mt-1">
+        {comparison.period?.start} → {comparison.period?.end}
+      </p>
+      <p className="text-xs text-text-muted">
+        was {fmtMoney(comparison.total)} · <DeltaChip current={current} prior={comparison.total} />
+      </p>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Revenue Analysis, as Analytics draws it.
 //
