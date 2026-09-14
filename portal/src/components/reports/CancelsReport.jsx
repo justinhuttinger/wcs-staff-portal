@@ -227,7 +227,7 @@ function CountRows({ title, rows, empty, limit }) {
   )
 }
 
-export default function CancelsReport({ startDate, endDate, locationSlug, planType = 'all', excludedCategories = []}) {
+export default function CancelsReport({ startDate, endDate, locationSlug, excludedCategories = [] }) {
   const { data, loading, error } = useCancellableFetch(
     (signal) => {
       const params = {}
@@ -247,7 +247,12 @@ export default function CancelsReport({ startDate, endDate, locationSlug, planTy
   // Plan-type pill filter (All / Membership / Insurance) selects a pre-computed
   // breakdown from the response — no refetch needed. Falls back to the legacy
   // top-level keys if the API doesn't return plan_types yet.
-  const view = data.plan_types?.[planType] || data.plan_types?.all || data
+  // Always the whole set. The All / Membership / Insurance pills are gone: the
+  // membership category tick boxes in the header do that job across Club
+  // Health, Membership and Cancels together, and two filters for the same idea
+  // on one screen is one too many. plan_types is still returned by the API and
+  // still read by mobile Cancels, so the shape is unchanged.
+  const view = data.plan_types?.all || data
 
   return (
     <ReportBlock>
@@ -258,12 +263,10 @@ export default function CancelsReport({ startDate, endDate, locationSlug, planTy
           <StatCell
             label="Members Cancelled"
             value={view.total_members ?? 0}
-            sub={planType === 'insurance' ? 'Non-dues-paying (A2 / Active and Fit plans)' : undefined}
           />
           <StatCell
             label="Agreements Cancelled"
             value={view.total_agreements ?? 0}
-            sub={planType === 'insurance' ? 'Non-dues-paying (A2 / Active and Fit plans)' : undefined}
           />
         </StatBlock>
       </div>
