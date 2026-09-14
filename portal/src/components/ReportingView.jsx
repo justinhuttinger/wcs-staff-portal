@@ -26,6 +26,7 @@ import AuditsReport from './reports/AuditsReport'
 import ReportInfoButton from './ReportInfoButton'
 import DataFreshnessStamp from './reports/DataFreshnessStamp'
 import ReportDetailView from './reports/ReportDetailView'
+import { roleAtLeast } from '../lib/roles'
 import { getReportInfo } from '../lib/reportInfo'
 import { hasReportDetail } from '../lib/reportDetail'
 
@@ -595,7 +596,7 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
         {!(reportHasDetail && detailView) && (
         <>
         {activeReport === 'club-health' && (
-            <ClubHealthReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+            <ClubHealthReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} canDrill={roleAtLeast(userRole, 'manager')} />
           )}
           {activeReport === 'membership' && (
             <MembershipReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />

@@ -18,7 +18,7 @@ import RecordsModal from './RecordsModal'
 // ---------------------------------------------------------------------------
 
 export default function Drillable({
-  set, params, title, disabled = false, className = '', children,
+  set, params, title, disabled = false, rounded = 'rounded-xl', className = '', children,
 }) {
   const [open, setOpen] = useState(false)
 
@@ -33,7 +33,11 @@ export default function Drillable({
         // text-left because these wrap cards, which are not centred text; the
         // ring is the only affordance a card gets, so it has to be visible on
         // both keyboard focus and hover.
-        className={`w-full text-left rounded-xl cursor-pointer transition-shadow hover:ring-2 hover:ring-wcs-red/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wcs-red ${className}`}
+        // The ring traces this element, so its corners have to match whatever
+        // it wraps. Analytics cards are rounded; Club Health's are flush cells
+        // in a hairline grid, and a rounded ring on a square cell reads as a
+        // rendering fault rather than a hover state.
+        className={`w-full text-left ${rounded} cursor-pointer transition-shadow hover:ring-2 hover:ring-wcs-red/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wcs-red ${className}`}
       >
         {children}
       </button>

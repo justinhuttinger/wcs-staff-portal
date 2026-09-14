@@ -3,6 +3,7 @@ import { getClubHealthReport } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { StatBlock, StatCell, ReportBlock } from './StatBlock'
+import Drillable from '../analytics/Drillable'
 
 const PIE_COLORS = ['#e53e3e', '#38a169', '#3182ce', '#d69e2e', '#805ad5', '#dd6b20', '#319795']
 
@@ -208,7 +209,46 @@ function SectionHeader({ title }) {
   )
 }
 
-export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
+// ---------------------------------------------------------------------------
+// Which rows sit behind each card.
+//
+// NOTHING IS CLICKABLE BY ACCIDENT, and nothing points at an Analytics set
+// without its definition having been checked against this report's own. Three
+// of these could not reuse one:
+//
+//   - the membership cards count on sign_date, where Analytics counts on
+//     since_date, so they get 'club-health-sales' rather than 'new-members'
+//   - Cancels does not apply the conditional-membership rule, where Analytics'
+//     'lost-members' does, so it gets 'club-health-cancels'
+//   - Total VIPs counts the GHL `vip_team_member` field, where the 'vips' set
+//     reads the vip_credits table, so it gets 'club-health-vips'
+//
+// Tours, the Day One funnel and Day Ones Pending DO share a definition with
+// Analytics - same tables, same predicates, checked - so they reuse those sets
+// rather than growing a fourth near-copy.
+//
+// The two Net Change cards are absent on purpose. A difference between two
+// populations has no single list behind it, so a click would have to pick one
+// half and would be showing the wrong thing under the right number.
+const DRILLS = {
+  activeMembers:    { set: 'club-health-active', title: 'Active members' },
+  activeAgreements: { set: 'club-health-active', title: 'Active members' },
+  agreements:       { set: 'club-health-sales', title: 'Memberships sold' },
+  members:          { set: 'club-health-sales', title: 'Memberships sold' },
+  vips:             { set: 'club-health-vips', title: 'VIP referrals' },
+  sameDay:          { set: 'club-health-sales', filter: 'same-day', title: 'Same day sales' },
+  newDues:          { set: 'club-health-sales', title: 'Memberships sold' },
+  ach:              { set: 'club-health-sales', filter: 'ach', title: 'Sold on ACH' },
+  tours:            { set: 'tours', title: 'Tours given' },
+  pending:          { set: 'day-ones-pending', title: 'Pending outcomes' },
+  dayOneSet:        { set: 'day-ones', window: 'booked', title: 'Day Ones booked' },
+  dayOneShow:       { set: 'day-ones', filter: 'completed', title: 'Completed Day Ones' },
+  dayOneClose:      { set: 'day-ones', filter: 'sold', title: 'Day Ones sold' },
+  cancelsMembers:   { set: 'club-health-cancels', title: 'Cancels' },
+  cancelsAgreements:{ set: 'club-health-cancels', title: 'Cancels' },
+}
+
+export default function ClubHealthReport({ startDate, endDate, locationSlug, canDrill = false }) {
   const { data, loading, error } = useCancellableFetch(
     (signal) => {
       const params = {}
@@ -226,6 +266,16 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
 
   const totalMemberships = data.total_memberships || 0
   const totalAgreements = data.total_agreements || 0
+
+  // The window every drill-down inherits, so no card can open a list for a
+  // range other than the one on screen.
+  //
+  // canDrill carries the one gate the records endpoint enforces anyway: it is
+  // manager and above. A lead holding a granted club-health tile can read the
+  // report but not the rows behind it, and a card that looked clickable and
+  // then returned a permission error would be worse than a card that never
+  // offered. Below manager every card renders exactly as it did before.
+  const drillScope = { startDate, endDate, locationSlug, canDrill }
 
   // Set / Show / Close metrics from day one data
   const dayOneSet = data.total_day_ones_booked || 0
@@ -245,8 +295,8 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
       <div>
         <Heading>Active Members</Heading>
         <StatBlock cols={2} flush>
-          <StatCell label="Total Members" value={data.active_members_total ?? 0} />
-          <StatCell label="Total Agreements" value={data.active_agreements_total ?? 0} />
+          <DrillCell {...drillScope} drill="activeMembers" label="Total Members" value={data.active_members_total ?? 0} />
+          <DrillCell {...drillScope} drill="activeAgreements" label="Total Agreements" value={data.active_agreements_total ?? 0} />
         </StatBlock>
       </div>
 
@@ -254,35 +304,47 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
       <div>
         <Heading>Membership</Heading>
         <StatBlock cols={4} flush>
-          <StatCell label="Agreements" value={totalAgreements} />
-          <StatCell label="Members" value={totalMemberships} />
-          <StatCell label="Total VIPs" value={data.total_vips} />
-          <StatCell label="Same Day Sales" value={data.total_same_day_sales} />
+          <DrillCell {...drillScope} drill="agreements" label="Agreements" value={totalAgreements} />
+          <DrillCell {...drillScope} drill="members" label="Members" value={totalMemberships} />
+          <DrillCell {...drillScope} drill="vips" label="Total VIPs" value={data.total_vips} />
+          <DrillCell {...drillScope} drill="sameDay" label="Same Day Sales" value={data.total_same_day_sales} />
           {/* From the Analytics definitions, so this and Club Snapshot cannot
               disagree about the same month. New Dues is what was written, not
               what was collected. */}
-          <StatCell
+          <DrillCell
+            {...drillScope}
+            drill="newDues"
             label="New Dues"
             value={data.new_dues != null ? `$${Math.round(data.new_dues).toLocaleString()}` : '—'}
             sub="Written this period"
           />
           {/* Insurance and temp plans are out of this: neither can be on ACH at
               all, so counting them would score product mix, not selling. */}
-          <StatCell
+          {/* The list is the numerator: the dues plans that actually draft. */}
+          <DrillCell
+            {...drillScope}
+            drill="ach"
+            available={data.pct_on_ach != null}
             label="ACH %"
             value={data.pct_on_ach != null ? `${data.pct_on_ach}%` : 'N/A'}
             sub="Dues plans only"
           />
           {/* N/A rather than 0 where no club in view has ever recorded a tour —
               they were not stored before the check-in module kept them. */}
-          <StatCell
+          <DrillCell
+            {...drillScope}
+            drill="tours"
+            available={!data.tours_unavailable}
             label="Tours Given"
             value={data.tours_unavailable ? 'N/A' : (data.total_tours ?? 0)}
             sub={data.tours_unavailable ? 'Not recorded at these clubs' : undefined}
           />
           {/* The caveat on every Day One rate below: passed, nothing recorded,
               so it counts as neither held nor missed. */}
-          <StatCell
+          <DrillCell
+            {...drillScope}
+            drill="pending"
+            available={data.pending_outcome != null}
             label="Day Ones Pending"
             value={data.pending_outcome ?? '—'}
             sub="Passed, no outcome"
@@ -298,8 +360,8 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
       </div>
 
       <StatBlock cols={4} flush>
-        <StatCell label="Cancels (Members)" value={data.cancels_members ?? 0} />
-        <StatCell label="Cancels (Agreements)" value={data.cancels_agreements ?? 0} />
+        <DrillCell {...drillScope} drill="cancelsMembers" label="Cancels (Members)" value={data.cancels_members ?? 0} />
+        <DrillCell {...drillScope} drill="cancelsAgreements" label="Cancels (Agreements)" value={data.cancels_agreements ?? 0} />
         <StatCell
           label="Net Change (Members)"
           value={`${(data.net_change_members ?? 0) >= 0 ? '+' : ''}${data.net_change_members ?? 0}`}
@@ -316,9 +378,9 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
       <div>
         <Heading>PT / Day One</Heading>
         <StatBlock cols={3} flush>
-          <StatCell label="Set" value={dayOneSet} sub="Day Ones Booked" />
-          <StatCell label="Show" value={dayOneShow} sub={`${showRate}% of set`} />
-          <StatCell label="Close" value={dayOneClose} sub={`${closeRate}% of shown`} />
+          <DrillCell {...drillScope} drill="dayOneSet" label="Set" value={dayOneSet} sub="Day Ones Booked" />
+          <DrillCell {...drillScope} drill="dayOneShow" label="Show" value={dayOneShow} sub={`${showRate}% of set`} />
+          <DrillCell {...drillScope} drill="dayOneClose" label="Close" value={dayOneClose} sub={`${closeRate}% of shown`} />
         </StatBlock>
       </div>
 
@@ -330,6 +392,33 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug }) {
         <PieChart title="Day One Sale" data={data.day_one_sale} colorMap={{ 'Sale': '#38a169', 'No Sale': '#e53e3e' }} flush />
       </div>
     </ReportBlock>
+  )
+}
+
+/**
+ * A stat card with its rows one click away.
+ *
+ * `drill` is a key into DRILLS, not a set name, so a call site cannot invent a
+ * record set the definitions were never checked against. An unknown key, or an
+ * `available={false}` card (Tours at a club that never recorded one), renders
+ * exactly as it did before rather than opening an empty list.
+ */
+function DrillCell({ drill, available = true, canDrill, startDate, endDate, locationSlug, ...cell }) {
+  const d = available && canDrill ? DRILLS[drill] : null
+  const card = <StatCell {...cell} />
+  if (!d) return card
+  return (
+    <Drillable
+      set={d.set}
+      title={d.title}
+      rounded="rounded-none"
+      params={{
+        start: startDate, end: endDate, clubs: locationSlug || 'all',
+        filter: d.filter, window: d.window,
+      }}
+    >
+      {card}
+    </Drillable>
   )
 }
 

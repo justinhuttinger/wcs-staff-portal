@@ -144,6 +144,47 @@ test('the club-wide sets exist and are renderable', () => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// The sets Club Health needed of its own.
+//
+// Club Health counts its membership on sign_date where Analytics counts on
+// since_date, and its Cancels card does not apply the conditional-membership
+// rule where Analytics' does. These sets exist so each of its cards opens the
+// rows IT counted; the guard here is that they stay distinct from the
+// Analytics ones rather than quietly being aliased back onto them.
+// ---------------------------------------------------------------------------
+
+test('Club Health has its own sets, and they are renderable', () => {
+  for (const key of ['club-health-sales', 'club-health-active', 'club-health-cancels', 'club-health-vips']) {
+    const set = SETS[key]
+    assert.ok(set, `missing set: ${key}`)
+    assert.ok(set.label, `${key} has no label`)
+    assert.ok(Array.isArray(set.columns) && set.columns.length > 0, `${key} declares no columns`)
+    assert.equal(typeof set.load, 'function', `${key} has no loader`)
+    for (const col of set.columns) {
+      assert.ok(col.key && col.label && col.format, `${key} has an incomplete column`)
+    }
+  }
+})
+
+// The whole reason these exist. If either pair is ever pointed at the same
+// loader, one of the two cards is opening a list that does not match it.
+test('Club Health sets are not aliases of the Analytics ones', () => {
+  assert.notEqual(SETS['club-health-sales'].load, SETS['new-members'].load)
+  assert.notEqual(SETS['club-health-cancels'].load, SETS['lost-members'].load)
+  assert.notEqual(SETS['club-health-vips'].load, SETS['vips'].load)
+})
+
+// Active Members is the roster as it stands, whatever range is on screen, so
+// its loader must not read the window. Destructuring is the signature: a start
+// or end named there would mean the list had quietly become date-scoped while
+// the card above it had not.
+test('the Active Members set does not read the date window', () => {
+  const params = String(SETS['club-health-active'].load).match(/\(([^)]*)\)/)[1]
+  assert.ok(!/\bstart\b/.test(params), 'club-health-active reads start')
+  assert.ok(!/\bend\b/.test(params), 'club-health-active reads end')
+})
+
 // analytics_topline_window counts exactly these three as gone. A looser list
 // would open more rows than the card it was clicked from.
 test('a lost member is one of the report three statuses', () => {
