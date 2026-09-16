@@ -226,9 +226,9 @@ export default function MembershipReport({ startDate, endDate, locationSlug, can
 
   function handleExportCSV() {
     const csvRows = [
-      ['Salesperson', 'Total Sales', 'Tours', 'VIPs', 'Day One', 'Same Day Sale'],
-      ...rows.map(([name, s]) => [displayName(name), s.total_sales || 0, s.tours || 0, s.vips || 0, s.day_one_booked || 0, s.same_day_sale || 0]),
-      ['Total', totalSales, totalRowTours, totalRowVips, totalDayOne, totalSameDay],
+      ['Salesperson', 'Tours', 'Total Sales', 'Same Day Sale', 'Day One', 'VIPs'],
+      ...rows.map(([name, s]) => [displayName(name), s.tours || 0, s.total_sales || 0, s.same_day_sale || 0, s.day_one_booked || 0, s.vips || 0]),
+      ['Total', totalRowTours, totalSales, totalSameDay, totalDayOne, totalRowVips],
     ]
     exportCSV(csvRows, `membership-report-${startDate}-${endDate}`)
   }
@@ -293,13 +293,13 @@ export default function MembershipReport({ startDate, endDate, locationSlug, can
           <thead>
             <tr className="border-b border-border bg-bg">
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase">Salesperson</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Total Sales</th>
-              {/* Tours GIVEN, ahead of the things that follow a tour, so the
-                  columns read in the order the day happens. */}
+              {/* Tours GIVEN first, then what follows a tour: the sale, same-day
+                  sales, Day Ones, then VIPs. */}
               <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Tours</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">VIPs</th>
-              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Day One</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Total Sales</th>
               <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Same Day Sale</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">Day One</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-text-muted uppercase">VIPs</th>
             </tr>
           </thead>
           <tbody>
@@ -326,11 +326,11 @@ export default function MembershipReport({ startDate, endDate, locationSlug, can
               return (
                 <tr key={name} className="border-b border-border last:border-0 hover:bg-bg/50 transition-colors">
                   <td className="px-4 py-3 font-medium text-text-primary">{displayName(name)}</td>
-                  <td className="px-4 py-3 text-center">{cell('total_sales', 'text-wcs-red font-semibold')}</td>
                   <td className="px-4 py-3 text-center">{cell('tours', 'text-text-primary')}</td>
-                  <td className="px-4 py-3 text-center">{cell('vips', 'text-text-primary')}</td>
-                  <td className="px-4 py-3 text-center">{cell('day_one_booked', 'text-green-600')}</td>
+                  <td className="px-4 py-3 text-center">{cell('total_sales', 'text-wcs-red font-semibold')}</td>
                   <td className="px-4 py-3 text-center">{cell('same_day_sale', 'text-green-600')}</td>
+                  <td className="px-4 py-3 text-center">{cell('day_one_booked', 'text-green-600')}</td>
+                  <td className="px-4 py-3 text-center">{cell('vips', 'text-text-primary')}</td>
                 </tr>
               )
             })}
@@ -342,11 +342,11 @@ export default function MembershipReport({ startDate, endDate, locationSlug, can
             {rows.length > 0 && (
               <tr className="border-t-2 border-border font-bold bg-bg/30">
                 <td className="px-4 py-3 text-text-primary">Total</td>
-                <td className="px-4 py-3 text-center text-wcs-red">{totalSales}</td>
                 <td className="px-4 py-3 text-center text-text-primary">{totalRowTours}</td>
-                <td className="px-4 py-3 text-center text-text-primary">{totalRowVips}</td>
-                <td className="px-4 py-3 text-center text-green-600">{totalDayOne}</td>
+                <td className="px-4 py-3 text-center text-wcs-red">{totalSales}</td>
                 <td className="px-4 py-3 text-center text-green-600">{totalSameDay}</td>
+                <td className="px-4 py-3 text-center text-green-600">{totalDayOne}</td>
+                <td className="px-4 py-3 text-center text-text-primary">{totalRowVips}</td>
               </tr>
             )}
           </tbody>
