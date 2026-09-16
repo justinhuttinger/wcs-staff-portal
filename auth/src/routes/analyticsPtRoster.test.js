@@ -63,6 +63,7 @@ function loadHandler(routeFile) {
     },
     [path.join(base, 'middleware/auth.js')]: (req, res, next) => next(),
     [path.join(base, 'middleware/role.js')]: { requireRole: () => (req, res, next) => next() },
+    [path.join(base, 'services/locationScope.js')]: { narrowClubsToScope: async (_req, slugs) => slugs },
   }
 
   const origResolve = Module._resolveFilename

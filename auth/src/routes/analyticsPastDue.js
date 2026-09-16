@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { narrowClubsToScope } = require('../services/locationScope')
 const { supabaseAdmin } = require('../services/supabase')
 const { parseCategory, parseBasis, filterNote, matchesFilters } = require('../lib/analyticsMemberFilters')
 const { fetchAll } = require('../lib/supabaseFetchAll')
@@ -10,7 +11,7 @@ const { buildPastDue, isChaseable, EXCLUDED_STATUSES, VIEW_BY } = require('../li
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Past Due — Analytics (corporate+)
+// Past Due — Analytics (manager+, club-scoped)
 //
 // Who owes money and is still worth calling. Collections, cancelled, expired
 // and pending-cancel accounts are excluded outright, not offered as a filter:
@@ -23,7 +24,7 @@ const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('corporate'))
+router.use(requireRole('manager'))
 
 const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000
@@ -79,10 +80,13 @@ async function loadMemberBase(clubNumbers, skipList, filters) {
 router.get('/', async (req, res) => {
   try {
     const clubsParam = String(req.query.clubs || 'all')
-    const slugs = clubsParam === 'all'
+    const asked = clubsParam === 'all'
       ? CLUBS.map(c => c.slug)
       : clubsParam.split(',').map(s => s.trim().toLowerCase()).filter(s => CLUB_BY_SLUG[s])
-    if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    if (asked.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    // Managers are narrowed to the clubs they are assigned; corporate+ keep what they asked for.
+    const slugs = await narrowClubsToScope(req, asked)
+    if (slugs.length === 0) return res.status(403).json({ error: 'no access to the requested clubs' })
 
     const exclude = req.query.exclusion !== 'include'
     const viewBy = VIEW_BY.includes(req.query.viewBy) ? req.query.viewBy : 'club'

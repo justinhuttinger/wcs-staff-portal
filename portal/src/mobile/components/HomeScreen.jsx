@@ -196,9 +196,9 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     if (tile.label === 'HR' && roleIdx < ROLE_LEVELS.manager) return false
     // Coaching mirrors the desktop Member App gate: manager+.
     if (tile.label === 'Coaching' && roleIdx < ROLE_LEVELS.manager) return false
-    // Analytics is corporate+, matching the desktop tile. Deliberately outside
+    // Analytics is manager+, matching the desktop tile. Deliberately outside
     // the Roles grid, so it can never be granted below that tier.
-    if (tile.label === 'Analytics' && roleIdx < ROLE_LEVELS.corporate) return false
+    if (tile.label === 'Analytics' && roleIdx < ROLE_LEVELS.manager) return false
     // Marketing Tracker: effective tracker capability (corporate/admin, add-on,
     // or a role grant of marketing:tracker).
     if (tile.label === 'Marketing' && !canMarketing) return false

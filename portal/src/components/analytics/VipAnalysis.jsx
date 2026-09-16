@@ -5,7 +5,7 @@ import DesktopLoading from '../DesktopLoading'
 import { zebra, HOVER_TINT } from './tableTints'
 
 // ---------------------------------------------------------------------------
-// VIP Analysis — Analytics (corporate+)
+// VIP Analysis — Analytics (manager+, club-scoped)
 //
 // One question: of the VIP referrals collected, how many got going and how many
 // joined. The drop between them is the whole report, which is why they sit on

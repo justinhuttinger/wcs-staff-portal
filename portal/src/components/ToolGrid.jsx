@@ -753,8 +753,8 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
               Feedback moved into the Admin panel — it is survey setup, which is
               configuration, and it was the only admin-shaped thing left sitting
               on the staff board. */}
-          {/* 6.9. Analytics — corporate+ (corporate, director, marketing tier,
-              admin). Deliberately outside the roles grid so it can never be
+          {/* 6.9. Analytics — manager+ (managers scoped to their assigned clubs;
+              corporate+ see all). Deliberately outside the roles grid so it can never be
               granted below that tier. */}
           {/* 7-9. Reporting, Tickets + remaining custom tiles
               (Marketing now lives inside Reporting — no standalone tile) */}
