@@ -299,6 +299,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug, can
           <DrillCell {...drillScope} drill="activeMembers" label="Total Members" value={data.active_members_total ?? 0} />
           <DrillCell {...drillScope} drill="activeAgreements" label="Total Agreements" value={data.active_agreements_total ?? 0} />
         </StatBlock>
+        <PlanCells {...drillScope} drill="activeMembers" rows={data.active_by_plan} />
       </div>
 
       {/* ---------- MEMBERSHIP (date-filtered new sales) ---------- */}
@@ -351,6 +352,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug, can
             sub="Passed, no outcome"
           />
         </StatBlock>
+        <PlanCells {...drillScope} drill="members" rows={data.sales_by_plan} suffix="Sold" />
       </div>
 
       <TopPerformers title="Top 3 Salespeople" units="pts" performers={data.top_salespeople} flush />
@@ -418,7 +420,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug, can
  * `available={false}` card (Tours at a club that never recorded one), renders
  * exactly as it did before rather than opening an empty list.
  */
-function DrillCell({ drill, available = true, canDrill, startDate, endDate, locationSlug, excludedCategories = [], ...cell }) {
+function DrillCell({ drill, available = true, canDrill, startDate, endDate, locationSlug, excludedCategories = [], plan, ...cell }) {
   const d = available && canDrill ? DRILLS[drill] : null
   const card = <StatCell {...cell} />
   if (!d) return card
@@ -429,13 +431,37 @@ function DrillCell({ drill, available = true, canDrill, startDate, endDate, loca
       rounded="rounded-none"
       params={{
         start: startDate, end: endDate, clubs: locationSlug || 'all',
-        filter: d.filter, window: d.window,
+        filter: d.filter, window: d.window, plan,
         // The list follows the tick boxes, so it matches the number clicked.
         exclude_categories: excludedCategories.join(',') || undefined,
       }}
     >
       {card}
     </Drillable>
+  )
+}
+
+/**
+ * One card per plan type (1-Year, Month-to-Month, No-Draft, Paid in Full), from
+ * ABC's agreement term. Each opens the same list as the headline card it
+ * splits, narrowed to that plan, so the four add up to the card above them.
+ */
+function PlanCells({ rows, drill, suffix, ...scope }) {
+  if (!rows || rows.length === 0) return null
+  return (
+    <StatBlock cols={Math.min(rows.length, 5)} flush>
+      {rows.map(r => (
+        <DrillCell
+          key={r.plan}
+          {...scope}
+          drill={drill}
+          plan={r.plan}
+          label={suffix ? `${r.label} ${suffix}` : r.label}
+          value={r.members}
+          sub={`${r.agreements.toLocaleString()} agreements`}
+        />
+      ))}
+    </StatBlock>
   )
 }
 

@@ -3,6 +3,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { resolveScopedSlugs } = require('../services/locationScope')
 const { parseExcludedCategories } = require('../lib/analyticsMemberFilters')
+const { parsePlan } = require('../lib/planType')
 const { wrapSWR } = require('../services/memoryCache')
 const { loadRecordSet, setKeys, clubNumbersFor, DEFAULT_LIMIT, MAX_LIMIT } = require('../lib/analyticsRecords')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
@@ -91,6 +92,8 @@ router.get('/', async (req, res) => {
       start, end, slugs,
       clubNumbers: clubNumbersFor(slugs),
       person, personField, filter, window, excludedCategories,
+      // One plan type (one-year | mtm | no-draft | pif | unknown), or null.
+      plan: parsePlan(req.query.plan),
     }
 
     // The page bounds are deliberately OUT of the cache key: the set is loaded
@@ -100,7 +103,7 @@ router.get('/', async (req, res) => {
       'analytics:records', set, start, end,
       slugs.slice().sort().join('+'),
       person || '-', personField, filter || '-', window,
-      excludedCategories.slice().sort().join('+') || '-',
+      excludedCategories.slice().sort().join('+') || '-', params.plan || '-',
     ].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, () => loadRecordSet(set, params))
@@ -115,7 +118,7 @@ router.get('/', async (req, res) => {
       total: payload.total,
       offset,
       limit,
-      meta: { set, start, end, clubs: slugs, person, filter, window },
+      meta: { set, start, end, clubs: slugs, person, filter, window, plan: params.plan },
     })
   } catch (err) {
     console.error('[analytics/records] error:', err.message)

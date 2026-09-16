@@ -14,6 +14,7 @@ const {
   cannotUseAch, loadCategoryMap, parseExcludedCategories, isCategoryExcluded, filterNote,
   countAfterExclusion,
 } = require('../lib/analyticsMemberFilters')
+const { PLAN_TYPES, UNKNOWN_PLAN, planKeyFor } = require('../lib/planType')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { parseLocationSlugParam } = require('../utils/locationSlug')
 const { resolveScopedSlugs } = require('../services/locationScope')
@@ -736,7 +737,7 @@ router.get('/club-health', async (req, res) => {
 
     let abcQuery = supabaseAdmin
       .from('abc_members')
-      .select('sales_person_name, email, membership_type, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method')
+      .select('sales_person_name, email, membership_type, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method, agreement_term')
       .eq('is_active', true)
       .not('sign_date', 'is', null)
     if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
@@ -927,7 +928,7 @@ router.get('/club-health', async (req, res) => {
     // Same skip-list filter as sales metrics, but no sign_date / since_date constraints.
     let activeQuery = supabaseAdmin
       .from('abc_members')
-      .select('agreement_number, membership_type')
+      .select('agreement_number, membership_type, agreement_term')
       .eq('is_active', true)
     if (clubNumbers2.length > 0) activeQuery = activeQuery.in('club_number', clubNumbers2)
 
@@ -961,6 +962,22 @@ router.get('/club-health', async (req, res) => {
         agreements: activeAgreementsByType[t]?.size || 0,
       }))
       .sort((a, b) => b.members - a.members)
+
+    // By plan type (1-year / month-to-month / ...) for the sold and active
+    // populations above, in the fixed planType.js order. Unknown only when used.
+    const byPlan = (rows) => {
+      const buckets = new Map([...PLAN_TYPES, UNKNOWN_PLAN].map(p => [p.key, { members: 0, agreements: new Set() }]))
+      for (const m of rows) {
+        const b = buckets.get(planKeyFor(m.agreement_term))
+        b.members += 1
+        if (m.agreement_number) b.agreements.add(m.agreement_number)
+      }
+      return [...PLAN_TYPES, UNKNOWN_PLAN]
+        .map(p => ({ plan: p.key, label: p.label, members: buckets.get(p.key).members, agreements: buckets.get(p.key).agreements.size }))
+        .filter(r => r.plan !== UNKNOWN_PLAN.key || r.members > 0)
+    }
+    const salesByPlan = byPlan(filteredMembers)
+    const activeByPlan = byPlan(activeFiltered)
 
     const activeAgreementsTotal = new Set(activeFiltered.map(m => m.agreement_number).filter(Boolean)).size
 
@@ -1073,6 +1090,9 @@ router.get('/club-health', async (req, res) => {
       active_members_source: toplineMembers != null ? 'analytics' : 'roster',
       active_agreements_total: activeAgreementsTotal,
       active_by_membership_type: activeByMembershipType,
+      // Sold (sign_date window) and active roster, by plan type.
+      sales_by_plan: salesByPlan,
+      active_by_plan: activeByPlan,
       cancels_members: cancelsInPeriodMembers,
       cancels_agreements: cancelsInPeriodAgreements,
       net_change_members: filteredMembers.length - cancelsInPeriodMembers,
