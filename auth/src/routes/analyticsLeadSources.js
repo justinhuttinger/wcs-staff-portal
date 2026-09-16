@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { narrowClubsToScope } = require('../services/locationScope')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
@@ -9,7 +10,7 @@ const { monthToDate, priorMonthWindow, priorLabel, windowLabel } = require('../l
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Lead Sources — Analytics (corporate+)
+// Lead Sources — Analytics (manager+, club-scoped)
 //
 // Where leads come from and what became of them, on FIRST touch: GHL's
 // attribution_source rather than last_attribution_source. 15% of contacts
@@ -30,7 +31,7 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('corporate'))
+router.use(requireRole('manager'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000
@@ -46,10 +47,13 @@ router.get('/', async (req, res) => {
     if (start > end) return res.status(400).json({ error: 'start must not be after end' })
 
     const clubsParam = String(req.query.clubs || 'all')
-    const slugs = clubsParam === 'all'
+    const asked = clubsParam === 'all'
       ? CLUBS.map(c => c.slug)
       : clubsParam.split(',').map(s => s.trim().toLowerCase()).filter(s => CLUB_BY_SLUG[s])
-    if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    if (asked.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    // Managers are narrowed to the clubs they are assigned; corporate+ keep what they asked for.
+    const slugs = await narrowClubsToScope(req, asked)
+    if (slugs.length === 0) return res.status(403).json({ error: 'no access to the requested clubs' })
 
     const allClubs = slugs.length === CLUBS.length
     const clubSlugs = allClubs ? null : slugs

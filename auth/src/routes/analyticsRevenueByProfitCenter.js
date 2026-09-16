@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { narrowClubsToScope } = require('../services/locationScope')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrap, wrapSWR } = require('../services/memoryCache')
@@ -9,7 +10,7 @@ const { buildRevenueByProfitCenter, SORTS } = require('../lib/revenueByProfitCen
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Revenue by Profit Center — Analytics (corporate+)
+// Revenue by Profit Center — Analytics (manager+, club-scoped)
 //
 // One stacked bar per row, segmented by profit centre group.
 //
@@ -40,7 +41,7 @@ const EXACT_VIEWS = new Set(['club', 'payment_type'])
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('corporate'))
+router.use(requireRole('manager'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000
@@ -73,10 +74,13 @@ router.get('/', async (req, res) => {
     const end = clamp.end
 
     const clubsParam = String(req.query.clubs || 'all')
-    const slugs = clubsParam === 'all'
+    const asked = clubsParam === 'all'
       ? CLUBS.map(c => c.slug)
       : clubsParam.split(',').map(s => s.trim().toLowerCase()).filter(s => CLUB_BY_SLUG[s])
-    if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    if (asked.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    // Managers are narrowed to the clubs they are assigned; corporate+ keep what they asked for.
+    const slugs = await narrowClubsToScope(req, asked)
+    if (slugs.length === 0) return res.status(403).json({ error: 'no access to the requested clubs' })
 
     const view = VIEWS.some(v => v.key === req.query.view) ? String(req.query.view) : 'club'
     const sort = SORTS.some(s => s.key === req.query.sort) ? String(req.query.sort) : 'total_desc'

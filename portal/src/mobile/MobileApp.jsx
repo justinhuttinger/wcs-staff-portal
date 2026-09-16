@@ -297,15 +297,15 @@ export default function MobileApp() {
       )
     }
 
-    // Analytics — corporate+, the same tier as desktop. The tile is hidden below
+    // Analytics — manager+, the same tier as desktop. The tile is hidden below
     // it and this refuses to render, but the gate that matters is the one on
     // every /analytics/* route on the server.
     if (route === 'analytics' || route.startsWith('analytics/')) {
-      if (roleIdx < ROLE_LEVELS.corporate) {
+      if (roleIdx < ROLE_LEVELS.manager) {
         return (
           <div className="pt-4 px-4">
             <MobileHeader title="Analytics" onBack={() => navigate('home')} />
-            <StandaloneMessage>Analytics is available to corporate roles.</StandaloneMessage>
+            <StandaloneMessage>Analytics is available to managers and above.</StandaloneMessage>
           </div>
         )
       }

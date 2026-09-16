@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { narrowClubsToScope } = require('../services/locationScope')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
@@ -10,7 +11,7 @@ const { CLUBS, CLUB_BY_SLUG, isExcludedType, clubName } = require('../lib/salesp
 const { buildAverageDues } = require('../lib/averageDues')
 
 // ---------------------------------------------------------------------------
-// Average Monthly Dues — Analytics (corporate+)
+// Average Monthly Dues — Analytics (manager+, club-scoped)
 //
 // What a dues-paying member is worth per month. See lib/averageDues for who
 // counts as one and why next_due_amount cannot simply be summed.
@@ -23,7 +24,7 @@ const { buildAverageDues } = require('../lib/averageDues')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('corporate'))
+router.use(requireRole('manager'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000
@@ -33,10 +34,13 @@ const VIEW_BY = ['club', 'membership_type']
 router.get('/', async (req, res) => {
   try {
     const clubsParam = String(req.query.clubs || 'all')
-    const slugs = clubsParam === 'all'
+    const asked = clubsParam === 'all'
       ? CLUBS.map(c => c.slug)
       : clubsParam.split(',').map(s => s.trim().toLowerCase()).filter(s => CLUB_BY_SLUG[s])
-    if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    if (asked.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    // Managers are narrowed to the clubs they are assigned; corporate+ keep what they asked for.
+    const slugs = await narrowClubsToScope(req, asked)
+    if (slugs.length === 0) return res.status(403).json({ error: 'no access to the requested clubs' })
 
     const viewBy = VIEW_BY.includes(String(req.query.viewBy)) ? String(req.query.viewBy) : 'club'
     // The shared basis control. Dues are billed per AGREEMENT either way — the

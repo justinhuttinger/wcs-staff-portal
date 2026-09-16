@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { narrowClubsToScope } = require('../services/locationScope')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
@@ -10,7 +11,7 @@ const { MEMBER_SEGMENTS, isValidSegment, segmentValueLabel } = require('../lib/a
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Net Membership — Analytics (corporate+)
+// Net Membership — Analytics (manager+, club-scoped)
 //
 // New in, lost out, and the net, per segment, against the same window a year
 // earlier.
@@ -22,7 +23,7 @@ const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('corporate'))
+router.use(requireRole('manager'))
 
 const FRESH_MS = 5 * 60 * 1000
 const STALE_MS = 30 * 60 * 1000
@@ -43,10 +44,13 @@ router.get('/', async (req, res) => {
     if (start > end) return res.status(400).json({ error: 'start must not be after end' })
 
     const clubsParam = String(req.query.clubs || 'all')
-    const slugs = clubsParam === 'all'
+    const asked = clubsParam === 'all'
       ? CLUBS.map(c => c.slug)
       : clubsParam.split(',').map(s => s.trim().toLowerCase()).filter(s => CLUB_BY_SLUG[s])
-    if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    if (asked.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    // Managers are narrowed to the clubs they are assigned; corporate+ keep what they asked for.
+    const slugs = await narrowClubsToScope(req, asked)
+    if (slugs.length === 0) return res.status(403).json({ error: 'no access to the requested clubs' })
 
     const segment = isValidSegment(String(req.query.segment || ''), MEMBER_SEGMENTS)
       ? String(req.query.segment)

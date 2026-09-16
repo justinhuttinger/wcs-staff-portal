@@ -57,4 +57,14 @@ async function resolveScopedSlugs(req) {
   return scopeSlugs(parsed, req.staff?.role, allowed)
 }
 
-module.exports = { getUserAllowedSlugs, scopeSlugs, resolveScopedSlugs, slugify, NO_ACCESS_SLUG }
+// Analytics routes take a `clubs` list rather than location_slug. All-location
+// roles keep exactly what they asked for; restricted roles (manager) get the
+// intersection with their assigned clubs. An empty result is the caller's cue
+// to refuse — never to treat it as "no filter".
+async function narrowClubsToScope(req, askedSlugs) {
+  if (canSeeAllLocations(req.staff?.role)) return askedSlugs
+  const allowed = await getUserAllowedSlugs(req)
+  return askedSlugs.filter(s => allowed.includes(s))
+}
+
+module.exports = { getUserAllowedSlugs, scopeSlugs, resolveScopedSlugs, narrowClubsToScope, slugify, NO_ACCESS_SLUG }

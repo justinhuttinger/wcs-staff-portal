@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { narrowClubsToScope } = require('../services/locationScope')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
@@ -9,7 +10,7 @@ const { isValidSegment, segmentValueLabel } = require('../lib/analyticsSegments'
 const { CLUBS, CLUB_BY_SLUG, clubName } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// First Purchases by Join Month — Analytics (corporate+)
+// First Purchases by Join Month — Analytics (manager+, club-scoped)
 //
 // Of the members we signed, how many go on to buy PT, and how long after
 // joining.
@@ -36,7 +37,7 @@ const SEGMENTS = [
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('corporate'))
+router.use(requireRole('manager'))
 
 const FRESH_MS = 15 * 60 * 1000
 const STALE_MS = 2 * 60 * 60 * 1000
@@ -53,10 +54,13 @@ router.get('/', async (req, res) => {
     if (joinFrom > joinTo) return res.status(400).json({ error: 'joinFrom must not be after joinTo' })
 
     const clubsParam = String(req.query.clubs || 'all')
-    const slugs = clubsParam === 'all'
+    const asked = clubsParam === 'all'
       ? CLUBS.map(c => c.slug)
       : clubsParam.split(',').map(s => s.trim().toLowerCase()).filter(s => CLUB_BY_SLUG[s])
-    if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    if (asked.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    // Managers are narrowed to the clubs they are assigned; corporate+ keep what they asked for.
+    const slugs = await narrowClubsToScope(req, asked)
+    if (slugs.length === 0) return res.status(403).json({ error: 'no access to the requested clubs' })
 
     const segment = isValidSegment(String(req.query.segment || ''), SEGMENTS)
       ? String(req.query.segment)

@@ -5,7 +5,7 @@ import DesktopLoading from '../DesktopLoading'
 import { zebra, HOVER_TINT } from './tableTints'
 
 // ---------------------------------------------------------------------------
-// Average Monthly Dues — Analytics (corporate+)
+// Average Monthly Dues — Analytics (manager+, club-scoped)
 //
 // Total monthly dues over the members paying them. The two numbers behind the
 // average are shown beside it rather than left implicit: an average alone

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { LOCATION_OPTIONS as LOCATIONS, LOCATION_NAMES } from '../config/locations'
 import { getAppSettings } from '../lib/api'
+import { roleAtLeast } from '../lib/roles'
 import { getFavorites, toggleFavorite, FAVORITES_EVENT, MAX_FAVORITES } from '../lib/analyticsFavorites'
 import { isReportVisible } from './analyticsReportCatalogue'
 import LocationMultiSelect from './LocationMultiSelect'
@@ -48,13 +49,14 @@ import ReportRecords from './analytics/ReportRecords'
 import MemberFilters, { MemberFilterNote, MEMBER_CATEGORY_OPTIONS } from './analytics/MemberFilters'
 
 // ---------------------------------------------------------------------------
-// Analytics — a corporate+ reporting surface, separate from ReportingView.
+// Analytics — a manager+ reporting surface, separate from ReportingView.
 //
 // This is a staging ground for reports that are being rebuilt/reshaped before
 // they graduate into the main Reporting view. Nothing here is visible to any
-// role below `corporate`: the tile is hidden in ToolGrid, App.jsx refuses to
-// mount this view, and every server route these reports call must apply its own
-// corporate gate (client gating alone is not a gate).
+// role below `manager`: the tile is hidden below it, App.jsx refuses to mount
+// this view, and every server route these reports call applies its own gate AND
+// narrows managers to their assigned clubs (client gating alone is not a gate).
+// Corporate+ see every club.
 //
 // To add a report: drop a component in ./analytics/ and register it below.
 // ---------------------------------------------------------------------------
@@ -540,6 +542,15 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
   const [endDate, setEndDate] = useState(initialRange.end)
   const [activeQuick, setActiveQuick] = useState('this_month')
   const [locationSlug, setLocationSlug] = useState('all')
+  // Corporate+ pick from every club; managers only from the clubs they are
+  // assigned. The server narrows regardless — this just keeps the picker honest.
+  const seesAllClubs = roleAtLeast(user?.staff?.role, 'corporate')
+  const clubOptions = useMemo(() => {
+    const every = LOCATIONS.filter(l => l.slug !== 'all')
+    if (seesAllClubs) return every
+    const mine = (user?.staff?.locations || []).map(l => String(l.name || '').toLowerCase())
+    return every.filter(l => mine.includes(l.slug))
+  }, [seesAllClubs, user])
   // Persist across reports the way location and dates do. A reader who has
   // narrowed to Insurance is asking a question, not setting a per-report
   // preference, and losing it on every click would make the control unusable.
@@ -564,9 +575,9 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
   // not "no filter" — otherwise selecting All would bypass the toggles entirely.
   const scopedSlugs = useMemo(() => (
     locationSlug === 'all'
-      ? LOCATION_NAMES.map(n => n.toLowerCase())
+      ? (seesAllClubs ? LOCATION_NAMES.map(n => n.toLowerCase()) : clubOptions.map(l => l.slug))
       : String(locationSlug).split(',').map(x => x.trim()).filter(Boolean)
-  ), [locationSlug])
+  ), [locationSlug, seesAllClubs, clubOptions])
 
   const canSee = useCallback(
     (key) => isReportVisible(visibility, key, scopedSlugs),
@@ -630,7 +641,7 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
     return () => window.removeEventListener('hashchange', onHashChange)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Belt-and-braces: App.jsx already refuses to mount this below corporate.
+  // Belt-and-braces: App.jsx already refuses to mount this below manager.
   if (!canAnalytics) return null
 
   function navigateToReport(reportKey) {
@@ -971,7 +982,7 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
               <LocationMultiSelect
                 value={locationSlug}
                 onChange={setLocationSlug}
-                options={LOCATIONS.filter(l => l.slug !== 'all')}
+                options={clubOptions}
               />
             </div>
           </div>

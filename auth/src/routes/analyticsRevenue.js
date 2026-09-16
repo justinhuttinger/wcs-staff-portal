@@ -1,11 +1,12 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { narrowClubsToScope } = require('../services/locationScope')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 const { buildRevenueAnalysis } = require('../lib/revenueAnalysisReport')
 
 // ---------------------------------------------------------------------------
-// Revenue — Analytics (corporate+)
+// Revenue — Analytics (manager+, club-scoped)
 //
 // Every profit center, against the same span a month ago and a year ago.
 // abc_revenue_transactions runs from January 2024 — 32 months, $17.9M, every
@@ -19,15 +20,18 @@ const { buildRevenueAnalysis } = require('../lib/revenueAnalysisReport')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('corporate'))
+router.use(requireRole('manager'))
 
 router.get('/', async (req, res) => {
   try {
     const clubsParam = String(req.query.clubs || 'all')
-    const slugs = clubsParam === 'all'
+    const asked = clubsParam === 'all'
       ? CLUBS.map(c => c.slug)
       : clubsParam.split(',').map(s => s.trim().toLowerCase()).filter(s => CLUB_BY_SLUG[s])
-    if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    if (asked.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    // Managers are narrowed to the clubs they are assigned; corporate+ keep what they asked for.
+    const slugs = await narrowClubsToScope(req, asked)
+    if (slugs.length === 0) return res.status(403).json({ error: 'no access to the requested clubs' })
 
     res.json(await buildRevenueAnalysis({
       start: req.query.start, end: req.query.end, slugs,

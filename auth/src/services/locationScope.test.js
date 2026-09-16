@@ -37,3 +37,36 @@ test('restricted user with no assigned clubs gets no rows', () => {
 test('multi-club request is intersected to the allowed subset', () => {
   assert.deepEqual(scopeSlugs(P('salem,clackamas'), 'manager', ['salem', 'keizer']), { slugs: ['salem'] })
 })
+
+// --- narrowClubsToScope (Analytics `clubs` param) ---------------------------
+
+test('narrowClubsToScope: corporate+ keep exactly the clubs they asked for', async () => {
+  const { narrowClubsToScope } = require('./locationScope')
+  const asked = ['salem', 'clackamas', 'medford']
+  for (const role of ['admin', 'corporate', 'director', 'marketing']) {
+    assert.deepEqual(await narrowClubsToScope({ staff: { role } }, asked), asked)
+  }
+})
+
+test('narrowClubsToScope: manager with no assigned clubs gets nothing, never all', async () => {
+  const { narrowClubsToScope } = require('./locationScope')
+  assert.deepEqual(await narrowClubsToScope({ staff: { role: 'manager', location_ids: [] } }, ['salem']), [])
+})
+
+test('narrowClubsToScope: manager is intersected with assigned clubs', async () => {
+  const supabasePath = require.resolve('./supabase')
+  const prior = require.cache[supabasePath]
+  require.cache[supabasePath] = {
+    id: supabasePath, filename: supabasePath, loaded: true,
+    exports: { supabaseAdmin: { from: () => ({ select: () => ({ in: async () => ({ data: [{ name: 'Salem' }, { name: 'Keizer' }] }) }) }) } },
+  }
+  try {
+    const { narrowClubsToScope } = require('./locationScope')
+    const req = { staff: { role: 'manager', location_ids: ['l1', 'l2'] } }
+    assert.deepEqual(await narrowClubsToScope(req, ['salem', 'keizer', 'eugene', 'medford']), ['salem', 'keizer'])
+    assert.deepEqual(await narrowClubsToScope(req, ['medford']), [])
+  } finally {
+    if (prior) require.cache[supabasePath] = prior
+    else delete require.cache[supabasePath]
+  }
+})

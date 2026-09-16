@@ -119,8 +119,9 @@ export default function App() {
   const openTickets = useOpenTicketCount(press && !!user, showTicketsBoard)
   // corporate sees all clubs portal-wide (same as Drive/report gating)
   const seesAllClubs = ['admin', 'corporate'].includes(user?.staff?.role)
-  // Analytics is corporate+ (corporate, director, marketing tier, admin).
-  const canAnalytics = roleAtLeast(user?.staff?.role, 'corporate')
+  // Analytics is manager+. Managers see only their assigned clubs (enforced
+  // server-side); corporate+ see every club.
+  const canAnalytics = roleAtLeast(user?.staff?.role, 'manager')
   // Effective Marketing Tracker capabilities (tile + tabs + type scope).
   const mAccess = marketingAccess(user)
 
@@ -759,7 +760,7 @@ export default function App() {
           onBack={() => { window.location.hash = ''; setShowReporting(false) }}
           location={location}
           isAdmin={isAdmin}
-          // Null below corporate, which is what hides the toggle entirely: a
+          // Null below manager, which is what hides the toggle entirely: a
           // manager must not be shown a surface their own board would never
           // have offered them.
           onAnalytics={canAnalytics ? openAnalytics : null}
