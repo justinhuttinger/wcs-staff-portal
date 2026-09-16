@@ -96,6 +96,10 @@ app.use('/dayone', require('./routes/dayOneBooking'))
 // visitor picks a meeting length before a time.
 app.use('/meetjustin', require('./routes/meetBooking'))
 app.use('/public/group-x', require('./routes/publicGroupX'))
+// Login-free per-club headcount logging. Deliberately NOT under /public/group-x,
+// whose GET-only CORS above would block this route's PUT preflight.
+app.use('/public/group-x-attendance', require('./routes/publicGroupXAttendance'))
+app.use('/admin/group-x-attendance-links', require('./routes/groupXAttendanceLinks'))
 app.use('/public/facility', require('./routes/publicFacility'))
 // Public, unauthenticated delivery of a ticket attachment a handler chose to
 // share. Token-gated per file; the Storage bucket itself stays private.

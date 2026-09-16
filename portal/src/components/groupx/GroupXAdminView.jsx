@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
 import BoardLinks from './BoardLinks'
+import AttendanceLinks from './AttendanceLinks'
 import NewClassBadges from './NewClassBadges'
 import GroupXReport from './GroupXReport'
 import ClubFeatureGrid from '../admin/ClubFeatureGrid'
@@ -43,6 +44,7 @@ export default function GroupXAdminView() {
 
   const TABS = [
     ['boards', 'Boards & embeds', 'The TV links and the website iframe, per club'],
+    ['attendance', 'Attendance links', 'Login-free headcount pages, one per club'],
     ['badges', 'New class badges', 'What wears a NEW pill, and until when'],
     ['history', 'History', 'Headcounts by class and instructor, across clubs'],
     ['clubs', 'Clubs', 'Which clubs run Group X at all'],
@@ -96,6 +98,7 @@ export default function GroupXAdminView() {
       )}
 
       {tab === 'boards' && <BoardLinks clubs={clubs} />}
+      {tab === 'attendance' && <AttendanceLinks />}
       {tab === 'badges' && <NewClassBadges club={club} classTypes={classTypes} />}
       {tab === 'history' && <GroupXReport clubs={clubs} />}
       {tab === 'clubs' && (

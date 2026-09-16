@@ -32,6 +32,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { publicCacheKeysForDates } = require('../lib/groupXPublic')
 const { aggregate } = require('../lib/groupXReport')
 const { markNewClasses } = require('../lib/groupXNewClasses')
+const { parseHeadcount, attendanceRow } = require('../lib/groupXAttendance')
 const { recordSeriesEvents, resolveLinkedSeriesId } = require('../lib/groupXSeriesLink')
 const { moveClassRefs } = require('../lib/groupXClassRefs')
 const { applyClassEdit } = require('../lib/applyClassEdit')
@@ -293,35 +294,21 @@ router.get('/classes', async (req, res) => {
 router.put('/classes/:eventId/attendance', requireAttendance, async (req, res) => {
   const b = req.body || {}
   if (!requireBodyClub(req, res, b.club_number)) return
-  const headcount = parseInt(b.headcount, 10)
-  if (!Number.isInteger(headcount) || headcount < 0) {
-    return res.status(400).json({ error: 'headcount must be a whole number, zero or more' })
-  }
-  if (headcount > 500) {
-    return res.status(400).json({ error: 'headcount looks wrong, check the number' })
-  }
+  const parsed = parseHeadcount(b.headcount)
+  if (parsed.error) return res.status(400).json({ error: parsed.error })
   if (!b.event_timestamp || !b.event_timestamp_local || !b.event_type_id || !b.class_name) {
     return res.status(400).json({ error: 'event_timestamp, event_timestamp_local, event_type_id and class_name are required' })
   }
 
-  // Whole row. A partial upsert fails NOT NULL columns even when the row
-  // already exists, which has broken syncs in this codebase before.
-  const row = {
-    club_number: String(b.club_number),
-    abc_event_id: req.params.eventId,
-    series_id: b.series_id || null,
-    event_timestamp: b.event_timestamp,
-    event_timestamp_local: b.event_timestamp_local,
-    event_type_id: b.event_type_id,
-    class_name: b.class_name,
-    employee_id: b.employee_id || null,
-    instructor_name: b.instructor_name || null,
-    max_attendees: b.max_attendees ?? null,
-    headcount,
-    notes: b.notes || null,
-    recorded_by: req.user?.email || 'unknown',
-    recorded_at: new Date().toISOString(),
-  }
+  // Same row builder as the login-free attendance link (publicGroupXAttendance.js).
+  const row = attendanceRow({
+    clubNumber: b.club_number,
+    eventId: req.params.eventId,
+    cls: b,
+    headcount: parsed.headcount,
+    notes: b.notes,
+    recordedBy: req.user?.email,
+  })
 
   try {
     const { error } = await supabaseAdmin

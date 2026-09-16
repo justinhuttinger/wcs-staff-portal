@@ -1218,6 +1218,22 @@ async function publicFetch(path, options = {}) {
   return res.json()
 }
 
+// Login-free Group X headcount link (groupx.html?token=...).
+export const publicGroupXAttendance = {
+  get: (token) => publicFetch(`/public/group-x-attendance/${encodeURIComponent(token)}`),
+  save: (token, eventId, headcount) =>
+    publicFetch(`/public/group-x-attendance/${encodeURIComponent(token)}/classes/${encodeURIComponent(eventId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ headcount }),
+    }),
+}
+
+export const groupXAttendanceLinks = {
+  list: () => api('/admin/group-x-attendance-links'),
+  regenerate: (clubNumber) =>
+    api(`/admin/group-x-attendance-links/${clubNumber}/regenerate`, { method: 'POST' }),
+}
+
 export const publicTour = {
   get: (token) => publicFetch(`/public/tour/${token}`),
   employees: (token) => publicFetch(`/public/tour/${token}/employees`),
