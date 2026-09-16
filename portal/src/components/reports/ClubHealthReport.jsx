@@ -442,7 +442,7 @@ function DrillCell({ drill, available = true, canDrill, startDate, endDate, loca
 }
 
 /**
- * One card per plan type (1-Year, Month-to-Month, No-Draft, Paid in Full), from
+ * One card per plan type (1-Year, Month-to-Month, Paid in Full), from
  * ABC's agreement term. Each opens the same list as the headline card it
  * splits, narrowed to that plan, so the four add up to the card above them.
  */

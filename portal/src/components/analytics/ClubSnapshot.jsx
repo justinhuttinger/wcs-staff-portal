@@ -123,13 +123,13 @@ export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
       />
 
       {/* Plan type is ABC's agreement term: Installment = 1-year contract,
-          Open = month to month, Cash Open = nothing drafting (insurance,
-          comps), Cash = paid in full. */}
+          Open and Cash Open (nothing drafting: insurance, comps) = month to
+          month, Cash = paid in full. */}
       <MembershipBreakdown
         rows={data?.membershipByPlan}
         comparisonLabel={data?.meta?.comparisonLabel}
         title="Plan breakdown"
-        subtitle="1-Year, Month-to-Month, No-Draft and Paid in Full"
+        subtitle="1-Year, Month-to-Month and Paid in Full"
         firstColumn="Plan"
       />
 

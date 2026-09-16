@@ -14,26 +14,29 @@
 // The plan NAME lies for 1,687 "Open" members whose plan says "1 YEAR": their
 // contract ran out and they rolled onto month to month. The term follows that;
 // the name does not. So the term is the one rule, here and in SQL
-// (analytics_membership_by_plan, migration 202) — change one, change both.
+// (analytics_membership_by_plan, migrations 202 + 204) — change one, change both.
 //
 // agreement_term is the member's CURRENT term. A figure "as of" an earlier date
 // still files the member under the plan they are on today.
 // ---------------------------------------------------------------------------
 
+// THREE PLANS, as Justin asked (2026-09-16): 1-Year, Month-to-Month, Paid in
+// Full. Month-to-Month is the catch-all — Open, Cash Open (nothing drafting:
+// insurance, comps) and a missing/unrecognised term all land there. Only
+// Installment and Cash are named, so a new ABC term can never vanish.
 const PLAN_TYPES = [
-  { key: 'one-year', label: '1-Year', term: 'Installment' },
-  { key: 'mtm', label: 'Month-to-Month', term: 'Open' },
-  { key: 'no-draft', label: 'No-Draft', term: 'Cash Open' },
-  { key: 'pif', label: 'Paid in Full', term: 'Cash' },
+  { key: 'one-year', label: '1-Year', terms: ['installment'] },
+  { key: 'mtm', label: 'Month-to-Month', terms: ['open', 'cash open'] },
+  { key: 'pif', label: 'Paid in Full', terms: ['cash'] },
 ]
 
-const UNKNOWN_PLAN = { key: 'unknown', label: 'Unknown' }
+const MTM = PLAN_TYPES[1]
 
-const BY_TERM = new Map(PLAN_TYPES.map(p => [p.term.toLowerCase(), p]))
-const BY_KEY = new Map([...PLAN_TYPES, UNKNOWN_PLAN].map(p => [p.key, p]))
+const BY_TERM = new Map(PLAN_TYPES.flatMap(p => p.terms.map(t => [t, p])))
+const BY_KEY = new Map(PLAN_TYPES.map(p => [p.key, p]))
 
 function planFor(term) {
-  return BY_TERM.get(String(term || '').trim().toLowerCase()) || UNKNOWN_PLAN
+  return BY_TERM.get(String(term || '').trim().toLowerCase()) || MTM
 }
 
 const planKeyFor = (term) => planFor(term).key
@@ -47,12 +50,12 @@ function parsePlan(value) {
 
 const planLabelForKey = (key) => BY_KEY.get(key)?.label || null
 
-/** { 'one-year': 0, mtm: 0, 'no-draft': 0, pif: 0, unknown: 0 } */
+/** { 'one-year': 0, mtm: 0, pif: 0 } */
 function emptyPlanCounts() {
-  return Object.fromEntries([...PLAN_TYPES, UNKNOWN_PLAN].map(p => [p.key, 0]))
+  return Object.fromEntries(PLAN_TYPES.map(p => [p.key, 0]))
 }
 
 module.exports = {
-  PLAN_TYPES, UNKNOWN_PLAN, planFor, planKeyFor, planLabelFor, parsePlan,
+  PLAN_TYPES, planFor, planKeyFor, planLabelFor, parsePlan,
   planLabelForKey, emptyPlanCounts,
 }
