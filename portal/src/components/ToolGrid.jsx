@@ -428,6 +428,8 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           return onFacility && <SvgTileButton key={key} onClick={onFacility} iconPath={TILE_ICONS.facility} label="Courts & Pool" desc="Schedules" />
         // The custom board is exactly the tiles an admin granted, so it is
         // short by construction and has no "More" drawer to nest Till in.
+        case 'inventory':
+          return onInventory && <SvgTileButton key={key} onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />
         case 'till':
           return onTill && <SvgTileButton key={key} onClick={onTill} iconPath={TILE_ICONS.till} label="Till" desc="Cash in / out" />
         case 'nps':
@@ -682,12 +684,12 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
               service, so driveInTools moves it to the Tools board where it
               belongs; it stays here for the themes that keep one board. */}
           {onDrive && !driveInTools && <SvgTileButton onClick={onDrive} iconPath={DRIVE_ICON} label="Shared Drive" desc="Documents" />}
-          {/* Insights (FitnessBI / ABC) — manager+ only */}
-          {roleIdx >= ROLE_LEVELS.manager && (
+          {/* Insights (FitnessBI / ABC) — role/override-driven (seeded manager+ in migration 203) */}
+          {(visibleTools || []).includes('insights') && (
             <ToolButton label="Insights" description="ABC" url="https://app.fitnessbi.com/signin" />
           )}
-          {/* Send Notifications (Trainerize Member App) — manager+ only */}
-          {roleIdx >= ROLE_LEVELS.manager && (
+          {/* Send Notifications (Trainerize Member App) — role/override-driven (seeded manager+ in migration 203) */}
+          {(visibleTools || []).includes('notifications') && (
             <ToolButton label="Send Notifications" description="Member App" url="https://westcoaststrength.trainerize.com/app/login" />
           )}
           {appCustomTiles.filter((tile) => {
@@ -720,8 +722,8 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           {onHR && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />}
           {/* 4.7. Help Center — all roles */}
           {onHelpCenter && <SvgTileButton onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />}
-          {/* 4.8. Ordering — lead+ only */}
-          {roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={() => setShowOrdering(true)} iconPath={TILE_ICONS.ordering} label="Ordering" desc="Vendors" />}
+          {/* 4.8. Ordering — role/override-driven (seeded lead+ in migration 203) */}
+          {(visibleTools || []).includes('ordering') && <SvgTileButton onClick={() => setShowOrdering(true)} iconPath={TILE_ICONS.ordering} label="Ordering" desc="Vendors" />}
           {/* 4.9. Tickets (native module) — role/override-driven via 'ticketing' */}
           {onTicketsBoard && (visibleTools || []).includes('ticketing') && <SvgTileButton onClick={onTicketsBoard} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Submit & Track" />}
           {/* (Day One Tracking merged into Calendar) */}
@@ -747,8 +749,9 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
               has to be able to reach Forms, and hiding the folder on them would
               have quietly removed access they already had. */}
           {marketingCells.length > 0 && <SvgTileButton onClick={() => setShowMarketing(true)} iconPath={TILE_ICONS.marketing} label="Marketing" desc="Campaigns, ads & forms" />}
-          {/* 6.6. Inventory (experimental) — lead+ (leads get restock/adjust, no Sales/margin) */}
-          {onInventory && roleIdx >= ROLE_LEVELS.lead && <SvgTileButton onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />}
+          {/* 6.6. Inventory — role/override-driven (seeded lead+ in migration 203).
+              Sales/margin stay manager+ inside the view and on the API. */}
+          {onInventory && (visibleTools || []).includes('inventory') && <SvgTileButton onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />}
           {/* Ads Manager and Forms moved INSIDE the Marketing folder above.
               Feedback moved into the Admin panel — it is survey setup, which is
               configuration, and it was the only admin-shaped thing left sitting

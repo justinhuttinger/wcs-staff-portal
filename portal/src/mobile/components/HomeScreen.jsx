@@ -192,6 +192,8 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     // Tickets (native module) — role/override-driven via the 'ticketing' key,
     // same as desktop, so the Roles grid governs it on both platforms.
     if (tile.label === 'Tickets' && !(visibleTools || []).includes('ticketing')) return false
+    // Inventory — role/override-driven via 'inventory', same as desktop.
+    if (tile.label === 'Inventory' && !(visibleTools || []).includes('inventory')) return false
     // HR tile only for manager+
     if (tile.label === 'HR' && roleIdx < ROLE_LEVELS.manager) return false
     // Coaching mirrors the desktop Member App gate: manager+.
