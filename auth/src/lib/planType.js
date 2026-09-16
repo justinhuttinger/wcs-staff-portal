@@ -14,7 +14,9 @@
 // The plan NAME lies for 1,687 "Open" members whose plan says "1 YEAR": their
 // contract ran out and they rolled onto month to month. The term follows that;
 // the name does not. So the term is the one rule, here and in SQL
-// (analytics_membership_by_plan, migrations 202 + 204) — change one, change both.
+// (analytics_membership_by_plan, migrations 202 + 204; no longer called by the
+// portal, which now only shows the Plan column in drill-downs) — change one,
+// change both.
 //
 // agreement_term is the member's CURRENT term. A figure "as of" an earlier date
 // still files the member under the plan they are on today.

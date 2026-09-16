@@ -20,9 +20,6 @@ import Drillable from './Drillable'
 // number would be wrong in a way nobody could see.
 const DRILL = {
   newMemberUnits:     { set: 'new-members', title: 'Memberships sold' },
-  planOneYear:        { set: 'new-members', plan: 'one-year', title: '1-Year sales' },
-  planMtm:            { set: 'new-members', plan: 'mtm', title: 'Month-to-Month sales' },
-  planPif:            { set: 'new-members', plan: 'pif', title: 'Paid in Full sales' },
   achUnits:           { set: 'new-members', filter: 'ach', title: 'Memberships on ACH' },
   pctOnAch:           { set: 'new-members', filter: 'ach', title: 'Memberships on ACH' },
   avgNewDuesDraft:    { set: 'new-members', title: 'Memberships sold' },
@@ -141,7 +138,7 @@ export default function SalespersonSnapshot({ startDate, endDate, locationSlug, 
                   title={`${d.title} — ${person}`}
                   params={{
                     start: startDate, end: endDate, clubs: locationSlug || 'all',
-                    person, filter: d.filter, window: d.window, personField: d.personField, plan: d.plan,
+                    person, filter: d.filter, window: d.window, personField: d.personField,
                   }}
                 >
                   {card}

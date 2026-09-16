@@ -1,7 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
 const { PLAN_TYPES, planKeyFor, planLabelFor, parsePlan, planLabelForKey, emptyPlanCounts } = require('./planType')
-const { buildPlanRows } = require('./membershipByPlan')
 
 test('three plans only', () => {
   assert.deepEqual(PLAN_TYPES.map(p => p.label), ['1-Year', 'Month-to-Month', 'Paid in Full'])
@@ -27,16 +26,4 @@ test('parsePlan accepts the three keys only', () => {
   assert.equal(parsePlan('unknown'), null)
   assert.equal(parsePlan(undefined), null)
   assert.equal(planLabelForKey('pif'), 'Paid in Full')
-})
-
-test('buildPlanRows keeps fixed order and zero-fills', () => {
-  const rows = buildPlanRows(
-    [{ plan: 'mtm', members: '10', joined: '3', left_count: '1' }],
-    [{ plan: 'mtm', members: '9', joined: '2', left_count: '2' }],
-  )
-  assert.deepEqual(rows.map(r => r.plan), ['one-year', 'mtm', 'pif'])
-  assert.equal(rows[1].label, 'Month-to-Month')
-  assert.equal(rows[1].members, 10)
-  assert.equal(rows[1].net, 2)
-  assert.equal(rows[0].members, 0)
 })

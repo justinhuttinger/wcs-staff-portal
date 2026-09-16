@@ -7,7 +7,6 @@
 // columns with no data source return null.
 
 const { matchesFilters, cannotUseAch } = require('./analyticsMemberFilters')
-const { planKeyFor, emptyPlanCounts } = require('./planType')
 const { UNASSIGNED_LABEL } = require('./analyticsSegments')
 
 const CLUBS = [
@@ -291,8 +290,6 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
         achUnits: 0,
         achKnownUnits: 0,
         paymentMix: {},
-        // New sales by plan type (1-year / month-to-month / ...), keyed as planType.js.
-        planCounts: emptyPlanCounts(),
         dayOneBookCount: 0,
         bookOnJoinDateCount: 0,
         vipCount: 0,
@@ -317,7 +314,6 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     row.totalNewDues += Number(m.next_due_amount) || 0
     row.totalDownPayment += Number(m.down_payment) || 0
     row.memberIds.push(m.id)
-    row.planCounts[planKeyFor(m.agreement_term)] += 1
     const method = m.agreement_payment_method || null
     if (method) {
       // paymentMix keeps every method, insurance included: it is the raw
@@ -417,10 +413,6 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     achUnits: row.achUnits,
     achKnownUnits: row.achKnownUnits,
     paymentMix: row.paymentMix,
-    planCounts: row.planCounts,
-    planOneYear: row.planCounts['one-year'],
-    planMtm: row.planCounts.mtm,
-    planPif: row.planCounts.pif,
     totalNewDuesDraft: Math.round(row.totalNewDues * 100) / 100,
     avgNewDuesDraft: row.newMemberUnits
       ? Math.round((row.totalNewDues / row.newMemberUnits) * 100) / 100

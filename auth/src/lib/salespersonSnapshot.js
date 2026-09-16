@@ -35,10 +35,6 @@ const STATS = [
   { key: 'dayOneBookPct', label: 'Day One Book %', format: 'pct', betterWhen: 'up' },
   { key: 'bookOnJoinDateCount', label: 'Booked on Join Date', format: 'int', betterWhen: 'up' },
   { key: 'bookOnJoinDatePct', label: 'Booked on Join Date %', format: 'pct', betterWhen: 'up' },
-  // New sales by plan type, from ABC's agreement term (see lib/planType.js).
-  { key: 'planOneYear', label: '1-Year Sales', format: 'int', betterWhen: 'up' },
-  { key: 'planMtm', label: 'Month-to-Month Sales', format: 'int', betterWhen: 'up' },
-  { key: 'planPif', label: 'Paid in Full Sales', format: 'int', betterWhen: 'up' },
   { key: 'achUnits', label: 'ACH Units', format: 'int', betterWhen: 'up' },
   { key: 'pctOnAch', label: 'ACH %', format: 'pct', betterWhen: 'up' },
   { key: 'avgNewDuesDraft', label: 'Avg New Dues Draft', format: 'money', betterWhen: 'up' },
