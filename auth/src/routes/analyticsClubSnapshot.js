@@ -112,7 +112,7 @@ router.get('/', async (req, res) => {
       // from, so they are counted per club id rather than per club number.
       const trialLocationIds = locationIdsForSlugs(slugs)
 
-      const [current, priorWindow, membersNow, membersPrior, series, ptSeries, pendingRows, priorPending, byCategory, byCategoryPrior, trial, priorTrial, byPlan, byPlanPrior] = await Promise.all([
+      const [current, priorWindow, membersNow, membersPrior, series, ptSeries, pendingRows, priorPending, byCategory, byCategoryPrior, trial, priorTrial] = await Promise.all([
         windowFor(start, end),
         windowFor(prior.start, prior.end),
         supabaseAdmin.rpc('analytics_topline_members_as_of', {
@@ -151,9 +151,16 @@ router.get('/', async (req, res) => {
         countTrialConversion(supabaseAdmin, {
           locationIds: trialLocationIds, startISO: prior.start, endISO: prior.end,
         }).catch(() => null),
-        // The same breakdown by plan type (1-year / month-to-month / ...).
-        // Degrades to no table rather than failing the snapshot if migration
-        // 202 has not been applied.
+      ])
+
+      // The same breakdown by plan type (1-year / month-to-month / ...).
+      //
+      // AFTER the batch above, never inside it. Each call is a full member scan
+      // (~1s), and adding two more to a dozen concurrent queries starved the
+      // database enough that the 13-month series tipped past the API role's 8s
+      // statement_timeout and every Club Snapshot 500'd (#968). Optional, so a
+      // failure or a missing migration 202 degrades to no table, not an error.
+      const [byPlan, byPlanPrior] = await Promise.all([
         fetchAll(supabaseAdmin.rpc('analytics_membership_by_plan', {
           p_start: start, p_end: end, p_clubs: rpcClubs, p_exclude: true,
         })).catch(() => null),
