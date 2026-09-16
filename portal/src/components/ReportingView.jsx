@@ -512,7 +512,10 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
                 <div className="ml-auto flex-shrink-0">
                   {/* KPIs, Audits, Compliance, and Till use location pills
                       below instead of this dropdown. */}
-                  {['kpis', 'compliance', 'till'].includes(activeReport) ? null : showLocation ? (
+                  {/* No label for single-club users: the kiosk's location is not
+                      the club the report shows (that follows the signed-in
+                      person), so naming it here was misleading. */}
+                  {!['kpis', 'compliance', 'till'].includes(activeReport) && showLocation && (
                     <LocationMultiSelect
                       value={locationSlug}
                       onChange={setLocationSlug}
@@ -521,8 +524,6 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
                         : reportLocations.map(l => ({ slug: l.name.toLowerCase(), label: l.name }))
                       )}
                     />
-                  ) : (
-                    <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">{location}</p>
                   )}
                 </div>
               </div>
