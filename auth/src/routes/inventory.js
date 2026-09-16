@@ -9,6 +9,7 @@ const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, requireReportAccess, resolveRole, canSeeAllLocations } = require('../middleware/role')
+const { requireTile } = require('../middleware/tile')
 const { getAccessToken } = require('./googleBusiness')
 const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug')
 const { resolveScopedSlugs, getUserAllowedSlugs } = require('../services/locationScope')
@@ -28,10 +29,12 @@ const CLUB_TO_SLUG = Object.fromEntries(Object.entries(SLUG_CLUB_MAP).map(([s, c
 
 const router = Router()
 router.use(authenticate)
-// Leads can use inventory (restock, adjust, invoices) but NOT the financial
-// views — the Sales (/summary) and POS-transactions endpoints stay manager+,
-// and the Sales tab / margin column are hidden for them in the UI.
-router.use(requireRole('lead'))
+// Access tracks the Inventory tile (role grid + per-person overrides, seeded
+// lead+ in migration 203), so the tile a user sees and this API never drift
+// apart. The financial views — Sales (/summary) and POS-transactions — stay
+// manager+ via their own gates, and the Sales tab / margin column are hidden
+// below manager in the UI.
+router.use(requireTile('inventory'))
 
 // Resolve ?location_slug= into a club_number list, scoped to the caller's
 // assigned clubs (services/locationScope — same pattern as the report
@@ -432,7 +435,7 @@ router.post('/items/:id/adjust', async (req, res) => {
 // Per-club, per-category reorder points. A missing row means "use the default"
 // (mirrored in the To Order tab's REORDER_THRESHOLDS constant) so behaviour is
 // unchanged until someone edits. Both read and write are lead+ (anyone who can
-// use the Inventory tool / Restock page) — the router-level requireRole('lead').
+// use the Inventory tool / Restock page) — the router-level requireTile('inventory').
 const REORDER_DEFAULTS = { Drinks: 12, Snacks: 12, Supplements: 4 }
 
 // Resolve ?location_slug= to exactly one in-scope club_number, or { error }.

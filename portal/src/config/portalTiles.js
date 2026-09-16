@@ -36,6 +36,9 @@ export const PORTAL_TILE_CATALOG = [
   // clears the /till/movements gate. The Till REPORT is separate and stays
   // manager+ — this grants logging cash, not seeing anyone's over/short.
   { key: 'till',            label: 'Till',             desc: 'Cash in / out', group: 'tools' },
+  // Inventory is lead-tier on the API side too (requireTile('inventory')); the
+  // Sales/margin views stay manager+, so a custom member gets restock/adjust.
+  { key: 'inventory',       label: 'Inventory',        desc: 'Stock & Costs', group: 'tools' },
   // Capabilities on the three tiles above. Group X and Courts & Pool both gate
   // their write routes on these exact keys (requireTile in routes/groupX.js and
   // routes/facilitySchedule.js), so without them a granted member can read a

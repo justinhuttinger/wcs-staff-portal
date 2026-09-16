@@ -513,8 +513,8 @@ export default function App() {
       key: 'app:' + t.id, kind: 'app', label: t.label, desc: t.description, url: t.url,
     })),
     // Board apps that are not in tools.json.
-    { key: 'app:insights', kind: 'app', label: 'Insights', desc: 'ABC', url: 'https://app.fitnessbi.com/signin', show: roleAtLeast(user?.staff?.role, 'manager') },
-    { key: 'app:notifications', kind: 'app', label: 'Send Notifications', desc: 'Member App', url: 'https://westcoaststrength.trainerize.com/app/login', show: roleAtLeast(user?.staff?.role, 'manager') },
+    { key: 'app:insights', kind: 'app', label: 'Insights', desc: 'ABC', url: 'https://app.fitnessbi.com/signin', show: (user?.visible_tools || []).includes('insights') },
+    { key: 'app:notifications', kind: 'app', label: 'Send Notifications', desc: 'Member App', url: 'https://westcoaststrength.trainerize.com/app/login', show: (user?.visible_tools || []).includes('notifications') },
     // Custom tiles that are plain links. Group tiles (no url) open a sub-menu
     // inside the board and have nothing to point a tab at, so they are skipped.
     // Mirrors ToolGrid's visibility and manager-only rules.
@@ -538,7 +538,7 @@ export default function App() {
     { key: 'tool:groupX', label: 'Group X', desc: 'Classes', show: (user?.visible_tools || []).includes('groupX'), open: () => setShowGroupX(true) },
     { key: 'tool:facility', label: 'Courts & Pool', desc: 'Schedules', show: (user?.visible_tools || []).includes('facility'), open: () => setShowFacility(true) },
     { key: 'tool:till', label: 'Till', desc: 'Cash in / out', show: (user?.visible_tools || []).includes('till'), open: () => setShowTill(true) },
-    { key: 'tool:inventory', label: 'Inventory', desc: 'Stock', open: () => setShowInventory(true) },
+    { key: 'tool:inventory', label: 'Inventory', desc: 'Stock', show: (user?.visible_tools || []).includes('inventory'), open: () => setShowInventory(true) },
     // Both were ungated here while their board tiles were gated, so the picker
     // offered a shortcut the board would have withheld. Now that Forms lives
     // inside the Marketing folder and Feedback inside Admin, the pins carry the

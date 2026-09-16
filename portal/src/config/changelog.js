@@ -41,7 +41,7 @@ function visibleReportKeys({ role, visibleTools, customReports }) {
 function canSeeTool(tool, { role, visibleTools }) {
   const idx = roleIdx(role)
   switch (tool) {
-    case 'inventory': return role !== 'custom' && idx >= ROLE_LEVELS.lead
+    case 'inventory': return (visibleTools || []).includes('inventory')
     case 'forms': return idx >= ROLE_LEVELS.admin || (visibleTools || []).includes('forms')
     case 'trainerAvail': return (visibleTools || []).includes('trainerAvail')
     case 'till': return (visibleTools || []).includes('till')
@@ -69,6 +69,12 @@ export function visibleChangelog(ctx) {
 }
 
 export const CHANGELOG = [
+  {
+    id: 16, date: '2026-09-16',
+    title: 'Inventory, Ordering, Insights and Send Notifications are in Roles & Permissions',
+    body: 'These four tiles used to be fixed by role, so they never showed up in the Roles & Permissions grid or a staff member’s custom overrides. Now they do, and turning one on or off for a role or a person takes effect. Nobody’s access changed: each role starts with exactly what it had. HR Docs and Analytics stay locked to manager and above.',
+    audience: { tool: 'admin' },
+  },
   {
     id: 15, date: '2026-08-31',
     title: 'Group X and Courts & Pool are now set up per club',
