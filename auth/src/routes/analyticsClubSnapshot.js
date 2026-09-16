@@ -8,6 +8,7 @@ const { loadCategoryMap } = require('../lib/analyticsMemberFilters')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildCategoryRows } = require('../lib/membershipByCategory')
+const { buildPlanRows } = require('../lib/membershipByPlan')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
 const { buildClubSnapshot } = require('../lib/clubSnapshot')
@@ -111,7 +112,7 @@ router.get('/', async (req, res) => {
       // from, so they are counted per club id rather than per club number.
       const trialLocationIds = locationIdsForSlugs(slugs)
 
-      const [current, priorWindow, membersNow, membersPrior, series, ptSeries, pendingRows, priorPending, byCategory, byCategoryPrior, trial, priorTrial] = await Promise.all([
+      const [current, priorWindow, membersNow, membersPrior, series, ptSeries, pendingRows, priorPending, byCategory, byCategoryPrior, trial, priorTrial, byPlan, byPlanPrior] = await Promise.all([
         windowFor(start, end),
         windowFor(prior.start, prior.end),
         supabaseAdmin.rpc('analytics_topline_members_as_of', {
@@ -150,6 +151,15 @@ router.get('/', async (req, res) => {
         countTrialConversion(supabaseAdmin, {
           locationIds: trialLocationIds, startISO: prior.start, endISO: prior.end,
         }).catch(() => null),
+        // The same breakdown by plan type (1-year / month-to-month / ...).
+        // Degrades to no table rather than failing the snapshot if migration
+        // 202 has not been applied.
+        fetchAll(supabaseAdmin.rpc('analytics_membership_by_plan', {
+          p_start: start, p_end: end, p_clubs: rpcClubs, p_exclude: true,
+        })).catch(() => null),
+        fetchAll(supabaseAdmin.rpc('analytics_membership_by_plan', {
+          p_start: prior.start, p_end: prior.end, p_clubs: rpcClubs, p_exclude: true,
+        })).catch(() => null),
       ])
 
       if (membersNow.error) throw new Error(membersNow.error.message)
@@ -181,6 +191,8 @@ router.get('/', async (req, res) => {
         },
         byCategory: byCategory || [],
         byCategoryPrior: byCategoryPrior || [],
+        byPlan,
+        byPlanPrior,
         trial,
         priorTrial,
       }
@@ -209,6 +221,7 @@ router.get('/', async (req, res) => {
       // sum to the block's own Members / Joined / Left by construction, since
       // they use the same three rules (migration 197).
       membershipByCategory: buildCategoryRows(payload.byCategory, payload.byCategoryPrior),
+      membershipByPlan: payload.byPlan ? buildPlanRows(payload.byPlan, payload.byPlanPrior) : [],
       meta: {
         start, end,
         priorStart: prior.start, priorEnd: prior.end,
