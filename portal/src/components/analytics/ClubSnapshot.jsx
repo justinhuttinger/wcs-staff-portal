@@ -122,17 +122,6 @@ export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
         comparisonLabel={data?.meta?.comparisonLabel}
       />
 
-      {/* Plan type is ABC's agreement term: Installment = 1-year contract,
-          Open and Cash Open (nothing drafting: insurance, comps) = month to
-          month, Cash = paid in full. */}
-      <MembershipBreakdown
-        rows={data?.membershipByPlan}
-        comparisonLabel={data?.meta?.comparisonLabel}
-        title="Plan breakdown"
-        subtitle="1-Year, Month-to-Month and Paid in Full"
-        firstColumn="Plan"
-      />
-
       {/* Both drawn positive: the chart scales from zero, so the net is read
           from the stat card rather than from a line crossing an axis. */}
       <TrendPanel title="Joined and Left" months={months} series={[

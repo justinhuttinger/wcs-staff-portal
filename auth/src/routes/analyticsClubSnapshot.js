@@ -8,7 +8,6 @@ const { loadCategoryMap } = require('../lib/analyticsMemberFilters')
 const { wrapSWR } = require('../services/memoryCache')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { buildCategoryRows } = require('../lib/membershipByCategory')
-const { buildPlanRows } = require('../lib/membershipByPlan')
 const { buildReport } = require('../lib/salespersonPerformance')
 const { loadSalespersonWindow } = require('../lib/salespersonData')
 const { buildClubSnapshot } = require('../lib/clubSnapshot')
@@ -153,21 +152,6 @@ router.get('/', async (req, res) => {
         }).catch(() => null),
       ])
 
-      // The same breakdown by plan type (1-year / month-to-month / ...).
-      //
-      // AFTER the batch above, never inside it. Each call is a full member scan
-      // (~1s), and adding two more to a dozen concurrent queries starved the
-      // database enough that the 13-month series tipped past the API role's 8s
-      // statement_timeout and every Club Snapshot 500'd (#968). Optional, so a
-      // failure or a missing migration 202 degrades to no table, not an error.
-      const [byPlan, byPlanPrior] = await Promise.all([
-        fetchAll(supabaseAdmin.rpc('analytics_membership_by_plan', {
-          p_start: start, p_end: end, p_clubs: rpcClubs, p_exclude: true,
-        })).catch(() => null),
-        fetchAll(supabaseAdmin.rpc('analytics_membership_by_plan', {
-          p_start: prior.start, p_end: prior.end, p_clubs: rpcClubs, p_exclude: true,
-        })).catch(() => null),
-      ])
 
       if (membersNow.error) throw new Error(membersNow.error.message)
       if (membersPrior.error) throw new Error(membersPrior.error.message)
@@ -198,8 +182,6 @@ router.get('/', async (req, res) => {
         },
         byCategory: byCategory || [],
         byCategoryPrior: byCategoryPrior || [],
-        byPlan,
-        byPlanPrior,
         trial,
         priorTrial,
       }
@@ -228,7 +210,6 @@ router.get('/', async (req, res) => {
       // sum to the block's own Members / Joined / Left by construction, since
       // they use the same three rules (migration 197).
       membershipByCategory: buildCategoryRows(payload.byCategory, payload.byCategoryPrior),
-      membershipByPlan: payload.byPlan ? buildPlanRows(payload.byPlan, payload.byPlanPrior) : [],
       meta: {
         start, end,
         priorStart: prior.start, priorEnd: prior.end,
