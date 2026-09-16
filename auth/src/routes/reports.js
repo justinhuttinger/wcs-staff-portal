@@ -12,6 +12,7 @@ const { getSkipList } = require('../utils/membershipSkipList')
 const { buildAttritionAnalysis } = require('../lib/attritionAnalysis')
 const {
   cannotUseAch, loadCategoryMap, parseExcludedCategories, isCategoryExcluded, filterNote,
+  countAfterExclusion,
 } = require('../lib/analyticsMemberFilters')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { parseLocationSlugParam } = require('../utils/locationSlug')
@@ -1016,14 +1017,28 @@ router.get('/club-health', async (req, res) => {
     // Members as Analytics counts them, at the end of the window. Falls back to
     // the roster scan if the RPC is unavailable rather than showing nothing:
     // a slightly different total is better than an empty headline.
+    //
+    // The function takes one category, not an exclusion list, so unticked
+    // categories are counted separately and subtracted. A member maps to at most
+    // one category, so this is exact. Without it the headline ignored the tick
+    // boxes entirely while every other card on the page moved.
     let toplineMembers = null
     try {
-      const { data: tm, error: tmErr } = await supabaseAdmin.rpc('analytics_topline_members_as_of', {
+      const membersAsOf = (category) => supabaseAdmin.rpc('analytics_topline_members_as_of', {
         p_at: end_date || new Date().toISOString().slice(0, 10),
         p_clubs: clubNumbers2.length > 0 ? clubNumbers2 : null,
         p_exclude: true,
+        p_category: category,
       })
-      if (!tmErr && tm != null) toplineMembers = Number(tm) || 0
+      const excludedCats = categoryFilter.excluded
+      const [allRes, ...catRes] = await Promise.all([
+        membersAsOf('all'), ...excludedCats.map(c => membersAsOf(c)),
+      ])
+      const failed = [allRes, ...catRes].some(r => r.error || r.data == null)
+      if (!failed) {
+        const byCat = Object.fromEntries(excludedCats.map((c, i) => [c, catRes[i].data]))
+        toplineMembers = countAfterExclusion(allRes.data, byCat, excludedCats)
+      }
     } catch (err) {
       console.warn('[club-health] analytics member count unavailable:', err.message)
     }
@@ -1083,6 +1098,35 @@ router.get('/club-health', async (req, res) => {
 // Counts cancellations (member_status_date in range) by status, type, club.
 // Includes a "scheduled" Pending Cancel queue.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Helper: a filter for Click2Save rows by the member's membership category.
+//
+// Click2Save events name the member (club_code + member_id), not the plan, so
+// the type comes from abc_members. Returns an identity filter when nothing is
+// unticked. A member we cannot find stays in: an unknown type is never excluded,
+// the same rule isCategoryExcluded applies to an unmapped type.
+// ---------------------------------------------------------------------------
+async function c2sCategoryKeeper(filtering, categoryFilter) {
+  if (!filtering) return async rows => rows
+  return async (rows) => {
+    const ids = [...new Set((rows || []).map(r => r.member_id).filter(Boolean).map(String))]
+    const typeByKey = new Map()
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data, error } = await supabaseAdmin
+        .from('abc_members')
+        .select('club_number, member_id, membership_type')
+        .in('member_id', ids.slice(i, i + 200))
+      if (error) throw new Error(error.message)
+      for (const m of data || []) typeByKey.set(`${m.club_number}|${m.member_id}`, m.membership_type)
+    }
+    return (rows || []).filter(r => {
+      const type = typeByKey.get(`${r.club_code}|${r.member_id}`)
+      if (type == null) return true
+      return !isCategoryExcluded({ membership_type: type }, categoryFilter.categoryMap, categoryFilter.excluded)
+    })
+  }
+}
+
 router.get('/cancels', async (req, res) => {
   const { start_date, end_date } = req.query
 
@@ -1208,7 +1252,10 @@ router.get('/cancels', async (req, res) => {
       pFrom += 1000
     }
     const pendingFiltered = pendingRows
-      .filter(m => !skipTypes.has((m.membership_type || '').toLowerCase()))
+      .filter(m => !skipTypes.has((m.membership_type || '').toLowerCase())
+        // The queue follows the tick boxes too; it used to ignore them, so the
+        // Pending Cancel card never moved when a category was unticked.
+        && !isCategoryExcluded(m, cancelCategoryFilter.categoryMap, cancelCategoryFilter.excluded))
       .sort((a, b) => (a.member_status_date || '').localeCompare(b.member_status_date || ''))
 
     // 3. Click2Save aggregations: cancel reasons, save count, save options.
@@ -1225,16 +1272,21 @@ router.get('/cancels', async (req, res) => {
     let c2sError = null
 
     try {
+      // Click2Save rows carry the member, not the membership type, so the tick
+      // boxes are applied by looking the type up. Skipped entirely when nothing
+      // is unticked, which keeps the default path to the queries it always ran.
+      const c2sFiltering = cancelCategoryFilter.excluded.length > 0
+      const c2sKeep = await c2sCategoryKeeper(c2sFiltering, cancelCategoryFilter)
+
       // Cancel reasons (CANCEL events)
       let reasonsQuery = supabaseAdmin
         .from('click2save_events_expanded')
-        .select('cancel_reason, cancel_code')
+        .select('cancel_reason, cancel_code, member_id, club_code')
         .eq('request_type', 'CANCEL')
       if (c2sStart) reasonsQuery = reasonsQuery.gte('occurred_at', c2sStart)
       if (c2sEnd) reasonsQuery = reasonsQuery.lte('occurred_at', c2sEnd)
       if (clubNumbersC.length > 0) reasonsQuery = reasonsQuery.in('club_code', clubNumbersC)
-      const { data: reasonRows, error: reasonsErr } = await reasonsQuery
-      if (reasonsErr) throw reasonsErr
+      const reasonRows = await c2sKeep(await fetchAll(reasonsQuery.order('request_id')))
       const reasonCounts = {}
       for (const r of reasonRows || []) {
         const key = r.cancel_reason || r.cancel_code || 'Unspecified'
@@ -1244,28 +1296,32 @@ router.get('/cancels', async (req, res) => {
         .map(([reason, count]) => ({ reason, count }))
         .sort((a, b) => b.count - a.count)
 
-      // Save count (OFFER events)
+      // Save count (OFFER events). A head count when nothing is unticked; the
+      // rows themselves when the type has to be looked up per member.
       let savesQuery = supabaseAdmin
         .from('click2save_events_expanded')
-        .select('request_id', { count: 'exact', head: true })
+        .select(c2sFiltering ? 'request_id, member_id, club_code' : 'request_id', c2sFiltering ? undefined : { count: 'exact', head: true })
         .eq('request_type', 'OFFER')
       if (c2sStart) savesQuery = savesQuery.gte('occurred_at', c2sStart)
       if (c2sEnd) savesQuery = savesQuery.lte('occurred_at', c2sEnd)
       if (clubNumbersC.length > 0) savesQuery = savesQuery.in('club_code', clubNumbersC)
-      const { count: saveCount, error: savesErr } = await savesQuery
-      if (savesErr) throw savesErr
-      c2sSaveCount = saveCount || 0
+      if (c2sFiltering) {
+        c2sSaveCount = (await c2sKeep(await fetchAll(savesQuery.order('request_id')))).length
+      } else {
+        const { count: saveCount, error: savesErr } = await savesQuery
+        if (savesErr) throw savesErr
+        c2sSaveCount = saveCount || 0
+      }
 
       // Save options (offer subtypes within OFFER events).
       // click2save_offers exposes received_at; same-day-or-next-day from occurred_at.
       let offersQuery = supabaseAdmin
         .from('click2save_offers')
-        .select('offer_subtype')
+        .select('offer_subtype, member_id, club_code')
       if (c2sStart) offersQuery = offersQuery.gte('received_at', c2sStart)
       if (c2sEnd) offersQuery = offersQuery.lte('received_at', c2sEnd)
       if (clubNumbersC.length > 0) offersQuery = offersQuery.in('club_code', clubNumbersC)
-      const { data: offerRows, error: offersErr } = await offersQuery
-      if (offersErr) throw offersErr
+      const offerRows = await c2sKeep(await fetchAll(offersQuery.order('request_id').order('offer_subtype')))
       const offerCounts = {}
       for (const o of offerRows || []) {
         const key = o.offer_subtype || 'Unknown'

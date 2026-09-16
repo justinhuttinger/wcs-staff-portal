@@ -208,3 +208,28 @@ test('an unknown date gives unknown tenure, not zero', () => {
 test('tenure never goes negative', () => {
   assert.equal(tenureMonths('2026-08-01', '2026-01-01'), 0)
 })
+
+// ---------------------------------------------------------------------------
+// Reporting's category tick boxes reach the drill-downs, so a list never holds
+// rows the card it was opened from left out.
+// ---------------------------------------------------------------------------
+
+test('applyCategoryExclusion drops unticked categories on membership-typed sets only', () => {
+  const { applyCategoryExclusion, MEMBERSHIP_TYPED_SETS } = require('./analyticsRecords')
+  const map = new Map([['a2 core', 'Insurance'], ['single', 'Dues']])
+  const rows = [{ type: 'A2 CORE' }, { type: 'SINGLE' }, { type: 'MYSTERY PLAN' }, { type: '-' }]
+
+  const kept = applyCategoryExclusion('club-health-active', rows, ['Insurance'], map)
+  assert.deepStrictEqual(kept.map(r => r.type), ['SINGLE', 'MYSTERY PLAN', '-'])
+
+  // Nothing unticked, or a set whose `type` is not a membership: untouched.
+  assert.strictEqual(applyCategoryExclusion('club-health-active', rows, [], map), rows)
+  assert.strictEqual(applyCategoryExclusion('pt-sales', rows, ['Insurance'], map), rows)
+
+  // Every listed set actually exists and carries a Membership type column.
+  for (const key of MEMBERSHIP_TYPED_SETS) {
+    assert.ok(SETS[key], `${key} is not a record set`)
+    assert.ok(SETS[key].columns.some(c => c.key === 'type' && c.label === 'Membership'),
+      `${key} has no Membership type column`)
+  }
+})

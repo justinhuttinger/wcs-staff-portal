@@ -319,6 +319,7 @@ export default function MembershipReport({ startDate, endDate, locationSlug, can
                     params={{
                       start: startDate, end: endDate, clubs: locationSlug || 'all',
                       person, personField: d.personField, filter: d.filter, window: d.window,
+                      exclude_categories: excludedCategories.join(',') || undefined,
                     }}
                   />
                 )

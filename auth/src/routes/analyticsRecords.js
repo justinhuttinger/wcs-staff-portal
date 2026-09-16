@@ -2,6 +2,7 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { resolveScopedSlugs } = require('../services/locationScope')
+const { parseExcludedCategories } = require('../lib/analyticsMemberFilters')
 const { wrapSWR } = require('../services/memoryCache')
 const { loadRecordSet, setKeys, clubNumbersFor, DEFAULT_LIMIT, MAX_LIMIT } = require('../lib/analyticsRecords')
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
@@ -82,10 +83,14 @@ router.get('/', async (req, res) => {
     // because the reports themselves disagree — see the set for why.
     const window = req.query.window === 'booked' ? 'booked' : 'scheduled'
 
+    // Membership categories unticked on the Reporting page the list was opened
+    // from. Parsed by the shared parser, so an unknown value widens.
+    const excludedCategories = parseExcludedCategories(req.query.exclude_categories)
+
     const params = {
       start, end, slugs,
       clubNumbers: clubNumbersFor(slugs),
-      person, personField, filter, window,
+      person, personField, filter, window, excludedCategories,
     }
 
     // The page bounds are deliberately OUT of the cache key: the set is loaded
@@ -95,6 +100,7 @@ router.get('/', async (req, res) => {
       'analytics:records', set, start, end,
       slugs.slice().sort().join('+'),
       person || '-', personField, filter || '-', window,
+      excludedCategories.slice().sort().join('+') || '-',
     ].join('|')
 
     const payload = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, () => loadRecordSet(set, params))

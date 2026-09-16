@@ -196,3 +196,22 @@ test('an array is accepted as well as a comma list', () => {
 test('no category map means no filtering', () => {
   assert.equal(isCategoryExcluded(tickboxMember('A2 CORE'), null, ['Insurance']), false)
 })
+
+// --- countAfterExclusion (Club Health headline member count) ----------------
+
+test('countAfterExclusion subtracts each unticked category and nothing else', () => {
+  const { countAfterExclusion } = require('./analyticsMemberFilters')
+  const byCat = { Insurance: 3237, Temp: 212, Dues: 12880 }
+  // Nothing unticked is the unfiltered figure, unchanged.
+  assert.strictEqual(countAfterExclusion(16333, byCat, []), 16333)
+  assert.strictEqual(countAfterExclusion(16333, byCat, ['Insurance']), 13096)
+  assert.strictEqual(countAfterExclusion(16333, byCat, ['Insurance', 'Temp']), 12884)
+  // Unmapped members (here 4) survive even with every named category unticked.
+  assert.strictEqual(countAfterExclusion(16333, byCat, ['Insurance', 'Temp', 'Dues']), 4)
+})
+
+test('countAfterExclusion keeps null as unavailable and never goes negative', () => {
+  const { countAfterExclusion } = require('./analyticsMemberFilters')
+  assert.strictEqual(countAfterExclusion(null, {}, ['Insurance']), null)
+  assert.strictEqual(countAfterExclusion(5, { Insurance: 9 }, ['Insurance']), 0)
+})

@@ -276,7 +276,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug, can
   // report but not the rows behind it, and a card that looked clickable and
   // then returned a permission error would be worse than a card that never
   // offered. Below manager every card renders exactly as it did before.
-  const drillScope = { startDate, endDate, locationSlug, canDrill }
+  const drillScope = { startDate, endDate, locationSlug, canDrill, excludedCategories }
 
   // Set / Show / Close metrics from day one data
   const dayOneSet = data.total_day_ones_booked || 0
@@ -418,7 +418,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug, can
  * `available={false}` card (Tours at a club that never recorded one), renders
  * exactly as it did before rather than opening an empty list.
  */
-function DrillCell({ drill, available = true, canDrill, startDate, endDate, locationSlug, ...cell }) {
+function DrillCell({ drill, available = true, canDrill, startDate, endDate, locationSlug, excludedCategories = [], ...cell }) {
   const d = available && canDrill ? DRILLS[drill] : null
   const card = <StatCell {...cell} />
   if (!d) return card
@@ -430,6 +430,8 @@ function DrillCell({ drill, available = true, canDrill, startDate, endDate, loca
       params={{
         start: startDate, end: endDate, clubs: locationSlug || 'all',
         filter: d.filter, window: d.window,
+        // The list follows the tick boxes, so it matches the number clicked.
+        exclude_categories: excludedCategories.join(',') || undefined,
       }}
     >
       {card}
