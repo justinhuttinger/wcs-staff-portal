@@ -81,7 +81,7 @@ function Card({ children, tone }) {
 
 // One class, one row. Same card geometry as a tour check-in: avatar, the thing
 // itself, then a status pill hard right.
-function ClassRow({ c, onClick }) {
+export function ClassRow({ c, onClick }) {
   // Without permission to record, the row is a card rather than a button: no
   // hover lift, no pointer, nothing that promises an action that would 403.
   const Tag = onClick ? 'button' : 'div'

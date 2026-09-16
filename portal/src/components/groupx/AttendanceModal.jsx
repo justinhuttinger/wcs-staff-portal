@@ -2,7 +2,10 @@ import { useState } from 'react'
 import { api } from '../../lib/api'
 import { fmtTime12, parseLocalTimestamp } from '../../lib/weekGrid'
 
-export default function AttendanceModal({ club, classEvent, onClose, onSaved }) {
+// `onSave(headcount)` replaces the staff API call: the login-free attendance
+// link passes its own token-gated save with `showNotes={false}`, since all it
+// records is the number.
+export default function AttendanceModal({ club, classEvent, onClose, onSaved, onSave, showNotes = true }) {
   const existing = classEvent.headcount != null
   const [headcount, setHeadcount] = useState(existing ? String(classEvent.headcount) : '')
   const [notes, setNotes] = useState(classEvent.notes || '')
@@ -20,6 +23,11 @@ export default function AttendanceModal({ club, classEvent, onClose, onSaved }) 
     setSaving(true)
     setError(null)
     try {
+      if (onSave) {
+        await onSave(n)
+        onSaved()
+        return
+      }
       await api(`/group-x/classes/${encodeURIComponent(classEvent.event_id)}/attendance`, {
         method: 'PUT',
         body: JSON.stringify({
@@ -81,6 +89,7 @@ export default function AttendanceModal({ club, classEvent, onClose, onSaved }) 
             )}
           </div>
 
+          {showNotes && (
           <div>
             <label className="block text-xs font-medium text-text-muted mb-1">Notes (optional)</label>
             <textarea
@@ -91,6 +100,7 @@ export default function AttendanceModal({ club, classEvent, onClose, onSaved }) 
               className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface text-text-primary"
             />
           </div>
+          )}
 
           {existing && (
             <div className="text-xs text-text-muted">
