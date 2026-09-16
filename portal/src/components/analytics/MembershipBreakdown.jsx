@@ -32,7 +32,14 @@ function Delta({ value, prior, betterWhen = 'up' }) {
   )
 }
 
-export default function MembershipBreakdown({ rows, comparisonLabel }) {
+// Also renders the plan-type breakdown: rows carrying `plan` + `label` instead
+// of `category`, under their own title and first-column heading.
+export default function MembershipBreakdown({
+  rows, comparisonLabel,
+  title = 'Membership breakdown',
+  subtitle = 'Insurance, Dues and Temporary',
+  firstColumn = 'Category',
+}) {
   const [open, setOpen] = useState(false)
   if (!rows || rows.length === 0) return null
 
@@ -51,9 +58,9 @@ export default function MembershipBreakdown({ rows, comparisonLabel }) {
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
-        <span className="text-xs font-semibold text-text-primary">Membership breakdown</span>
+        <span className="text-xs font-semibold text-text-primary">{title}</span>
         <span className="text-[11px] text-text-muted">
-          Insurance, Dues and Temporary
+          {subtitle}
         </span>
       </button>
 
@@ -62,7 +69,7 @@ export default function MembershipBreakdown({ rows, comparisonLabel }) {
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="text-text-muted">
-                <th className="text-left font-medium py-1.5 pr-3">Category</th>
+                <th className="text-left font-medium py-1.5 pr-3">{firstColumn}</th>
                 <th className="text-right font-medium py-1.5 px-3">Members</th>
                 <th className="text-right font-medium py-1.5 px-3">Joined</th>
                 <th className="text-right font-medium py-1.5 px-3">Left</th>
@@ -71,9 +78,9 @@ export default function MembershipBreakdown({ rows, comparisonLabel }) {
             </thead>
             <tbody>
               {rows.map(r => (
-                <tr key={r.category} className="border-t border-border">
+                <tr key={r.plan || r.category} className="border-t border-border">
                   <td className="py-1.5 pr-3 font-semibold text-text-primary">
-                    {r.category === 'Temp' ? 'Temporary' : r.category}
+                    {r.label || (r.category === 'Temp' ? 'Temporary' : r.category)}
                     {r.category === 'Unmapped' && (
                       // Only ever rendered when it holds somebody. It is the
                       // reconciliation remainder, not a category, and saying so

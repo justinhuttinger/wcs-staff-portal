@@ -71,4 +71,4 @@ function buildCategoryRows(current, prior) {
   return rows
 }
 
-module.exports = { buildCategoryRows, CATEGORY_ORDER, UNMAPPED }
+module.exports = { buildCategoryRows, shape, CATEGORY_ORDER, UNMAPPED }

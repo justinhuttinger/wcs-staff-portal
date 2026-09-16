@@ -6,6 +6,7 @@ const { isInsuranceType, tenureMonths } = require('./attritionAnalysis')
 const { classifyCalendarEvent, KIND, KIND_LABEL } = require('./calendarEventKind')
 const { loadOutcomeRulesOrNone, onlyTours } = require('./tourOutcomeRules')
 const { cannotUseAch, loadCategoryMap } = require('./analyticsMemberFilters')
+const { planLabelFor, planLabelForKey } = require('./planType')
 
 // ---------------------------------------------------------------------------
 // The rows behind the numbers.
@@ -326,6 +327,7 @@ const SETS = {
     columns: [
       { key: 'member', label: 'Member', format: T.text },
       { key: 'type', label: 'Membership', format: T.text },
+      { key: 'plan', label: 'Plan', format: T.text },
       { key: 'joined', label: 'Joined', format: T.date },
       { key: 'dues', label: 'Monthly Dues', format: T.money },
       { key: 'down', label: 'Down Payment', format: T.money },
@@ -338,7 +340,7 @@ const SETS = {
     async load({ start, end, clubNumbers, person, filter, exclude }) {
       const q = lazySupabase()
         .from('abc_members')
-        .select('first_name, last_name, membership_type, since_date, next_due_amount, down_payment, agreement_payment_method, sales_person_name, club_number')
+        .select('first_name, last_name, membership_type, agreement_term, since_date, next_due_amount, down_payment, agreement_payment_method, sales_person_name, club_number')
         .gte('since_date', start)
         .lte('since_date', end)
       if (clubNumbers) q.in('club_number', clubNumbers)
@@ -359,6 +361,7 @@ const SETS = {
         .map(r => ({
           member: name(r.first_name, r.last_name),
           type: r.membership_type || '—',
+          plan: planLabelFor(r.agreement_term),
           joined: String(r.since_date).slice(0, 10),
           dues: money(r.next_due_amount),
           down: money(r.down_payment),
@@ -374,6 +377,7 @@ const SETS = {
     columns: [
       { key: 'member', label: 'Member', format: T.text },
       { key: 'type', label: 'Membership', format: T.text },
+      { key: 'plan', label: 'Plan', format: T.text },
       { key: 'left', label: 'Left', format: T.date },
       { key: 'status', label: 'Status', format: T.text },
       { key: 'joined', label: 'Joined', format: T.date },
@@ -395,7 +399,7 @@ const SETS = {
     async load({ start, end, clubNumbers, exclude }) {
       const q = lazySupabase()
         .from('abc_members')
-        .select('member_id, first_name, last_name, membership_type, member_status, member_status_date, since_date, club_number')
+        .select('member_id, first_name, last_name, membership_type, agreement_term, member_status, member_status_date, since_date, club_number')
         .in('member_status', LOST_STATUSES)
         .gte('member_status_date', start)
         .lte('member_status_date', end)
@@ -409,6 +413,7 @@ const SETS = {
         .map(r => ({
           member: name(r.first_name, r.last_name),
           type: r.membership_type || '-',
+          plan: planLabelFor(r.agreement_term),
           left: String(r.member_status_date).slice(0, 10),
           status: r.member_status,
           joined: r.since_date ? String(r.since_date).slice(0, 10) : null,
@@ -423,6 +428,7 @@ const SETS = {
     columns: [
       { key: 'member', label: 'Member', format: T.text },
       { key: 'type', label: 'Membership', format: T.text },
+      { key: 'plan', label: 'Plan', format: T.text },
       { key: 'ended', label: 'Ended', format: T.date },
       { key: 'status', label: 'How', format: T.text },
       { key: 'months', label: 'Months', format: T.int },
@@ -435,7 +441,7 @@ const SETS = {
     async load({ start, end, clubNumbers, filter, exclude }) {
       const q = lazySupabase()
         .from('abc_members')
-        .select('first_name, last_name, membership_type, member_status, member_status_date, since_date, sales_person_name, club_number')
+        .select('first_name, last_name, membership_type, agreement_term, member_status, member_status_date, since_date, sales_person_name, club_number')
         .in('member_status', LOST_STATUSES)
         .gte('member_status_date', start)
         .lte('member_status_date', end)
@@ -451,6 +457,7 @@ const SETS = {
         .map(r => ({
           member: name(r.first_name, r.last_name),
           type: r.membership_type || '-',
+          plan: planLabelFor(r.agreement_term),
           ended: String(r.member_status_date).slice(0, 10),
           status: r.member_status,
           months: tenureMonths(r.since_date, r.member_status_date),
@@ -465,6 +472,7 @@ const SETS = {
     columns: [
       { key: 'member', label: 'Member', format: T.text },
       { key: 'type', label: 'Membership', format: T.text },
+      { key: 'plan', label: 'Plan', format: T.text },
       { key: 'ends', label: 'Ends', format: T.date },
       { key: 'salesperson', label: 'Sold By', format: T.text },
     ],
@@ -475,7 +483,7 @@ const SETS = {
     async load({ clubNumbers, exclude }) {
       const q = lazySupabase()
         .from('abc_members')
-        .select('first_name, last_name, membership_type, member_status_date, sales_person_name, club_number')
+        .select('first_name, last_name, membership_type, agreement_term, member_status_date, sales_person_name, club_number')
         .eq('member_status', 'Pending Cancel')
         .eq('is_active', true)
       if (clubNumbers) q.in('club_number', clubNumbers)
@@ -485,6 +493,7 @@ const SETS = {
         .map(r => ({
           member: name(r.first_name, r.last_name),
           type: r.membership_type || '-',
+          plan: planLabelFor(r.agreement_term),
           ends: r.member_status_date ? String(r.member_status_date).slice(0, 10) : null,
           salesperson: r.sales_person_name ? displayName(r.sales_person_name) : '-',
         }))
@@ -497,6 +506,7 @@ const SETS = {
     columns: [
       { key: 'member', label: 'Member', format: T.text },
       { key: 'type', label: 'Membership', format: T.text },
+      { key: 'plan', label: 'Plan', format: T.text },
       { key: 'balance', label: 'Past Due', format: T.money },
       { key: 'total', label: 'Total Owed', format: T.money },
       { key: 'joined', label: 'Joined', format: T.date },
@@ -520,7 +530,7 @@ const SETS = {
     async load({ clubNumbers, exclude }) {
       const q = lazySupabase()
         .from('abc_members_counted')
-        .select('first_name, last_name, membership_type, member_status, is_active, counts_as_member, past_due_balance, total_past_due_balance, since_date, club_number')
+        .select('first_name, last_name, membership_type, agreement_term, member_status, is_active, counts_as_member, past_due_balance, total_past_due_balance, since_date, club_number')
         .gt('past_due_balance', 0)
       if (clubNumbers) q.in('club_number', clubNumbers)
       const [rows, skip] = await Promise.all([fetchAllRows(q), skipList(exclude)])
@@ -531,6 +541,7 @@ const SETS = {
         .map(r => ({
           member: name(r.first_name, r.last_name),
           type: r.membership_type || '-',
+          plan: planLabelFor(r.agreement_term),
           balance: money(r.past_due_balance),
           total: money(r.total_past_due_balance),
           joined: r.since_date ? String(r.since_date).slice(0, 10) : null,
@@ -629,6 +640,7 @@ const SETS = {
     columns: [
       { key: 'member', label: 'Member', format: T.text },
       { key: 'type', label: 'Membership', format: T.text },
+      { key: 'plan', label: 'Plan', format: T.text },
       { key: 'signed', label: 'Signed', format: T.date },
       { key: 'started', label: 'Started', format: T.date },
       { key: 'agreement', label: 'Agreement', format: T.text },
@@ -643,7 +655,7 @@ const SETS = {
     async load({ start, end, clubNumbers, person, filter, exclude }) {
       const q = lazySupabase()
         .from('abc_members')
-        .select('first_name, last_name, membership_type, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method, sales_person_name, email, club_number')
+        .select('first_name, last_name, membership_type, agreement_term, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method, sales_person_name, email, club_number')
         .eq('is_active', true)
         .not('sign_date', 'is', null)
         .gte('sign_date', start)
@@ -680,6 +692,7 @@ const SETS = {
         .map(r => ({
           member: name(r.first_name, r.last_name),
           type: r.membership_type || '-',
+          plan: planLabelFor(r.agreement_term),
           signed: String(r.sign_date).slice(0, 10),
           started: String(r.since_date).slice(0, 10),
           agreement: r.agreement_number || '-',
@@ -697,6 +710,7 @@ const SETS = {
     columns: [
       { key: 'member', label: 'Member', format: T.text },
       { key: 'type', label: 'Membership', format: T.text },
+      { key: 'plan', label: 'Plan', format: T.text },
       { key: 'agreement', label: 'Agreement', format: T.text },
       { key: 'joined', label: 'Started', format: T.date },
       { key: 'dues', label: 'Monthly Dues', format: T.money },
@@ -712,7 +726,7 @@ const SETS = {
     async load({ clubNumbers, exclude }) {
       const q = lazySupabase()
         .from('abc_members')
-        .select('first_name, last_name, membership_type, agreement_number, since_date, next_due_amount, agreement_payment_method, club_number')
+        .select('first_name, last_name, membership_type, agreement_term, agreement_number, since_date, next_due_amount, agreement_payment_method, club_number')
         .eq('is_active', true)
       if (clubNumbers) q.in('club_number', clubNumbers)
       const [rows, skip] = await Promise.all([fetchAllRows(q), skipList(exclude)])
@@ -721,6 +735,7 @@ const SETS = {
         .map(r => ({
           member: name(r.first_name, r.last_name),
           type: r.membership_type || '-',
+          plan: planLabelFor(r.agreement_term),
           agreement: r.agreement_number || '-',
           joined: r.since_date ? String(r.since_date).slice(0, 10) : null,
           dues: money(r.next_due_amount),
@@ -735,6 +750,7 @@ const SETS = {
     columns: [
       { key: 'member', label: 'Member', format: T.text },
       { key: 'type', label: 'Membership', format: T.text },
+      { key: 'plan', label: 'Plan', format: T.text },
       { key: 'left', label: 'Left', format: T.date },
       { key: 'status', label: 'Status', format: T.text },
       { key: 'agreement', label: 'Agreement', format: T.text },
@@ -748,7 +764,7 @@ const SETS = {
     async load({ start, end, clubNumbers, exclude }) {
       const q = lazySupabase()
         .from('abc_members')
-        .select('first_name, last_name, membership_type, member_status, member_status_date, since_date, agreement_number, club_number')
+        .select('first_name, last_name, membership_type, agreement_term, member_status, member_status_date, since_date, agreement_number, club_number')
         .in('member_status', LOST_STATUSES)
         .gte('member_status_date', start)
         .lte('member_status_date', end)
@@ -759,6 +775,7 @@ const SETS = {
         .map(r => ({
           member: name(r.first_name, r.last_name),
           type: r.membership_type || '-',
+          plan: planLabelFor(r.agreement_term),
           left: String(r.member_status_date).slice(0, 10),
           status: r.member_status,
           agreement: r.agreement_number || '-',
@@ -1040,7 +1057,14 @@ function setKeys() {
 async function loadRecordSet(setKey, params) {
   const set = SETS[setKey]
   if (!set) throw Object.assign(new Error(`Unknown record set: ${setKey}`), { status: 400 })
-  const rows = await set.load(params)
+  let rows = await set.load(params)
+  // Narrow to one plan type (1-year, month-to-month, ...) when asked, on any
+  // set that carries the Plan column. Applied to the shaped rows so it is the
+  // same rule the column shows, not a second one.
+  const planLabel = params.plan ? planLabelForKey(params.plan) : null
+  if (planLabel && set.columns.some(c => c.key === 'plan')) {
+    rows = rows.filter(r => r.plan === planLabel)
+  }
   return { label: set.label, columns: set.columns, rows, total: rows.length }
 }
 
