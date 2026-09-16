@@ -5,7 +5,7 @@ const { isChaseable } = require('./pastDueReport')
 const { isInsuranceType, tenureMonths } = require('./attritionAnalysis')
 const { classifyCalendarEvent, KIND, KIND_LABEL } = require('./calendarEventKind')
 const { loadOutcomeRulesOrNone, onlyTours } = require('./tourOutcomeRules')
-const { cannotUseAch, loadCategoryMap } = require('./analyticsMemberFilters')
+const { cannotUseAch, loadCategoryMap, isCategoryExcluded } = require('./analyticsMemberFilters')
 
 // ---------------------------------------------------------------------------
 // The rows behind the numbers.
@@ -1037,14 +1037,39 @@ function setKeys() {
  * memory instead of running the query again. Slicing here would also have meant
  * the cache held one page and every other page came back empty.
  */
+// Sets whose `type` column is the ABC membership type, and so can honour the
+// Reporting category tick boxes. Listed rather than inferred from the column,
+// because pt-sales also has a `type` and it is not a membership.
+const MEMBERSHIP_TYPED_SETS = new Set([
+  'new-members', 'lost-members', 'cancels', 'pending-cancels', 'past-due',
+  'club-health-sales', 'club-health-active', 'club-health-cancels',
+])
+
+/**
+ * Drop rows whose membership category was unticked. The same rule as the
+ * report cards (isCategoryExcluded), so a drill-down never lists rows the
+ * number it was opened from left out. Unmapped types stay in.
+ */
+function applyCategoryExclusion(setKey, rows, excludedCategories, categoryMap) {
+  if (!excludedCategories || excludedCategories.length === 0) return rows
+  if (!MEMBERSHIP_TYPED_SETS.has(setKey)) return rows
+  return rows.filter(r => !isCategoryExcluded({ membership_type: r.type }, categoryMap, excludedCategories))
+}
+
 async function loadRecordSet(setKey, params) {
   const set = SETS[setKey]
   if (!set) throw Object.assign(new Error(`Unknown record set: ${setKey}`), { status: 400 })
-  const rows = await set.load(params)
+  let rows = await set.load(params)
+  const excluded = params?.excludedCategories || []
+  if (excluded.length && MEMBERSHIP_TYPED_SETS.has(setKey)) {
+    const categoryMap = await loadCategoryMap(lazySupabase())
+    rows = applyCategoryExclusion(setKey, rows, excluded, categoryMap)
+  }
   return { label: set.label, columns: set.columns, rows, total: rows.length }
 }
 
 module.exports = {
   SETS, setKeys, loadRecordSet, clubNumbersFor, matchesPerson,
+  applyCategoryExclusion, MEMBERSHIP_TYPED_SETS,
   groupSessionsIntoClients, tenureMonths, LOST_STATUSES, DEFAULT_LIMIT, MAX_LIMIT,
 }

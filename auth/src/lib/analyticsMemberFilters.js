@@ -183,6 +183,23 @@ function cannotUseAch(row, categoryMap) {
   return t.startsWith('a2') || t.includes('active and fit')
 }
 
+/**
+ * A member count with the unticked categories taken out, from per-category
+ * counts of the same population.
+ *
+ * For counts that come from SQL (analytics_topline_members_as_of) rather than
+ * from rows filtered here. The function selects ONE category at a time, not an
+ * exclusion list, but a member maps to at most one category, so "all minus each
+ * unticked category" is exact -- and unmapped types stay in, the same as
+ * isCategoryExcluded.
+ */
+function countAfterExclusion(allCount, countsByCategory, excluded) {
+  if (allCount == null) return null
+  let out = Number(allCount) || 0
+  for (const cat of excluded || []) out -= Number(countsByCategory?.[cat]) || 0
+  return Math.max(0, out)
+}
+
 async function loadCategoryMap(supabaseAdmin) {
   const { data, error } = await supabaseAdmin
     .from('abc_membership_categories')
@@ -193,6 +210,6 @@ async function loadCategoryMap(supabaseAdmin) {
 
 module.exports = {
   MEMBER_CATEGORIES, parseCategory, parseBasis, filterNote, matchesFilters, loadCategoryMap,
-  parseExcludedCategories, categoryOf, isCategoryExcluded,
+  parseExcludedCategories, categoryOf, isCategoryExcluded, countAfterExclusion,
   cannotUseAch,
 }
