@@ -92,7 +92,7 @@ router.get('/', async (req, res) => {
       start, end, slugs,
       clubNumbers: clubNumbersFor(slugs),
       person, personField, filter, window, excludedCategories,
-      // One plan type (one-year | mtm | no-draft | pif | unknown), or null.
+      // One plan type (one-year | mtm | pif), or null.
       plan: parsePlan(req.query.plan),
     }
 

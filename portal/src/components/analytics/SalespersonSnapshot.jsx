@@ -22,7 +22,6 @@ const DRILL = {
   newMemberUnits:     { set: 'new-members', title: 'Memberships sold' },
   planOneYear:        { set: 'new-members', plan: 'one-year', title: '1-Year sales' },
   planMtm:            { set: 'new-members', plan: 'mtm', title: 'Month-to-Month sales' },
-  planNoDraft:        { set: 'new-members', plan: 'no-draft', title: 'No-Draft sales' },
   planPif:            { set: 'new-members', plan: 'pif', title: 'Paid in Full sales' },
   achUnits:           { set: 'new-members', filter: 'ach', title: 'Memberships on ACH' },
   pctOnAch:           { set: 'new-members', filter: 'ach', title: 'Memberships on ACH' },

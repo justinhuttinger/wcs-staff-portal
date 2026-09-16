@@ -420,7 +420,6 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     planCounts: row.planCounts,
     planOneYear: row.planCounts['one-year'],
     planMtm: row.planCounts.mtm,
-    planNoDraft: row.planCounts['no-draft'],
     planPif: row.planCounts.pif,
     totalNewDuesDraft: Math.round(row.totalNewDues * 100) / 100,
     avgNewDuesDraft: row.newMemberUnits

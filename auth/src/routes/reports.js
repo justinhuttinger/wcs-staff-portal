@@ -14,7 +14,7 @@ const {
   cannotUseAch, loadCategoryMap, parseExcludedCategories, isCategoryExcluded, filterNote,
   countAfterExclusion,
 } = require('../lib/analyticsMemberFilters')
-const { PLAN_TYPES, UNKNOWN_PLAN, planKeyFor } = require('../lib/planType')
+const { PLAN_TYPES, planKeyFor } = require('../lib/planType')
 const { countVipsByTeamMember: _countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { parseLocationSlugParam } = require('../utils/locationSlug')
 const { resolveScopedSlugs } = require('../services/locationScope')
@@ -964,17 +964,16 @@ router.get('/club-health', async (req, res) => {
       .sort((a, b) => b.members - a.members)
 
     // By plan type (1-year / month-to-month / ...) for the sold and active
-    // populations above, in the fixed planType.js order. Unknown only when used.
+    // populations above, in the fixed planType.js order.
     const byPlan = (rows) => {
-      const buckets = new Map([...PLAN_TYPES, UNKNOWN_PLAN].map(p => [p.key, { members: 0, agreements: new Set() }]))
+      const buckets = new Map(PLAN_TYPES.map(p => [p.key, { members: 0, agreements: new Set() }]))
       for (const m of rows) {
         const b = buckets.get(planKeyFor(m.agreement_term))
         b.members += 1
         if (m.agreement_number) b.agreements.add(m.agreement_number)
       }
-      return [...PLAN_TYPES, UNKNOWN_PLAN]
+      return PLAN_TYPES
         .map(p => ({ plan: p.key, label: p.label, members: buckets.get(p.key).members, agreements: buckets.get(p.key).agreements.size }))
-        .filter(r => r.plan !== UNKNOWN_PLAN.key || r.members > 0)
     }
     const salesByPlan = byPlan(filteredMembers)
     const activeByPlan = byPlan(activeFiltered)
