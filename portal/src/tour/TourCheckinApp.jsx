@@ -49,6 +49,11 @@ function Avatar({ name, photo, size = 'w-16 h-16' }) {
   return <div className={`${size} rounded-full flex items-center justify-center font-bold text-xl ${avatarColor(name)}`}>{initials(name)}</div>
 }
 
+// Push alerts are not working yet, so the setup/status banners (Enable alerts,
+// Add to Home Screen, not registered, nothing can send) are hidden for now.
+// Flip back to true once push is fixed. The on-screen arrival banner is unaffected.
+const SHOW_PUSH_BANNERS = false
+
 const PUSH_SUPPORTED =
   typeof navigator !== 'undefined' && 'serviceWorker' in navigator &&
   typeof window !== 'undefined' && 'PushManager' in window && 'Notification' in window
@@ -215,13 +220,13 @@ export default function TourCheckinApp({ token }) {
     }
   }
 
-  const showNotifyPrompt = PUSH_SUPPORTED && data.vapid_public_key && permission !== 'granted'
+  const showNotifyPrompt = SHOW_PUSH_BANNERS && PUSH_SUPPORTED && data.vapid_public_key && permission !== 'granted'
   // Granted on THIS device, but the server has no key pair to send with. Worth
   // its own banner: alerts look switched on and nothing will ever arrive, which
   // is indistinguishable from a quiet lobby.
-  const pushBroken = permission === 'granted' && data.push_configured === false
+  const pushBroken = SHOW_PUSH_BANNERS && permission === 'granted' && data.push_configured === false
   // Granted here, server can send, but this device never got an endpoint.
-  const pushUnregistered = permission === 'granted' && data.push_configured !== false && registered === false
+  const pushUnregistered = SHOW_PUSH_BANNERS && permission === 'granted' && data.push_configured !== false && registered === false
   const list = data.ready
   const bg = LOCATION_BACKGROUNDS[(data.location_name || '').trim().toLowerCase()]
 
