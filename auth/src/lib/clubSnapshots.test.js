@@ -374,7 +374,7 @@ test('the groups are sent with the payload, in order', () => {
   const out = buildClubSnapshot({ window: {}, summary: {} }, null, [])
   assert.deepStrictEqual(
     out.statGroups.map(g => g.key),
-    ['membership', 'revenue', 'tours', 'dayone', 'pt', 'activity'],
+    ['membership', 'revenue', 'pos', 'tours', 'dayone', 'pt', 'activity'],
   )
 })
 
