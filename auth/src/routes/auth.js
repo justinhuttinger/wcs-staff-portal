@@ -293,16 +293,36 @@ router.post('/refresh', refreshLimiter, async (req, res) => {
   }
 })
 
+// Both reset endpoints are rate limited: the first leaks which addresses exist
+// if hammered, the second is a password setter guarded only by a token.
+const resetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
 // POST /auth/reset-password — public
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', resetLimiter, async (req, res) => {
   try {
     const { email } = req.body
     if (!email) {
       return res.status(400).json({ error: 'Email is required' })
     }
 
-    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email)
+    // WITHOUT redirectTo the link goes to the project's default Site URL,
+    // which is not this portal — the reason resets never worked. The portal
+    // reads the recovery token out of the hash and posts it back to
+    // /auth/reset-password/complete below.
+    //
+    // The URL must also be on the project's Redirect URL allow-list in the
+    // Supabase dashboard, or Supabase silently falls back to the Site URL.
+    const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
+      redirectTo: (process.env.PORTAL_URL || 'https://portal.wcstrength.com') + '/',
+    })
     if (error) {
+      console.error('[Auth] Reset password send error:', error.message)
       return res.status(500).json({ error: 'Failed to send reset email' })
     }
 
@@ -310,6 +330,60 @@ router.post('/reset-password', async (req, res) => {
   } catch (err) {
     console.error('[Auth] Reset password error:', err.message)
     res.status(500).json({ error: 'Failed to send reset email' })
+  }
+})
+
+// POST /auth/reset-password/complete — public, but only with a live recovery
+// token from the emailed link.
+//
+// Supabase does the verifying: the link lands on the portal with an access
+// token in the URL hash, and getUser(token) both proves it is real and says
+// who it belongs to. The portal holds no Supabase key of its own, so the
+// password itself is set here with the service role, exactly like
+// /auth/change-password and Admin -> Staff.
+router.post('/reset-password/complete', resetLimiter, async (req, res) => {
+  const { access_token, new_password } = req.body || {}
+  if (!access_token) return res.status(400).json({ error: 'Reset link is missing or invalid' })
+  if (!new_password || new_password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' })
+  }
+  try {
+    const { data, error } = await supabaseAdmin.auth.getUser(access_token)
+    const user = data?.user
+    if (error || !user) {
+      // Recovery tokens are one-shot and short-lived; a stale one is the
+      // common case, so say what to do about it.
+      return res.status(400).json({ error: 'This reset link has expired. Request a new one.' })
+    }
+
+    // A deactivated or deleted staff member must not be able to set a password
+    // from an old email. Staff rows share the auth user id.
+    const { data: staff } = await supabaseAdmin
+      .from('staff').select('id, is_active').eq('id', user.id).maybeSingle()
+    if (!staff || staff.is_active === false) {
+      return res.status(403).json({ error: 'This account cannot be reset. Ask an admin.' })
+    }
+
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      user.id, { password: new_password }
+    )
+    if (updateError) {
+      console.error('[Auth] Reset complete error:', updateError.message)
+      return res.status(500).json({ error: 'Failed to set password' })
+    }
+
+    await supabaseAdmin.from('staff').update({ must_change_password: false }).eq('id', user.id)
+
+    require('../services/auditLog').record(user.id, 'session.password_reset', {
+      ip: req.ip, metadata: { via: 'email link' },
+    }).catch(() => {})
+
+    // Deliberately no session back: the password change revokes every session
+    // this user had, so they sign in fresh with the new password.
+    res.json({ message: 'Password updated' })
+  } catch (err) {
+    console.error('[Auth] Reset complete error:', err.message)
+    res.status(500).json({ error: 'Failed to set password' })
   }
 })
 

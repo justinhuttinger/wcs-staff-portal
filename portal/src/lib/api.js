@@ -385,6 +385,15 @@ export async function resetPassword(email) {
   })
 }
 
+// Finish a reset from the emailed link. The token comes out of the URL hash;
+// the server verifies it with Supabase and sets the password.
+export async function completePasswordReset(accessToken, newPassword) {
+  return api('/auth/reset-password/complete', {
+    method: 'POST',
+    body: JSON.stringify({ access_token: accessToken, new_password: newPassword }),
+  })
+}
+
 export async function getMe() {
   return api('/auth/me')
 }
