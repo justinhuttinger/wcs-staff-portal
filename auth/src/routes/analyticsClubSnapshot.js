@@ -153,6 +153,19 @@ router.get('/', async (req, res) => {
       ])
 
 
+      // POS by profit centre for both windows. AFTER the batch above, never
+      // inside it: Club Snapshot already runs a dozen concurrent queries and
+      // adding to that burst tipped it past the 8s statement_timeout once (#971).
+      // Optional: a failure shows the POS cards as no data, not a 500.
+      const [pos, priorPos] = await Promise.all([
+        fetchAll(supabaseAdmin.rpc('analytics_pos_centers', {
+          p_start: start, p_end: end, p_clubs: allClubs ? null : slugs,
+        })).catch(() => null),
+        fetchAll(supabaseAdmin.rpc('analytics_pos_centers', {
+          p_start: prior.start, p_end: prior.end, p_clubs: allClubs ? null : slugs,
+        })).catch(() => null),
+      ])
+
       if (membersNow.error) throw new Error(membersNow.error.message)
       if (membersPrior.error) throw new Error(membersPrior.error.message)
       current.window.total_members = membersNow.data
@@ -184,6 +197,8 @@ router.get('/', async (req, res) => {
         byCategoryPrior: byCategoryPrior || [],
         trial,
         priorTrial,
+        pos,
+        priorPos,
       }
     })
 
@@ -196,6 +211,8 @@ router.get('/', async (req, res) => {
         pending: payload.pending,
         trial: payload.trial,
         priorTrial: payload.priorTrial,
+        pos: payload.pos,
+        priorPos: payload.priorPos,
         // Each window's own length, so Avg Daily Check-ins compares a 31-day
         // month against a 28-day one without the shorter month looking quiet.
         days: daysInWindow(start, end),

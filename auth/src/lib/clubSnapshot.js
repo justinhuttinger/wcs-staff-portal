@@ -58,6 +58,7 @@ function rate(part, whole) {
 const STAT_GROUPS = [
   { key: 'membership', label: 'Membership' },
   { key: 'revenue', label: 'Revenue' },
+  { key: 'pos', label: 'POS' },
   { key: 'tours', label: 'Tours, Trials & VIPs' },
   { key: 'dayone', label: 'Day Ones' },
   { key: 'pt', label: 'Personal Training' },
@@ -75,6 +76,15 @@ const STATS = [
   // thing from the value of PT sold below: one is collected, the other is
   // contracted. Labelled apart so the card never shows two "PT Revenue".
   { key: 'ptRevenue', label: 'PT Revenue Collected', format: 'money', betterWhen: 'up', group: 'revenue' },
+  // POS income from the register (inventory_transaction_items, the same source
+  // as the POS Sales report), RETAIL CENTRES ONLY: drinks, snacks, merchandise,
+  // supplements. Training, dues, guest fees etc. rung through the POS are out of
+  // both the total and the breakdown by design. Injected in buildClubSnapshot.
+  { key: 'posTotal', label: 'POS Income', format: 'money', betterWhen: 'up', group: 'pos' },
+  { key: 'posDrinks', label: 'Drinks', format: 'money', betterWhen: 'up', group: 'pos' },
+  { key: 'posSnacks', label: 'Snacks', format: 'money', betterWhen: 'up', group: 'pos' },
+  { key: 'posMerch', label: 'Merchandise', format: 'money', betterWhen: 'up', group: 'pos' },
+  { key: 'posSupps', label: 'Supplements', format: 'money', betterWhen: 'up', group: 'pos' },
   { key: 'checkins', label: 'Check-ins', format: 'int', betterWhen: 'up', group: 'activity' },
   // Beside the total because the total is NOT comparable across windows:
   // priorMonthWindow clamps the day to the shorter month, so March against
@@ -266,6 +276,37 @@ function seriesRow(r) {
   }
 }
 
+// The four retail profit centres, matched case-insensitively on the POS
+// profit_center name. Only these count toward POS Income.
+const POS_CENTERS = [
+  { key: 'posDrinks', center: 'wcs drinks' },
+  { key: 'posSnacks', center: 'wcs snacks' },
+  { key: 'posMerch', center: 'wcs merchandise' },
+  { key: 'posSupps', center: 'wcs supplements' },
+]
+
+/**
+ * analytics_pos_centers rows -> { posTotal, posDrinks, ... }. null when the
+ * rows could not be loaded, so the cards read as no data rather than $0.
+ */
+function shapePos(rows) {
+  if (!Array.isArray(rows)) return null
+  const byCenter = new Map()
+  for (const r of rows) {
+    const k = String(r.profit_center || '').trim().toLowerCase()
+    byCenter.set(k, (byCenter.get(k) || 0) + (Number(r.revenue) || 0))
+  }
+  const out = {}
+  let total = 0
+  for (const c of POS_CENTERS) {
+    const v = Math.round((byCenter.get(c.center) || 0) * 100) / 100
+    out[c.key] = v
+    total += v
+  }
+  out.posTotal = Math.round(total * 100) / 100
+  return out
+}
+
 function buildClubSnapshot(current, prior, series, opts = {}) {
   const cur = shapeTotals(current.window, current.summary, current.pt)
   const was = prior ? shapeTotals(prior.window, prior.summary, prior.pt) : {}
@@ -291,6 +332,13 @@ function buildClubSnapshot(current, prior, series, opts = {}) {
   // than there being none to convert.
   cur.trialConversion = opts.trial ? opts.trial.rate : null
   if (prior) was.trialConversion = opts.priorTrial ? opts.priorTrial.rate : null
+
+  const posNow = shapePos(opts.pos)
+  const posBefore = shapePos(opts.priorPos)
+  for (const k of ['posTotal', ...POS_CENTERS.map(c => c.key)]) {
+    cur[k] = posNow ? posNow[k] : null
+    if (prior) was[k] = posBefore ? posBefore[k] : null
+  }
 
   const stats = STATS.map(s => {
     const now = cur[s.key] ?? null
@@ -326,4 +374,4 @@ function buildClubSnapshot(current, prior, series, opts = {}) {
   }
 }
 
-module.exports = { buildClubSnapshot, shapeTotals, seriesRow, STATS, STAT_GROUPS }
+module.exports = { buildClubSnapshot, shapeTotals, shapePos, seriesRow, STATS, STAT_GROUPS, POS_CENTERS }

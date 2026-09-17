@@ -29,7 +29,11 @@ const { shapeTotals, STATS, STAT_GROUPS } = require('./clubSnapshot')
 // Avg Daily Check-ins goes for a blunter reason: over a one-day window it is
 // the same number as Check-ins, and two cards showing one figure invites the
 // reader to hunt for a difference that cannot exist.
-const DROPPED_STATS = new Set(['avgDaysToConversion', 'avgDailyCheckins'])
+// POS cards are Club Snapshot only; Daily Snapshot does not load register data.
+const DROPPED_STATS = new Set([
+  'avgDaysToConversion', 'avgDailyCheckins',
+  'posTotal', 'posDrinks', 'posSnacks', 'posMerch', 'posSupps',
+])
 
 // The two stats that come from abc_revenue_transactions. New Dues does NOT:
 // it is derived from the member records, which are live, so it stays real on a
