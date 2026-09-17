@@ -439,7 +439,7 @@ export const KPI_DEFS = [
         },
         {
           heading: 'Business-hours clock',
-          body: 'Only time inside staffed lead-response hours counts: the clock runs 11:00am to 7:30pm Pacific, every day, and pauses outside those hours. A lead that comes in overnight and is contacted first thing in the morning does not count the overnight wait against the team.',
+          body: 'Only time inside staffed lead-response hours counts: the clock runs only during the staffed hours set for each club (11:00am to 7:30pm Pacific every day unless an admin has set different hours for that club) and pauses outside them. A lead that comes in overnight and is contacted first thing in the morning does not count the overnight wait against the team.',
         },
       ],
       notes: [
