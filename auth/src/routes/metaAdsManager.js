@@ -11,6 +11,7 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { diskUpload, formPartFromFile, cleanupUploads } = require('./metaMediaUpload')
+const { uploadVideoChunked } = require('./metaVideoUpload')
 
 const router = Router()
 router.use(authenticate)
@@ -18,10 +19,10 @@ router.use(requireRole('admin'))
 
 const META_API = 'https://graph.facebook.com/v21.0'
 
-// Images are capped well under Meta's own 30MB limit; video gets the full 1GB
-// Meta allows for a resumable-free simple upload. Both spool to DISK, not
-// memory — see metaMediaUpload.js for why (a buffered video killed the
-// instance outright).
+// Images are capped well under Meta's own 30MB limit; video gets 1GB, which it
+// can afford because it goes up in chunks (see metaVideoUpload.js). Both spool
+// to DISK, not memory — see metaMediaUpload.js for why (a buffered video killed
+// the instance outright).
 const uploadImage = diskUpload({ fileSize: 30 * 1024 * 1024 })
 const uploadVideo = diskUpload({ fileSize: 1024 * 1024 * 1024 })
 
@@ -1189,16 +1190,19 @@ router.post('/media/video', uploadVideo.single('file'), async (req, res) => {
     const { token, accountId } = getConfig()
     if (!req.file) return res.status(400).json({ error: 'No video uploaded' })
 
-    const form = new FormData()
-    form.set('access_token', token)
-    form.set('name', req.file.originalname || 'video.mp4')
-    form.set('source', await formPartFromFile(req.file), req.file.originalname || 'video.mp4')
+    // Always chunked, whatever the size. A one-shot POST works for small clips
+    // and then fails on anything sizeable with an empty body, so one code path
+    // that always works beats two where the second only shows up in prod.
+    const { id } = await uploadVideoChunked({
+      filePath: req.file.path,
+      fileSize: req.file.size,
+      name: req.file.originalname || 'video.mp4',
+      accountId,
+      token,
+      apiBase: META_API,
+    })
 
-    const upstream = await fetch(`${META_API}/${accountId}/advideos`, { method: 'POST', body: form })
-    const data = await upstream.json()
-    if (data.error) throw metaError(data)
-
-    res.json({ id: data.id, name: req.file.originalname, status: 'processing' })
+    res.json({ id, name: req.file.originalname, status: 'processing' })
   } catch (err) {
     fail(res, err, 'video upload')
   } finally {
