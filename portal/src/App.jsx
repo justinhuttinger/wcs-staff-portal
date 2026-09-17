@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback} from 'react'
 import ToolGrid from './components/ToolGrid'
 import LoginScreen from './components/LoginScreen'
+import ResetPasswordScreen from './components/ResetPasswordScreen'
 import AdminPanel from './components/AdminPanel'
 import SaveCredentialToast from './components/SaveCredentialToast'
 import CalendarView from './components/CalendarView'
@@ -60,8 +61,25 @@ function getParam(key) {
 const kioskMode = getParam('mode')
 const kioskKey = getParam('key')
 
+// A Supabase password-reset link comes back as
+// #access_token=...&type=recovery, or with an error_description when the link
+// has already expired. Read ONCE at module load and wipe the hash immediately: a
+// recovery token is a live credential and must not sit in the address bar, in
+// history, or in a link somebody pastes to a colleague.
+const initialRecovery = (() => {
+  const raw = window.location.hash.replace(/^#/, '')
+  if (!raw.includes('access_token=') && !raw.includes('error_description=')) return null
+  const p = new URLSearchParams(raw)
+  if (p.get('type') !== 'recovery' && !p.get('error_description')) return null
+  history.replaceState(null, '', window.location.pathname + window.location.search)
+  // An expired link carries no token. Still shown as the reset screen, so the
+  // person is told to ask for a new one instead of landing on a bare login.
+  return { token: p.get('access_token') || null, error: p.get('error_description') || null }
+})()
+
 export default function App() {
   const [user, setUser] = useState(null)
+  const [recovery, setRecovery] = useState(initialRecovery)
   const [loading, setLoading] = useState(false)
   const abcUrl = getParam('abc_url')
   const locationParam = getParam('location')
@@ -430,6 +448,19 @@ export default function App() {
   // never consults personal prefs, so it is the one place that always reads
   // as the kiosk's own look, not whoever signed in last.
   const shellBg = press ? null : bgImage
+
+  // A password-reset link landing back on the portal. Read once at module load
+  // (see recoveryToken below) so the token never sits in the address bar.
+  if (recovery) {
+    return (
+      <ResetPasswordScreen
+        accessToken={recovery.token}
+        linkError={recovery.error}
+        bgImage={clubPhoto}
+        onDone={() => setRecovery(null)}
+      />
+    )
+  }
 
   if (!user) {
     if (kioskMode === 'dayone') {
