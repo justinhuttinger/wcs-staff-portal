@@ -688,6 +688,15 @@ export async function getSpeedToLeadBusinessAudit(params = {}, options = {}) {
   return api('/reports/speed-to-lead/business-audit' + (qs ? '?' + qs : ''), options)
 }
 
+// Per-club staffed window for Business-Hours Speed to Lead (admin only).
+export async function getStlBusinessHours() {
+  return api('/admin/stl-business-hours')
+}
+
+export async function saveStlBusinessHours(locationId, body) {
+  return api('/admin/stl-business-hours/' + encodeURIComponent(locationId), { method: 'PUT', body: JSON.stringify(body) })
+}
+
 // How many active members pay each price, grouped by club × type × frequency ×
 // price. One fetch backs every view — the client pivots and filters it.
 export async function getMembershipPriceBreakdown(params = {}, options = {}) {
