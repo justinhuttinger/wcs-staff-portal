@@ -8,9 +8,9 @@
 // Meta's own token already carries ads_management + business_management (it is
 // a never-expiring system-user token), so there is no per-user OAuth dance.
 const { Router } = require('express')
-const multer = require('multer')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { diskUpload, formPartFromFile, cleanupUploads } = require('./metaMediaUpload')
 
 const router = Router()
 router.use(authenticate)
@@ -19,9 +19,11 @@ router.use(requireRole('admin'))
 const META_API = 'https://graph.facebook.com/v21.0'
 
 // Images are capped well under Meta's own 30MB limit; video gets the full 1GB
-// Meta allows for a resumable-free simple upload.
-const uploadImage = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } })
-const uploadVideo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } })
+// Meta allows for a resumable-free simple upload. Both spool to DISK, not
+// memory — see metaMediaUpload.js for why (a buffered video killed the
+// instance outright).
+const uploadImage = diskUpload({ fileSize: 30 * 1024 * 1024 })
+const uploadVideo = diskUpload({ fileSize: 1024 * 1024 * 1024 })
 
 function getConfig() {
   const token = process.env.META_ACCESS_TOKEN
@@ -1155,12 +1157,12 @@ router.post('/media/image', uploadImage.array('files', 20), async (req, res) => 
     const form = new FormData()
     form.set('access_token', token)
     const names = []
-    files.forEach((file, i) => {
+    for (const [i, file] of files.entries()) {
       // Meta collides on duplicate filenames within one request; index them.
       const name = `${i}_${(file.originalname || 'image.jpg').replace(/[^\w.\-]/g, '_')}`
       names.push({ name, originalname: file.originalname })
-      form.set(name, new Blob([file.buffer], { type: file.mimetype }), name)
-    })
+      form.set(name, await formPartFromFile(file), name)
+    }
 
     const upstream = await fetch(`${META_API}/${accountId}/adimages`, { method: 'POST', body: form })
     const data = await upstream.json()
@@ -1174,6 +1176,8 @@ router.post('/media/image', uploadImage.array('files', 20), async (req, res) => 
     res.json({ images: out })
   } catch (err) {
     fail(res, err, 'image upload')
+  } finally {
+    await cleanupUploads(req.files)
   }
 })
 
@@ -1188,7 +1192,7 @@ router.post('/media/video', uploadVideo.single('file'), async (req, res) => {
     const form = new FormData()
     form.set('access_token', token)
     form.set('name', req.file.originalname || 'video.mp4')
-    form.set('source', new Blob([req.file.buffer], { type: req.file.mimetype }), req.file.originalname || 'video.mp4')
+    form.set('source', await formPartFromFile(req.file), req.file.originalname || 'video.mp4')
 
     const upstream = await fetch(`${META_API}/${accountId}/advideos`, { method: 'POST', body: form })
     const data = await upstream.json()
@@ -1197,6 +1201,8 @@ router.post('/media/video', uploadVideo.single('file'), async (req, res) => {
     res.json({ id: data.id, name: req.file.originalname, status: 'processing' })
   } catch (err) {
     fail(res, err, 'video upload')
+  } finally {
+    await cleanupUploads(req.file)
   }
 })
 
@@ -1340,6 +1346,21 @@ router.post('/previews', async (req, res) => {
   } catch (err) {
     fail(res, err, 'preview')
   }
+})
+
+// Multer rejects an oversize upload before the route body runs, so the temp
+// file and a usable message are this handler's job — otherwise the browser gets
+// a bare 500 and the partial file lingers until the instance recycles.
+router.use(async (err, req, res, next) => {
+  if (!err || err.name !== 'MulterError') return next(err)
+  await cleanupUploads(req.files || req.file)
+  const tooBig = err.code === 'LIMIT_FILE_SIZE'
+  console.error('[Meta Ads Manager] upload rejected:', err.code)
+  res.status(tooBig ? 413 : 400).json({
+    error: tooBig
+      ? 'That file is too large. Images are capped at 30MB and videos at 1GB.'
+      : 'Upload rejected: ' + err.code,
+  })
 })
 
 module.exports = router
