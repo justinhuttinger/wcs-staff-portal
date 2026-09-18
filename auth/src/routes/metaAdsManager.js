@@ -17,9 +17,20 @@ const router = Router()
 router.use(authenticate)
 router.use(requireRole('admin'))
 
-// Club Setup + launch preview. Mounted here so it inherits the admin gate
-// above; it never calls Meta (portal presets and token rendering only).
-router.use('/clubs', require('./metaAdClubs'))
+// Club Setup, launch preview and the multi-club launch. Mounted here so it
+// inherits the admin gate above, and handed the Meta helpers defined below so
+// they are not required back the other way (that would be circular).
+router.use('/clubs', require('./metaAdClubs')({
+  createAdset: async (body) => {
+    const { token, accountId } = getConfig()
+    return metaWrite(`/${accountId}/adsets`, body, token)
+  },
+  createAd: async (variant, shared) => {
+    const { token, accountId } = getConfig()
+    return createOneAd(variant, shared, token, accountId)
+  },
+  pressure: () => usagePressure(),
+}))
 
 const META_API = 'https://graph.facebook.com/v21.0'
 

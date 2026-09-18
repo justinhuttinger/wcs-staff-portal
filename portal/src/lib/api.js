@@ -1456,6 +1456,10 @@ export async function saveAdsManagerClub(locationId, body) {
   return api(MAM + '/clubs/' + encodeURIComponent(locationId), { method: 'PUT', body: JSON.stringify(body) })
 }
 
+export async function launchAdsManagerToClubs(body) {
+  return api(MAM + '/clubs/launch', { method: 'POST', body: JSON.stringify(body) })
+}
+
 export async function previewAdsManagerLaunch(body) {
   return api(MAM + '/clubs/preview', { method: 'POST', body: JSON.stringify(body) })
 }
