@@ -19,6 +19,7 @@ import AdVariantsModal from './adsmanager/AdVariantsModal'
 import AdEditModal from './adsmanager/AdEditModal'
 import StrandedAdsModal from './adsmanager/StrandedAdsModal'
 import ClubSetupModal from './adsmanager/ClubSetupModal'
+import LaunchToClubsModal from './adsmanager/LaunchToClubsModal'
 
 // Admin-only Meta ad builder. Three linked columns mirroring Meta's own
 // hierarchy — campaign → ad set → ad — because that is the structure the API
@@ -111,6 +112,7 @@ export default function AdsManagerView({ onBack }) {
   // Per-club Page/targeting/token setup for multi-club launches. Purely
   // additive: the single-ad-set flow above is untouched.
   const [showClubSetup, setShowClubSetup] = useState(false)
+  const [showLaunch, setShowLaunch] = useState(false)
   // The audit is expensive, so it is not re-run after every pause. Pausing
   // something just marks it stale and the banner offers a recheck.
   const [strandedStale, setStrandedStale] = useState(false)
@@ -321,6 +323,7 @@ export default function AdsManagerView({ onBack }) {
               {account.status !== 1 && <span className="text-amber-600 font-semibold ml-2">Account not active</span>}
             </p>
             <Button variant="secondary" onClick={() => setShowClubSetup(true)}>Club setup</Button>
+            <Button onClick={() => setShowLaunch(true)}>Launch to clubs</Button>
           </div>
         </div>
 
@@ -611,6 +614,14 @@ export default function AdsManagerView({ onBack }) {
           account={account}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); loadAds(selectedAdset.id) }}
+        />
+      )}
+
+      {showLaunch && (
+        <LaunchToClubsModal
+          campaigns={campaigns}
+          onClose={() => setShowLaunch(false)}
+          onLaunched={() => loadCampaigns()}
         />
       )}
 
