@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { parseMoney, parseDate } = require('../src/services/revenueCsvParser')
+const { parseMoney, parseDate, normalizeClub } = require('../src/services/revenueCsvParser')
 
 test('parseMoney handles plain dollars', () => {
   assert.equal(parseMoney('$24.50'), 24.5)
@@ -119,4 +119,31 @@ test('parseRevenueCsv skips rows with unknown club_number', () => {
   assert.equal(result.rows.length, 1)
   assert.equal(result.rows[0].location_slug, 'salem')
   assert.equal(result.skipped.unknown_club, 1)
+})
+
+// --- Eugene's padded club number -------------------------------------------
+// The CSV writes Eugene as "07655"; ABC's API, abc_members, check-ins, PT and
+// the POS all write "7655". Storing the padded form made every club-filtered
+// revenue figure for Eugene read $0.
+
+test('club numbers are stored unpadded, like every other table', () => {
+  assert.equal(normalizeClub('07655'), '7655')
+  assert.equal(normalizeClub(' 07655 '), '7655')
+  assert.equal(normalizeClub('7655'), '7655')
+  assert.equal(normalizeClub('30935'), '30935')
+  assert.equal(normalizeClub(''), '')
+  assert.equal(normalizeClub(null), '')
+  // Not a club, but it must not turn into an empty "missing field".
+  assert.equal(normalizeClub('000'), '000')
+})
+
+test('a padded Eugene row parses as Eugene and stores 7655', () => {
+  const csv = [
+    'Textbox16,CLUB_NUMBER,DATE_KEY,PAYMENT_AMOUNT,PROFIT_CENTER',
+    '"For the period 09/01/2026 - 09/17/2026 Total: 100.00",07655,09/02/2026,100.00,WCS DRINKS',
+  ].join('\n')
+  const out = parseRevenueCsv(csv)
+  assert.equal(out.rows.length, 1)
+  assert.equal(out.rows[0].club_number, '7655')
+  assert.equal(out.rows[0].location_slug, 'eugene')
 })
