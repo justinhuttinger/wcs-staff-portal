@@ -1445,6 +1445,21 @@ export async function getAdsManagerAccount() {
   return api(MAM + '/account')
 }
 
+// Club Setup + multi-club launch preview. None of these call Meta: they read
+// and write the portal's own per-club presets, and the preview is pure token
+// rendering, so they cost nothing against the ad account's rate limit.
+export async function getAdsManagerClubs() {
+  return api(MAM + '/clubs')
+}
+
+export async function saveAdsManagerClub(locationId, body) {
+  return api(MAM + '/clubs/' + encodeURIComponent(locationId), { method: 'PUT', body: JSON.stringify(body) })
+}
+
+export async function previewAdsManagerLaunch(body) {
+  return api(MAM + '/clubs/preview', { method: 'POST', body: JSON.stringify(body) })
+}
+
 export async function getAdsManagerLeadForms(pageId) {
   return api(MAM + '/pages/' + encodeURIComponent(pageId) + '/lead-forms')
 }

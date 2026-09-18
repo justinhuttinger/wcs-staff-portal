@@ -17,6 +17,10 @@ const router = Router()
 router.use(authenticate)
 router.use(requireRole('admin'))
 
+// Club Setup + launch preview. Mounted here so it inherits the admin gate
+// above; it never calls Meta (portal presets and token rendering only).
+router.use('/clubs', require('./metaAdClubs'))
+
 const META_API = 'https://graph.facebook.com/v21.0'
 
 // Images are capped well under Meta's own 30MB limit; video gets 1GB, which it
