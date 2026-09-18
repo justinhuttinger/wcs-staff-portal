@@ -18,6 +18,7 @@ import DuplicateAdsetModal from './adsmanager/DuplicateAdsetModal'
 import AdVariantsModal from './adsmanager/AdVariantsModal'
 import AdEditModal from './adsmanager/AdEditModal'
 import StrandedAdsModal from './adsmanager/StrandedAdsModal'
+import ClubSetupModal from './adsmanager/ClubSetupModal'
 
 // Admin-only Meta ad builder. Three linked columns mirroring Meta's own
 // hierarchy — campaign → ad set → ad — because that is the structure the API
@@ -107,6 +108,9 @@ export default function AdsManagerView({ onBack }) {
   // Ads switched on inside a paused parent — see StrandedAdsModal.
   const [stranded, setStranded] = useState(null)
   const [showStranded, setShowStranded] = useState(false)
+  // Per-club Page/targeting/token setup for multi-club launches. Purely
+  // additive: the single-ad-set flow above is untouched.
+  const [showClubSetup, setShowClubSetup] = useState(false)
   // The audit is expensive, so it is not re-run after every pause. Pausing
   // something just marks it stale and the banner offers a recheck.
   const [strandedStale, setStrandedStale] = useState(false)
@@ -311,10 +315,13 @@ export default function AdsManagerView({ onBack }) {
               Admin only
             </span>
           </div>
-          <p className="text-xs text-text-muted">
-            {account.name} · {account.currency}
-            {account.status !== 1 && <span className="text-amber-600 font-semibold ml-2">Account not active</span>}
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-text-muted">
+              {account.name} · {account.currency}
+              {account.status !== 1 && <span className="text-amber-600 font-semibold ml-2">Account not active</span>}
+            </p>
+            <Button variant="secondary" onClick={() => setShowClubSetup(true)}>Club setup</Button>
+          </div>
         </div>
 
         <div className="flex items-end gap-4 flex-wrap mt-4 pt-4 border-t border-border">
@@ -604,6 +611,14 @@ export default function AdsManagerView({ onBack }) {
           account={account}
           onClose={() => setModal(null)}
           onSaved={() => { setModal(null); loadAds(selectedAdset.id) }}
+        />
+      )}
+
+      {showClubSetup && (
+        <ClubSetupModal
+          pages={account.pages || []}
+          campaigns={campaigns}
+          onClose={() => setShowClubSetup(false)}
         />
       )}
 
