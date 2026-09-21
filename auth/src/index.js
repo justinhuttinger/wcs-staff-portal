@@ -14,6 +14,8 @@ app.set('trust proxy', 1)
 // GHL Manual Actions workflow list: public, own CORS for the GHL app domains.
 // Must sit before the global cors() below, which would answer its preflight.
 app.use(require('./routes/manualActionWorkflows'))
+// GHL Manual Actions "Log call" (writes to the CRM; own allowlist + rate limit).
+app.use(require('./routes/logCall'))
 
 // CORS: whitelist known origins
 const ALLOWED_ORIGINS = [
