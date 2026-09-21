@@ -11,6 +11,10 @@ const app = express()
 // errors on every request.
 app.set('trust proxy', 1)
 
+// GHL Manual Actions workflow list: public, own CORS for the GHL app domains.
+// Must sit before the global cors() below, which would answer its preflight.
+app.use(require('./routes/manualActionWorkflows'))
+
 // CORS: whitelist known origins
 const ALLOWED_ORIGINS = [
   process.env.PORTAL_URL || 'https://portal.wcstrength.com',
