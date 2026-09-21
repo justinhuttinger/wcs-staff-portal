@@ -18,8 +18,18 @@
  *   key contact.last_call_logged_by.
  *   If GHL gives either a different key, update FIELD_KEYS below.
  *
+ *   Create a Custom Object for dashboard reporting (Settings > Objects):
+ *     Singular "Call Log", plural "Call Logs", object key custom_objects.call_logs
+ *     Primary display field: "Summary" (text), key summary
+ *     Fields: "Outcome" (dropdown: Answer, No Answer, Not Interested), key outcome
+ *             "Logged By" (dropdown: one option per staff member, plus Unknown), key logged_by
+ *             "Call Date" (date), key call_date
+ *     Association: Call Logs <-> Contacts
+ *   If any key differs, update CALL_LOG below.
+ *
  * Token scopes needed for the location's Private Integration Token:
- *   contacts.readonly, contacts.write, locations/customFields.readonly, users.readonly
+ *   contacts.readonly, contacts.write, locations/customFields.readonly, users.readonly,
+ *   objects/record.write, associations.readonly, associations/relation.write
  *
  * Tokens come from config/ghlLocations (GHL_API_KEY_<CLUB>).
  */
@@ -41,6 +51,15 @@ const FIELD_KEYS = {
   loggedBy: 'contact.last_call_logged_by',
 };
 const UNKNOWN_USER = 'Unknown';
+
+// One Call Log record per call, for dashboard widgets. Property keys are the fields'
+// short keys from Settings > Objects, without the custom_objects.call_logs. prefix.
+const CALL_LOG = {
+  enabled: true,
+  schemaKey: 'custom_objects.call_logs',
+  props: { summary: 'summary', outcome: 'outcome', loggedBy: 'logged_by', callDate: 'call_date' },
+  timeZone: 'America/Los_Angeles',
+};
 const USER_CACHE_MS = 60 * 60 * 1000;
 
 const GHL_API = 'https://services.leadconnectorhq.com';
@@ -52,13 +71,14 @@ const RATE_MAX = 60; // per client per minute
 const hits = new Map();
 const fieldIds = new Map();
 const userNames = new Map();
+const associations = new Map();
 
-async function ghl(token, method, path, body) {
+async function ghl(token, method, path, body, version = GHL_VERSION) {
   const res = await fetch(GHL_API + path, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
-      Version: GHL_VERSION,
+      Version: version,
       Accept: 'application/json',
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
@@ -115,6 +135,74 @@ async function lookupUserName(token, userId, locationId) {
   return name;
 }
 
+// Finds the Contacts <-> Call Logs association and which side the contact is on.
+async function resolveAssociation(token, locationId) {
+  if (associations.has(locationId)) return associations.get(locationId);
+  const body = await ghl(token, 'GET', `/associations/?locationId=${locationId}&skip=0&limit=100`, null, '2021-04-15');
+  const list = body.associations || (Array.isArray(body) ? body : []);
+  const match = list.find((a) =>
+    (a.firstObjectKey === 'contact' && a.secondObjectKey === CALL_LOG.schemaKey) ||
+    (a.secondObjectKey === 'contact' && a.firstObjectKey === CALL_LOG.schemaKey));
+  if (!match) throw new Error(`No association between contacts and ${CALL_LOG.schemaKey} in ${locationId}`);
+  const info = { id: match.id, contactFirst: match.firstObjectKey === 'contact' };
+  associations.set(locationId, info);
+  return info;
+}
+
+function localDate(timeZone) {
+  // en-CA formats as YYYY-MM-DD
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+// Creates the Call Log record and links it to the contact.
+// If GHL rejects the staff name (not yet a dropdown option), it saves as Unknown and
+// logs whose name to add. The staff member is kept as the record owner either way.
+async function createCallLog(token, { locationId, contactId, outcome, staffName, userId }) {
+  const P = CALL_LOG.props;
+  const validUser = ID_PATTERN.test(String(userId || ''));
+  const attempts = [
+    { name: staffName, owner: validUser },
+    { name: UNKNOWN_USER, owner: validUser },
+    { name: staffName, owner: false },
+    { name: UNKNOWN_USER, owner: false },
+  ].filter((a, i, all) => all.findIndex((b) => b.name === a.name && b.owner === a.owner) === i);
+
+  let created = null;
+  let lastErr = null;
+  for (const attempt of attempts) {
+    const body = {
+      locationId,
+      properties: {
+        [P.summary]: `${outcome} by ${attempt.name}`,
+        [P.outcome]: outcome,
+        [P.loggedBy]: attempt.name,
+        [P.callDate]: localDate(CALL_LOG.timeZone),
+      },
+    };
+    if (attempt.owner) body.owner = [userId];
+    try {
+      created = await ghl(token, 'POST', `/objects/${CALL_LOG.schemaKey}/records`, body);
+      if (attempt.name !== staffName) {
+        console.warn(`[log-call] Saved call log as ${UNKNOWN_USER}. Add "${staffName}" to the Logged By dropdown.`);
+      }
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (!err.status || err.status >= 500) throw err; // only retry when GHL rejected the data
+    }
+  }
+  if (!created) throw lastErr;
+
+  const recordId = (created.record || created).id;
+  const assoc = await resolveAssociation(token, locationId);
+  await ghl(token, 'POST', '/associations/relations', {
+    locationId,
+    associationId: assoc.id,
+    firstRecordId: assoc.contactFirst ? contactId : recordId,
+    secondRecordId: assoc.contactFirst ? recordId : contactId,
+  }, '2021-04-15');
+}
+
 function rateLimited(key) {
   const now = Date.now();
   const recent = (hits.get(key) || []).filter((t) => now - t < RATE_WINDOW_MS);
@@ -157,10 +245,9 @@ router.post('/ghl/log-call', express.json({ limit: '2kb' }), async (req, res) =>
     }
 
     const fields = await resolveFieldIds(token, locationId);
+    const staffName = await lookupUserName(token, userId, locationId);
     const customFields = [{ id: fields.outcome, field_value: outcome }];
-    if (fields.loggedBy) {
-      customFields.push({ id: fields.loggedBy, field_value: await lookupUserName(token, userId, locationId) });
-    }
+    if (fields.loggedBy) customFields.push({ id: fields.loggedBy, field_value: staffName });
     await ghl(token, 'PUT', `/contacts/${contactId}`, { customFields });
 
     // The note keeps a history of every call. Best effort: the outcome is already saved.
@@ -176,7 +263,19 @@ router.post('/ghl/log-call', express.json({ limit: '2kb' }), async (req, res) =>
       });
     }
 
-    res.json({ ok: true });
+    // Reporting record. Best effort: the outcome is already on the contact, so a failure
+    // here never blocks the call from being logged or the task from completing.
+    let callLog = false;
+    if (CALL_LOG.enabled) {
+      try {
+        await createCallLog(token, { locationId, contactId, outcome, staffName, userId });
+        callLog = true;
+      } catch (err) {
+        console.error('[log-call] call log record failed:', err.message);
+      }
+    }
+
+    res.json({ ok: true, callLog });
   } catch (err) {
     console.error('[log-call]', err.message);
     res.status(502).json({ error: 'Could not log call' });
