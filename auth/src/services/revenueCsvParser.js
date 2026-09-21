@@ -5,14 +5,34 @@
 
 // WCS-only club mapping. Anything not in this map is skipped at parse time.
 // 31601 ("EAST SIDE ATHLETIC CLUB" in ABC) is Milwaukie's trade name.
+//
+// KEYED UNPADDED, and every lookup goes through normalizeClub. Eugene is 7655,
+// which the CSV writes as "07655" while ABC's own API, abc_members, check-ins,
+// PT and the POS all say "7655". Storing the padded form verbatim meant every
+// club-filtered revenue figure for Eugene matched nothing and read $0 — Club
+// Snapshot, Topline, revenue per member — while all-club totals stayed right
+// because they apply no club filter at all.
 const CLUB_MAP = {
   '30935': 'salem',
   '31599': 'keizer',
-  '07655': 'eugene',
+  '7655': 'eugene',
   '31598': 'springfield',
   '31600': 'clackamas',
   '32073': 'medford',
   '31601': 'milwaukie',
+}
+
+/**
+ * Club numbers as the rest of the system writes them: no leading zeros.
+ * ABC pads Eugene to five characters in this report and nowhere else.
+ */
+function normalizeClub(raw) {
+  const s = String(raw == null ? '' : raw).trim()
+  if (!s) return ''
+  const stripped = s.replace(/^0+/, '')
+  // All zeros is not a club, but it must not collapse to an empty string that
+  // then reads as a missing field rather than a bad one.
+  return stripped || s
 }
 
 function parseMoney(raw) {
@@ -91,7 +111,7 @@ function parseRevenueCsv(buffer) {
       if (meta) header = meta
     }
 
-    const clubNumber = (rec.CLUB_NUMBER || '').trim()
+    const clubNumber = normalizeClub(rec.CLUB_NUMBER)
     if (!clubNumber) {
       skipped.bad_shape += 1
       return
@@ -160,4 +180,5 @@ module.exports = {
   parseDate,
   parseHeaderMeta,
   parseRevenueCsv,
+  normalizeClub,
 }
