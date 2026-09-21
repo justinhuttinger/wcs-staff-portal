@@ -2,8 +2,9 @@
  * POST /ghl/log-call
  * Body: { locationId, contactId, outcome, userId }
  *
- * Writes the call outcome to the contact's "Last Call Outcome" custom field and adds
- * a note to the contact for history, since the field only holds the latest outcome.
+ * Writes the call outcome to the contact's "Last Call Outcome" custom field, the staff
+ * member who logged it to "Last Call Logged By", and adds a note to the contact for
+ * history, since the fields only hold the latest call.
  * Called by the "Log call" button on Manual Actions in the GHL custom JS.
  *
  * Mounted in index.js BEFORE the global cors() so this route's own CORS answers
@@ -12,11 +13,13 @@
  * Setup in GHL (Milwaukie):
  *   Create a contact custom field named "Last Call Outcome" as a Single Option dropdown
  *   with exactly these options: Answer, No Answer, Not Interested.
- *   Its key should be contact.last_call_outcome. If GHL gives it a different key,
- *   update FIELD_KEY below.
+ *   Its key should be contact.last_call_outcome.
+ *   Also create a Single Line text field named "Last Call Logged By",
+ *   key contact.last_call_logged_by.
+ *   If GHL gives either a different key, update FIELD_KEYS below.
  *
  * Token scopes needed for the location's Private Integration Token:
- *   contacts.readonly, contacts.write, locations/customFields.readonly
+ *   contacts.readonly, contacts.write, locations/customFields.readonly, users.readonly
  *
  * Tokens come from config/ghlLocations (GHL_API_KEY_<CLUB>).
  */
@@ -33,7 +36,12 @@ const ALLOWED_ORIGINS = [
 // This endpoint writes to the CRM, so it only serves clubs listed here (by slug).
 const ALLOWED_SLUGS = ['milwaukie'];
 const OUTCOMES = ['Answer', 'No Answer', 'Not Interested'];
-const FIELD_KEY = 'contact.last_call_outcome';
+const FIELD_KEYS = {
+  outcome: 'contact.last_call_outcome',
+  loggedBy: 'contact.last_call_logged_by',
+};
+const UNKNOWN_USER = 'Unknown';
+const USER_CACHE_MS = 60 * 60 * 1000;
 
 const GHL_API = 'https://services.leadconnectorhq.com';
 const GHL_VERSION = '2021-07-28';
@@ -43,6 +51,7 @@ const RATE_WINDOW_MS = 60 * 1000;
 const RATE_MAX = 60; // per client per minute
 const hits = new Map();
 const fieldIds = new Map();
+const userNames = new Map();
 
 async function ghl(token, method, path, body) {
   const res = await fetch(GHL_API + path, {
@@ -64,13 +73,46 @@ async function ghl(token, method, path, body) {
   return res.status === 204 ? {} : res.json();
 }
 
-async function resolveFieldId(token, locationId) {
+async function resolveFieldIds(token, locationId) {
   if (fieldIds.has(locationId)) return fieldIds.get(locationId);
   const body = await ghl(token, 'GET', `/locations/${locationId}/customFields?model=contact`);
-  const field = (body.customFields || []).find((f) => f.fieldKey === FIELD_KEY);
-  if (!field) throw new Error(`Custom field ${FIELD_KEY} not found in location ${locationId}`);
-  fieldIds.set(locationId, field.id);
-  return field.id;
+  const byKey = (key) => (body.customFields || []).find((f) => f.fieldKey === key);
+  const outcome = byKey(FIELD_KEYS.outcome);
+  if (!outcome) throw new Error(`Custom field ${FIELD_KEYS.outcome} not found in location ${locationId}`);
+  const loggedBy = byKey(FIELD_KEYS.loggedBy);
+  if (!loggedBy) console.warn(`[log-call] ${FIELD_KEYS.loggedBy} not found in ${locationId}; skipping who logged it`);
+  const ids = { outcome: outcome.id, loggedBy: loggedBy ? loggedBy.id : null };
+  fieldIds.set(locationId, ids);
+  return ids;
+}
+
+// Staff name for a GHL user ID, only if that user has access to this location.
+// The ID comes from the browser, so it isn't trusted until GHL confirms it.
+async function lookupUserName(token, userId, locationId) {
+  if (!ID_PATTERN.test(String(userId || ''))) return UNKNOWN_USER;
+  const cacheKey = `${locationId}:${userId}`;
+  const cached = userNames.get(cacheKey);
+  if (cached && Date.now() - cached.at < USER_CACHE_MS) return cached.name;
+
+  let name = UNKNOWN_USER;
+  try {
+    const body = await ghl(token, 'GET', `/users/${userId}`);
+    const user = body.user || body;
+    const roles = user.roles || {};
+    const locations = Array.isArray(roles.locationIds) ? roles.locationIds : null;
+    // Agency users can have no location list; sub-account users must include this location.
+    const allowed = roles.type === 'agency' || !locations || locations.includes(locationId);
+    if (allowed) {
+      name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.name || user.email || UNKNOWN_USER;
+    } else {
+      console.warn(`[log-call] user ${userId} has no access to ${locationId}`);
+    }
+  } catch (err) {
+    console.warn('[log-call] user lookup failed:', err.message);
+  }
+  // Only cache real names, so a fixed scope or permission takes effect right away.
+  if (name !== UNKNOWN_USER) userNames.set(cacheKey, { at: Date.now(), name });
+  return name;
 }
 
 function rateLimited(key) {
@@ -114,10 +156,12 @@ router.post('/ghl/log-call', express.json({ limit: '2kb' }), async (req, res) =>
       return res.status(404).json({ error: 'Contact not found' });
     }
 
-    const fieldId = await resolveFieldId(token, locationId);
-    await ghl(token, 'PUT', `/contacts/${contactId}`, {
-      customFields: [{ id: fieldId, field_value: outcome }],
-    });
+    const fields = await resolveFieldIds(token, locationId);
+    const customFields = [{ id: fields.outcome, field_value: outcome }];
+    if (fields.loggedBy) {
+      customFields.push({ id: fields.loggedBy, field_value: await lookupUserName(token, userId, locationId) });
+    }
+    await ghl(token, 'PUT', `/contacts/${contactId}`, { customFields });
 
     // The note keeps a history of every call. Best effort: the outcome is already saved.
     const note = { body: `Call outcome: ${outcome} (logged from Manual Actions)` };
