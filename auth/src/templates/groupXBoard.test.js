@@ -246,3 +246,23 @@ test('the today column prints exactly like every other column', () => {
     /\.cls--now \{ background: var\(--color-bg\) !important/,
   ]) assert.match(printBlock, rule)
 })
+
+test('Milwaukie renders as East Side Athletic Clubs: ESAC mark, black accents', () => {
+  const { ESAC_MARK_DATA_URI } = require('./esacMark')
+  const { WCS_MARK_DATA_URI } = require('./wcsMark')
+  const html = renderBoardHtml({ clubSlug: 'milwaukie', clubName: 'Milwaukie', brand: 'esac' })
+  assert.ok(html.includes(`src="${ESAC_MARK_DATA_URI}" alt="East Side Athletic Clubs"`))
+  assert.ok(!html.includes(WCS_MARK_DATA_URI), 'the WCS badge must not appear on an ESAC board')
+  assert.ok(html.includes('--color-accent: #000000;'))
+  assert.ok(!html.includes('#ff0000'), 'no WCS red may survive on an ESAC board')
+  assert.match(html, /<title>[^<]*East Side Athletic Clubs Milwaukie<\/title>/)
+})
+
+test('every other club, and an unknown brand, stays WCS', () => {
+  const { WCS_MARK_DATA_URI } = require('./wcsMark')
+  for (const brand of [undefined, 'wcs', 'nope']) {
+    const html = renderBoardHtml({ clubSlug: 'salem', clubName: 'Salem', brand })
+    assert.ok(html.includes(`src="${WCS_MARK_DATA_URI}" alt="West Coast Strength"`))
+    assert.ok(html.includes('--color-accent: #ff0000;'))
+  }
+})

@@ -26,6 +26,29 @@
 //    screen and still reads inside a narrow website iframe.
 const { WCS_DISPLAY_FACE } = require('./wcsDisplayFont')
 const { WCS_MARK_DATA_URI } = require('./wcsMark')
+const { ESAC_MARK_DATA_URI } = require('./esacMark')
+
+// What changes between the two brands the clubs trade under. Everything else
+// on the board -- layout, type, the class collars -- is shared. Which club is
+// which brand is decided by the route (dayOneProgram/brands.js brandForSlug),
+// so a Milwaukie board and a Milwaukie Day One program can never disagree.
+//
+// ESAC is black-and-white, the same rule as its Day One programs: every accent
+// that is WCS red becomes black. The wordmark keeps its own colours.
+const BOARD_BRANDS = {
+  wcs: {
+    name: 'West Coast Strength',
+    accent: '#ff0000',
+    accentHover: '#cc0000',
+    logo: WCS_MARK_DATA_URI,
+  },
+  esac: {
+    name: 'East Side Athletic Clubs',
+    accent: '#000000',
+    accentHover: '#333333',
+    logo: ESAC_MARK_DATA_URI,
+  },
+}
 
 // Per-class colour on the left bar, hashed from the class NAME so the same
 // class is the same colour everywhere — across days, across clubs, and
@@ -52,7 +75,7 @@ function escapeHtml(s) {
 // Shared by the Group X board and the facility (courts / pool) boards. The
 // only differences are the heading, the eyebrow and which endpoint it polls, so
 // they are parameters rather than a forked copy of 300 lines of CSS.
-function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag, layout, embed, emptyLabel, startDate, autoPrint }) {
+function renderBoardHtml({ clubSlug, clubName, brand, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag, layout, embed, emptyLabel, startDate, autoPrint }) {
   const title = boardTitle || 'Class Schedule'
   const eyebrow = eyebrowLabel || 'Group X'
   const feed = scheduleUrl || '/public/group-x/schedule'
@@ -84,12 +107,13 @@ function renderBoardHtml({ clubSlug, clubName, safePercent, boardTitle, eyebrowL
   // "JUL 31 - AUG 6" is the one thing the surrounding page can't say for the
   // board, since the board picks the week off the client clock.
   const isEmbed = embed === true
+  const b = BOARD_BRANDS[brand] || BOARD_BRANDS.wcs
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)} · West Coast Strength ${escapeHtml(clubName)}</title>
+<title>${escapeHtml(title)} · ${escapeHtml(b.name)} ${escapeHtml(clubName)}</title>
 <style>
 ${WCS_DISPLAY_FACE}
   *, *::before, *::after { box-sizing: border-box; }
@@ -100,8 +124,8 @@ ${WCS_DISPLAY_FACE}
     --color-bg: #ffffff;
     --color-surface: #f4f4f2;
     --color-text: #16181d;
-    --color-accent: #ff0000;
-    --color-accent-hover: #cc0000;
+    --color-accent: ${b.accent};
+    --color-accent-hover: ${b.accentHover};
     --color-line: rgb(0 0 0 / 0.12);
     --color-muted: rgb(0 0 0 / 0.58);
     --font-display: 'WCSDisplay', 'Arial Narrow', sans-serif;
@@ -651,7 +675,7 @@ ${isEmbed ? `
 </head>
 <body>
   <header class="head">
-    <img class="head__logo" src="${WCS_MARK_DATA_URI}" alt="West Coast Strength" />
+    <img class="head__logo" src="${b.logo}" alt="${escapeHtml(b.name)}" />
 ${isEmbed ? '' : `    <div class="head__titles">
       <span class="eyebrow">${escapeHtml(clubName)} · ${escapeHtml(eyebrow)}</span>
       <h1 class="title mark">${escapeHtml(title)}</h1>
