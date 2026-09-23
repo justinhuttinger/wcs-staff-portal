@@ -15,6 +15,7 @@ const { facilityBySlug } = require('../lib/facilities')
 const clubFeatures = require('../lib/clubFeatures')
 const { currentPacificDate, mondayOf, buildDays, windowEnd, publicCacheKey } = require('../lib/groupXPublic')
 const { renderBoardHtml } = require('../templates/groupXBoard')
+const { brandForSlug } = require('../services/dayOneProgram/brands')
 
 const router = Router()
 
@@ -118,6 +119,9 @@ router.get('/board', async (req, res) => {
   res.type('html').send(renderBoardHtml({
     clubSlug: r.club.slug,
     clubName: r.club.name,
+    // Milwaukie trades as East Side Athletic Clubs. Same slug map as its Group X
+    // board, so a club's courts, pool and class boards always match.
+    brand: brandForSlug(r.club.slug),
     safePercent,
     boardTitle: r.facility.title,
     eyebrowLabel: r.facility.label,
