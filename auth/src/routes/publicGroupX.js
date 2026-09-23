@@ -20,6 +20,7 @@ const { markNewClasses } = require('../lib/groupXNewClasses')
 const { supabaseAdmin } = require('../services/supabase')
 const { currentPacificDate, mondayOf, buildDays, windowEnd, publicCacheKey } = require('../lib/groupXPublic')
 const { renderBoardHtml } = require('../templates/groupXBoard')
+const { brandForSlug } = require('../services/dayOneProgram/brands')
 
 const router = Router()
 
@@ -123,6 +124,9 @@ router.get('/board', async (req, res) => {
   res.type('html').send(renderBoardHtml({
     clubSlug: r.club.slug,
     clubName: r.club.name,
+    // Milwaukie trades as East Side Athletic Clubs: ESAC wordmark, black
+    // accents. Same slug map as its Day One programs.
+    brand: brandForSlug(r.club.slug),
     safePercent,
     // ?embed=1 strips the board's own title block, status line and overscan
     // padding, for the iframe on westcoaststrength.com. See renderBoardHtml.
