@@ -266,3 +266,10 @@ test('every other club, and an unknown brand, stays WCS', () => {
     assert.ok(html.includes('--color-accent: #ff0000;'))
   }
 })
+
+test('hovering the class on now keeps it visible', () => {
+  // .day--today .cls--tap:hover outranks .cls--now, so the on-now card (white
+  // text) used to turn white under the cursor and vanish.
+  const html = groupX()
+  assert.ok(html.includes('.day--today .cls--now.cls--tap:hover { background: var(--color-accent-hover); }'))
+})

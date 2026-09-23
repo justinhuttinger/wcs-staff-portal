@@ -381,6 +381,11 @@ ${WCS_DISPLAY_FACE}
   .cls--tap:hover { background: var(--color-surface); }
   .cls--tap:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
   .day--today .cls--tap:hover { background: var(--color-bg); }
+  /* The class on now has white text on the accent. The hover rules above
+     outrank .cls--now, so without this it went white-on-white under the
+     cursor and looked like it vanished. It darkens instead, like a button. */
+  .cls--now.cls--tap:hover,
+  .day--today .cls--now.cls--tap:hover { background: var(--color-accent-hover); }
 
   .scrim {
     position: fixed; inset: 0;
