@@ -5,8 +5,8 @@ import AttendanceModal from '../components/groupx/AttendanceModal'
 
 // Login-free Group X attendance for one club, opened from its secret link
 // (/groupx.html?token=...). The same queue and the same "How many came?" modal
-// as the portal's Attendance tile, minus the club picker and the notes: the
-// token already picks the club, and all this page records is the number.
+// as the portal's Attendance tile, notes included, minus the club picker: the
+// token already picks the club.
 
 // A tablet left open on this page should not show a stale list the next
 // morning, so re-read now and then. The ABC calendar is cached server-side.
@@ -95,8 +95,7 @@ export default function GroupXAttendanceApp({ token }) {
       {attendanceFor && (
         <AttendanceModal
           classEvent={attendanceFor}
-          showNotes={false}
-          onSave={n => publicGroupXAttendance.save(token, attendanceFor.event_id, n)}
+          onSave={(n, notes) => publicGroupXAttendance.save(token, attendanceFor.event_id, n, notes)}
           onClose={() => setAttendanceFor(null)}
           onSaved={() => { setAttendanceFor(null); load() }}
         />

@@ -40,3 +40,15 @@ test('isoMinusDays crosses month and year', () => {
   assert.strictEqual(isoMinusDays('2026-03-03', 7), '2026-02-24')
   assert.strictEqual(isoMinusDays('2026-01-02', 7), '2025-12-26')
 })
+
+test('parseNotes trims, blanks to null, and bounds what the public link accepts', () => {
+  const { parseNotes, MAX_NOTES } = require('./groupXAttendance')
+  assert.deepStrictEqual(parseNotes(undefined), { notes: null })
+  assert.deepStrictEqual(parseNotes(null), { notes: null })
+  assert.deepStrictEqual(parseNotes('   '), { notes: null })
+  assert.deepStrictEqual(parseNotes('  Sub instructor, music was down  '), { notes: 'Sub instructor, music was down' })
+  assert.deepStrictEqual(parseNotes('x'.repeat(MAX_NOTES)), { notes: 'x'.repeat(MAX_NOTES) })
+  assert.match(parseNotes('x'.repeat(MAX_NOTES + 1)).error, /characters or fewer/)
+  assert.match(parseNotes({ a: 1 }).error, /must be text/)
+  assert.match(parseNotes(12).error, /must be text/)
+})

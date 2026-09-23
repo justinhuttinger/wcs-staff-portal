@@ -2,10 +2,9 @@ import { useState } from 'react'
 import { api } from '../../lib/api'
 import { fmtTime12, parseLocalTimestamp } from '../../lib/weekGrid'
 
-// `onSave(headcount)` replaces the staff API call: the login-free attendance
-// link passes its own token-gated save with `showNotes={false}`, since all it
-// records is the number.
-export default function AttendanceModal({ club, classEvent, onClose, onSaved, onSave, showNotes = true }) {
+// `onSave(headcount, notes)` replaces the staff API call: the login-free
+// attendance link passes its own token-gated save.
+export default function AttendanceModal({ club, classEvent, onClose, onSaved, onSave }) {
   const existing = classEvent.headcount != null
   const [headcount, setHeadcount] = useState(existing ? String(classEvent.headcount) : '')
   const [notes, setNotes] = useState(classEvent.notes || '')
@@ -24,7 +23,7 @@ export default function AttendanceModal({ club, classEvent, onClose, onSaved, on
     setError(null)
     try {
       if (onSave) {
-        await onSave(n)
+        await onSave(n, notes.trim() || null)
         onSaved()
         return
       }
@@ -89,18 +88,17 @@ export default function AttendanceModal({ club, classEvent, onClose, onSaved, on
             )}
           </div>
 
-          {showNotes && (
           <div>
             <label className="block text-xs font-medium text-text-muted mb-1">Notes (optional)</label>
             <textarea
               value={notes}
+              maxLength={1000}
               onChange={e => setNotes(e.target.value)}
               rows={2}
               placeholder="Anything worth remembering about this class"
               className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface text-text-primary"
             />
           </div>
-          )}
 
           {existing && (
             <div className="text-xs text-text-muted">

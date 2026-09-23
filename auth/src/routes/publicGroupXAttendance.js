@@ -5,7 +5,7 @@
  * same model as the Tour Check-In links: whoever has the link can see that
  * club's recently finished classes and type in how many came. Nothing else.
  *
- * The caller only ever sends a number. Class details (name, time, instructor,
+ * The caller only ever sends a number and an optional note. Class details (name, time, instructor,
  * capacity) are re-read from ABC server-side, so an anonymous caller cannot
  * write a row for a class that does not exist, belongs to another club, or has
  * not happened yet.
@@ -20,7 +20,7 @@ const { CLUBS } = require('../lib/groupXClubs')
 const clubFeatures = require('../lib/clubFeatures')
 const { supabaseAdmin } = require('../services/supabase')
 const { currentPacificDate } = require('../lib/groupXPublic')
-const { parseHeadcount, attendanceRow, isoMinusDays } = require('../lib/groupXAttendance')
+const { parseHeadcount, parseNotes, attendanceRow, isoMinusDays } = require('../lib/groupXAttendance')
 
 const router = Router()
 
@@ -56,7 +56,7 @@ async function recentClasses(club) {
   if (finished.length) {
     const { data, error } = await supabaseAdmin
       .from('group_x_class_attendance')
-      .select('abc_event_id, headcount, recorded_at')
+      .select('abc_event_id, headcount, notes, recorded_at')
       .eq('club_number', club.clubNumber)
       .in('abc_event_id', finished.map(c => c.event_id))
     if (error) throw new Error(error.message)
@@ -68,6 +68,7 @@ async function recentClasses(club) {
     return {
       ...c,
       headcount: a ? a.headcount : null,
+      notes: a ? a.notes : null,
       recorded_at: a ? a.recorded_at : null,
       needs_attendance: !a,
     }
@@ -91,6 +92,8 @@ router.get('/:token', async (req, res) => {
 router.put('/:token/classes/:eventId', async (req, res) => {
   const parsed = parseHeadcount((req.body || {}).headcount)
   if (parsed.error) return res.status(400).json({ error: parsed.error })
+  const note = parseNotes((req.body || {}).notes)
+  if (note.error) return res.status(400).json({ error: note.error })
   try {
     const club = await resolveToken(req.params.token)
     if (!club) return res.status(404).json({ error: 'This attendance link is not valid' })
@@ -108,6 +111,7 @@ router.put('/:token/classes/:eventId', async (req, res) => {
           eventId: cls.event_id,
           cls,
           headcount: parsed.headcount,
+          notes: note.notes,
           recordedBy: RECORDED_BY,
         }),
         { onConflict: 'club_number,abc_event_id' }
