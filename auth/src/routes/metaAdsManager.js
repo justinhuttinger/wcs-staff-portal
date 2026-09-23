@@ -12,6 +12,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { diskUpload, formPartFromFile, cleanupUploads } = require('./metaMediaUpload')
 const { uploadVideoChunked } = require('./metaVideoUpload')
+const { urlTagsFor } = require('../lib/metaUrlTags')
 
 const router = Router()
 router.use(authenticate)
@@ -990,6 +991,7 @@ async function createOneAd(variant, shared, token, accountId) {
     name: (variant.name || 'Ad') + ' — creative',
     object_story_spec: spec,
     degrees_of_freedom_spec: degreesOfFreedom(shared.advantage_plus),
+    url_tags: urlTagsFor(spec),
   }
   const creative = await metaWrite(`/${accountId}/adcreatives`, creativeBody, token)
 
@@ -1080,6 +1082,7 @@ router.put('/ads/:id', async (req, res) => {
         name: (name || creative.name || 'Ad') + ' — creative',
         object_story_spec: spec,
         degrees_of_freedom_spec: degreesOfFreedom(creative.advantage_plus),
+        url_tags: urlTagsFor(spec),
       }, token)
       body.creative = { creative_id: newCreative.id }
     }
