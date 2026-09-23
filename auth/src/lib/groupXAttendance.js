@@ -12,6 +12,17 @@ function parseHeadcount(value) {
   return { headcount }
 }
 
+// The login-free link takes notes from anyone holding it, so they are bounded
+// here rather than trusted. Returns { notes } (null when blank) or { error }.
+const MAX_NOTES = 1000
+function parseNotes(value) {
+  if (value == null) return { notes: null }
+  if (typeof value !== 'string') return { error: 'notes must be text' }
+  const notes = value.trim()
+  if (notes.length > MAX_NOTES) return { error: `notes must be ${MAX_NOTES} characters or fewer` }
+  return { notes: notes || null }
+}
+
 // Whole row. A partial upsert fails NOT NULL columns even when the row already
 // exists, which has broken syncs in this codebase before.
 function attendanceRow({ clubNumber, eventId, cls, headcount, notes, recordedBy }) {
@@ -40,4 +51,4 @@ function isoMinusDays(iso, n) {
   return d.toISOString().slice(0, 10)
 }
 
-module.exports = { MAX_HEADCOUNT, parseHeadcount, attendanceRow, isoMinusDays }
+module.exports = { MAX_HEADCOUNT, MAX_NOTES, parseHeadcount, parseNotes, attendanceRow, isoMinusDays }

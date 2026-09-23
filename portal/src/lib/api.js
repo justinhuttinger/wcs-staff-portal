@@ -1239,10 +1239,10 @@ async function publicFetch(path, options = {}) {
 // Login-free Group X headcount link (groupx.html?token=...).
 export const publicGroupXAttendance = {
   get: (token) => publicFetch(`/public/group-x-attendance/${encodeURIComponent(token)}`),
-  save: (token, eventId, headcount) =>
+  save: (token, eventId, headcount, notes) =>
     publicFetch(`/public/group-x-attendance/${encodeURIComponent(token)}/classes/${encodeURIComponent(eventId)}`, {
       method: 'PUT',
-      body: JSON.stringify({ headcount }),
+      body: JSON.stringify({ headcount, notes }),
     }),
 }
 
