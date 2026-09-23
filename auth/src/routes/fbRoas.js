@@ -15,6 +15,7 @@ const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireReportAccess } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
+const { isFacebookClick, resolveWebsiteAdId } = require('../lib/fbWebsiteAttribution')
 
 const FLAT_LTV = 990
 
@@ -129,6 +130,37 @@ async function fetchGhlSalesByAd(startDate, endDate) {
 }
 
 /**
+ * Sales from people who clicked a Facebook/Instagram ad through to the website
+ * form. GHL leaves adId empty for these and records only UTM tags, so
+ * fetchGhlSalesByAd never sees them. Same sale tag + first-touch window.
+ * Returns the raw attribution objects; the caller resolves each to an ad.
+ */
+async function fetchWebsiteClickSales(startDate, endDate) {
+  const endISO = endDate + 'T23:59:59.999Z'
+  const out = []
+  const PAGE = 1000
+  let offset = 0
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from('ghl_contacts_v2')
+      .select('id, attribution_source')
+      .contains('tags', ['sale'])
+      .is('attribution_source->>adId', null)
+      .not('attribution_source->>utmSource', 'is', null)
+      .gte('created_at_ghl', startDate)
+      .lte('created_at_ghl', endISO)
+      .range(offset, offset + PAGE - 1)
+    if (error) throw new Error(`Supabase website-click fetch failed: ${error.message}`)
+    for (const row of data || []) {
+      if (isFacebookClick(row.attribution_source)) out.push(row)
+    }
+    if (!data || data.length < PAGE) break
+    offset += PAGE
+  }
+  return out
+}
+
+/**
  * Fetch Meta Insights at level=ad for the date range. Returns Map<adId, { spend, impressions, clicks, leads }>.
  */
 async function fetchMetaAdSpend(startDate, endDate) {
@@ -196,6 +228,8 @@ router.use(requireReportAccess('corporate', ['meta-ads']))
  *   - sales counts contacts with tag 'sale' AND attribution_source.adId set,
  *     filtered by created_at_ghl in [start_date, end_date]. First-touch
  *     attribution: sales credit goes to the originating ad.
+ *   - plus website-form sales from a Facebook/Instagram ad click (no adId,
+ *     Facebook UTM tags), resolved to an ad by fbWebsiteAttribution.js.
  *   - spend is Meta-reported spend on the ad in the same window.
  *   - rows include ads with sales but no spend (residual sales from earlier
  *     runs of an ad) and ads with spend but no sales. cost_per_sale and roas
@@ -216,14 +250,39 @@ router.get('/', async (req, res) => {
   try {
     // GHL side is required; Meta side is best-effort so a Meta-API hiccup
     // doesn't blank the whole report.
-    const [salesByAd, spendResult] = await Promise.all([
+    const [salesByAd, spendResult, websiteSales] = await Promise.all([
       fetchGhlSalesByAd(start_date, end_date),
       fetchMetaAdSpend(start_date, end_date).catch(err => {
         console.error('[FB ROAS] Meta spend fetch failed (continuing with GHL only):', err.message)
         return new Map()
       }),
+      fetchWebsiteClickSales(start_date, end_date),
     ])
     const spendByAd = spendResult
+
+    // Credit website-form sales from ad clicks to their ad. Ones that can't be
+    // pinned to a single ad are counted in totals.website_unmatched instead.
+    let websiteUnmatched = 0
+    for (const row of websiteSales) {
+      const adId = resolveWebsiteAdId(row.attribution_source, spendByAd)
+      if (!adId) { websiteUnmatched += 1; continue }
+      let entry = salesByAd.get(adId)
+      if (!entry) {
+        const a = row.attribution_source || {}
+        entry = {
+          adId,
+          adsetId: /^\d{10,}$/.test(a.utmTerm || '') ? a.utmTerm : null,
+          adsetName: null,
+          campaignId: a.campaignId || (/^\d{10,}$/.test(a.utmCampaign || '') ? a.utmCampaign : null),
+          campaignName: null,
+          salesCount: 0,
+          sampleContactIds: [],
+        }
+        salesByAd.set(adId, entry)
+      }
+      entry.salesCount += 1
+      if (entry.sampleContactIds.length < 5) entry.sampleContactIds.push(row.id)
+    }
 
     // Build per-ad rows by unioning the two maps
     const adIds = new Set([...salesByAd.keys(), ...spendByAd.keys()])
@@ -306,6 +365,8 @@ router.get('/', async (req, res) => {
 
     totals.roas = totals.spend > 0 ? totals.revenue / totals.spend : null
     totals.cost_per_sale = totals.sales > 0 ? totals.spend / totals.sales : null
+    totals.website_click_sales = websiteSales.length
+    totals.website_unmatched = websiteUnmatched
 
     res.json({
       date_range: { start: start_date, end: end_date },
