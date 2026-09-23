@@ -68,6 +68,9 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
   const [startTime, setStartTime] = useState(adset ? toLocalInput(adset.start_time) : '')
   const [endTime, setEndTime] = useState(adset ? toLocalInput(adset.end_time) : '')
   const [status, setStatus] = useState(adset ? adset.status : 'PAUSED')
+  // Dynamic Creative: the ad set holds a single "one ad, many versions" ad.
+  // Meta only accepts it at create and never lets it change afterwards.
+  const [manyVersions, setManyVersions] = useState(!!(adset && adset.is_dynamic_creative))
 
   // Targeting
   const [geo, setGeo] = useState(() => readGeoList(existingGeo))
@@ -248,7 +251,13 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
         end_time: toIso(endTime),
       }
       if (editing) await updateAdsManagerAdset(adset.id, body)
-      else await createAdsManagerAdset({ ...body, campaign_id: campaign.id })
+      else {
+        await createAdsManagerAdset({
+          ...body,
+          campaign_id: campaign.id,
+          is_dynamic_creative: manyVersions ? true : undefined,
+        })
+      }
       onSaved()
     } catch (err) {
       setError(err.message)
@@ -527,6 +536,24 @@ export default function AdsetModal({ adset, campaign, account, onClose, onSaved 
           options={[{ value: 'PAUSED', label: 'Paused' }, { value: 'ACTIVE', label: 'Active' }]}
         />
       </Field>
+
+      <label className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={manyVersions}
+          onChange={e => setManyVersions(e.target.checked)}
+          disabled={editing}
+          className="mt-0.5 accent-wcs-red disabled:opacity-50"
+        />
+        <span className="text-xs text-text-muted">
+          <span className="font-semibold text-text-primary block">One ad, many versions</span>
+          {editing
+            ? (manyVersions
+              ? 'This ad set holds one ad with several images, videos and copy versions. Meta does not let this change after the ad set is created.'
+              : 'Meta only allows this on a new ad set. Create another ad set to use it.')
+            : "Turns on Meta's Dynamic Creative for this ad set, so it can hold one ad with several images, videos and copy versions that Meta mixes. It then holds exactly that one ad, and this cannot be changed later."}
+        </span>
+      </label>
     </Modal>
   )
 }

@@ -117,6 +117,21 @@ export const COPY_LIMITS = {
   description: 30,
 }
 
+// Hard caps for a "one ad, many versions" ad, from Meta's asset feed rules.
+// Mirrors FLEX_LIMITS in auth/src/lib/metaFlexibleAd.js, which enforces them.
+// The format, link and button count as 3 of the 30.
+export const FLEX_LIMITS = {
+  media: 10,        // per kind: up to 10 images and up to 10 videos
+  bodies: 5,
+  titles: 5,
+  descriptions: 5,
+  total: 30,
+  fixed: 3,
+  bodyChars: 1024,
+  titleChars: 255,
+  descriptionChars: 255,
+}
+
 export function statusTone(status) {
   switch (status) {
     case 'ACTIVE': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'

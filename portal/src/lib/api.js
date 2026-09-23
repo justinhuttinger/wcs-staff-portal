@@ -1522,6 +1522,12 @@ export async function createAdsManagerAds(body) {
   return api(MAM + '/ads', { method: 'POST', body: JSON.stringify(body) })
 }
 
+// "One ad, many versions": one creative with several media and copy options,
+// one ad. Resolves to { ok, ad_id, creative_id, name }.
+export async function createAdsManagerFlexibleAd(body) {
+  return api(MAM + '/ads/flexible', { method: 'POST', body: JSON.stringify(body) })
+}
+
 export async function updateAdsManagerAd(id, body) {
   return api(`${MAM}/ads/${id}`, { method: 'PUT', body: JSON.stringify(body) })
 }
