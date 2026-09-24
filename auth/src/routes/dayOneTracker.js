@@ -1,5 +1,6 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
+const { resolveDayOneCalendars } = require('../config/dayOneCalendars')
 const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 const { getLocationBySlug } = require('../config/ghlLocations')
@@ -10,49 +11,6 @@ router.use(authenticate)
 router.use(requireRole('team_member'))
 
 const CAL_VERSION = '2021-04-15'
-
-// Cache: location -> { calendarIds, groupId, cachedAt }
-// TTL: 1 hour — calendars rarely change but we don't want stale data forever
-const calendarCache = {}
-const CACHE_TTL = 60 * 60 * 1000
-
-async function getDayOneCalendarInfo(locationId, apiKey) {
-  const cached = calendarCache[locationId]
-  if (cached && (Date.now() - cached.cachedAt) < CACHE_TTL) return cached
-
-  // List all calendars at this location
-  const data = await ghlFetch('/calendars/', apiKey, {
-    params: { locationId },
-    version: CAL_VERSION,
-  })
-
-  const calendars = data.calendars || []
-  console.log(`[DayOneTracker] Found ${calendars.length} calendars for ${locationId}`)
-
-  // Find calendars whose name or groupId relates to "Day One"
-  // First, find any calendar with "day one" in its name
-  const dayOneCalendars = calendars.filter(cal => {
-    const name = (cal.name || '').toLowerCase()
-    return name.includes('day one') || name.includes('dayone') || name.includes('day 1')
-  })
-
-  if (dayOneCalendars.length > 0) {
-    // If they share a groupId, we can use that for filtering events
-    const groupId = dayOneCalendars[0].groupId || null
-    const result = {
-      calendarIds: dayOneCalendars.map(c => c.id),
-      groupId,
-    }
-    result.cachedAt = Date.now()
-    calendarCache[locationId] = result
-    console.log(`[DayOneTracker] Day One calendars: ${result.calendarIds.length}, groupId: ${groupId}`)
-    return result
-  }
-
-  // Fallback: log all calendar names for debugging
-  console.log(`[DayOneTracker] No Day One calendars found. Available:`, calendars.map(c => c.name))
-  return { calendarIds: [], groupId: null }
-}
 
 // GET /day-one-tracker/appointments
 router.get('/appointments', async (req, res) => {
@@ -68,8 +26,12 @@ router.get('/appointments', async (req, res) => {
   }
 
   try {
-    const calInfo = await getDayOneCalendarInfo(location.id, location.apiKey)
-    if (calInfo.calendarIds.length === 0) {
+    // Same allowlist as the reconciler and reports (config/dayOneCalendars),
+    // so the calendar shows every Day One they count: Milwaukie's Kirstyn
+    // calendar and Clackamas' Stretch included. This route used to name-match
+    // "day one" on its own, which neither of those names contains.
+    const calendars = await resolveDayOneCalendars(location)
+    if (calendars.length === 0) {
       return res.json({ appointments: [], debug: 'No Day One calendars found at this location' })
     }
 
@@ -83,33 +45,21 @@ router.get('/appointments', async (req, res) => {
       ? new Date(end_date + 'T23:59:59.999Z').getTime()
       : now.getTime()
 
+    // Per calendar, the same as the reconciler. A groupId query returns only
+    // the calendars in the Day One calendar's group, and nothing guarantees the
+    // extra calendars were ever put in it.
     let allEvents = []
-
-    // Try groupId first (single API call), fall back to per-calendar
-    if (calInfo.groupId) {
+    for (const cal of calendars) {
       const data = await ghlFetch('/calendars/events', location.apiKey, {
         params: {
           locationId: location.id,
-          groupId: calInfo.groupId,
+          calendarId: cal.id,
           startTime: startMs.toString(),
           endTime: endMs.toString(),
         },
         version: CAL_VERSION,
       })
-      allEvents = data.events || []
-    } else {
-      for (const calId of calInfo.calendarIds) {
-        const data = await ghlFetch('/calendars/events', location.apiKey, {
-          params: {
-            locationId: location.id,
-            calendarId: calId,
-            startTime: startMs.toString(),
-            endTime: endMs.toString(),
-          },
-          version: CAL_VERSION,
-        })
-        allEvents.push(...(data.events || []))
-      }
+      allEvents.push(...(data.events || []))
     }
 
     console.log(`[DayOneTracker] Fetched ${allEvents.length} events for ${location_slug}`)
