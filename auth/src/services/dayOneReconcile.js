@@ -19,7 +19,7 @@ const { ghlFetch } = require('./ghlClient')
 const { getUsersById, CAL_VERSION } = require('../lib/ghlBooking')
 const { resolveDayOneCalendars } = require('../config/dayOneCalendars')
 const {
-  rowFromEvent, bookerFromEvent, diffAppointment, linkReschedules,
+  rowFromEvent, bookerFromEvent, diffAppointment, linkReschedules, retireDeleted,
   DEFAULT_RESCHEDULE_WINDOW_HOURS,
 } = require('../lib/dayOneOutcomes')
 
@@ -43,9 +43,10 @@ async function fetchEvents(loc, calendar) {
     },
     version: CAL_VERSION,
   })
-  // A deleted appointment still comes back with deleted:true. Dropping it here
-  // rather than storing it keeps "how many Day Ones" from counting ghosts.
-  return (data.events || []).filter(e => e && e.id && !e.deleted)
+  // A deleted appointment still comes back with deleted:true. It is kept here so
+  // reconcileLocation can retire the row it left behind (see retireDeleted);
+  // it is never inserted, which keeps "how many Day Ones" from counting ghosts.
+  return (data.events || []).filter(e => e && e.id)
 }
 
 // One club can run Day Ones on more than one calendar (see config/dayOneCalendars).
@@ -75,11 +76,13 @@ async function fetchAllEvents(loc, calendars) {
 
 async function reconcileLocation(loc) {
   const calendars = await resolveDayOneCalendars(loc)
-  const [events, usersById] = await Promise.all([
+  const [allEvents, usersById] = await Promise.all([
     fetchAllEvents(loc, calendars),
     getUsersById(loc),
   ])
-  if (!events.length) return { location: loc.slug, seen: 0, inserted: 0, updated: 0, events: 0, linked: 0 }
+  const retired = await retireDeletedEvents(allEvents.filter(e => e.deleted))
+  const events = allEvents.filter(e => !e.deleted)
+  if (!events.length) return { location: loc.slug, seen: 0, inserted: 0, updated: 0, events: 0, linked: 0, retired }
 
   const ids = events.map(e => e.id)
   const { data: existing, error: readErr } = await supabaseAdmin
@@ -190,7 +193,38 @@ async function reconcileLocation(loc) {
   // booking that a cancellation could be paired against.
   const adopted = await adoptOrphans(loc.slug)
   const linked = await stitchReschedules(loc.slug)
-  return { location: loc.slug, seen: events.length, inserted, updated, events: historyRows.length, adopted, linked }
+  return { location: loc.slug, seen: events.length, inserted, updated, events: historyRows.length, adopted, linked, retired }
+}
+
+// Cancel the stored rows whose GHL appointment was deleted. Only rows that
+// already exist are touched; a deleted event with no row is never inserted.
+async function retireDeletedEvents(deleted) {
+  if (!deleted.length) return 0
+  const { data: stored, error } = await supabaseAdmin
+    .from('day_one_appointments')
+    .select('id, status, outcome_recorded_at')
+    .in('ghl_appointment_id', deleted.map(e => e.id))
+  if (error) { console.warn(`[dayOneReconcile] read deleted: ${error.message}`); return 0 }
+
+  let retired = 0
+  for (const row of stored || []) {
+    const patch = retireDeleted(row)
+    if (!patch) continue
+    const up = await supabaseAdmin.from('day_one_appointments')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', row.id).eq('status', row.status)
+    if (up.error) { console.warn(`[dayOneReconcile] retire failed: ${up.error.message}`); continue }
+    retired++
+    const ev = await supabaseAdmin.from('day_one_appointment_events').insert({
+      appointment_id: row.id,
+      event_type: 'cancelled',
+      from_value: { status: row.status },
+      to_value: { status: patch.status, reason: 'deleted_in_ghl' },
+      detected_by: 'reconciler',
+    })
+    if (ev.error) console.warn(`[dayOneReconcile] history insert failed: ${ev.error.message}`)
+  }
+  return retired
 }
 
 // Attach webhook rows that arrived without an appointment id to the real

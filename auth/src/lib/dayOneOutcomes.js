@@ -205,6 +205,28 @@ function isRecorded(row) {
   return row.status === 'completed' || row.status === 'no_show' || row.status === 'cancelled'
 }
 
+// What to do with a stored row whose GHL appointment has been DELETED.
+//
+// GHL keeps returning a deleted appointment with deleted:true, and the
+// reconciler used to drop those before looking at them. A row whose event was
+// deleted therefore never got touched again: it sat at status 'scheduled'
+// forever and, once its date passed, counted as a pending outcome nobody could
+// ever clear from the calendar (13 of them across four clubs on 2026-09-24).
+//
+// Deleting in GHL is how staff remove a double booking or a Day One that is not
+// happening, so it is treated as a cancellation. It is not a hard delete here:
+// the booking still happened and the booker keeps credit, the same as any other
+// cancelled Day One. An outcome already recorded always wins, the same rule the
+// reconciler applies to a GHL cancellation.
+//
+// Returns the patch to write, or null when there is nothing to do.
+function retireDeleted(stored) {
+  if (!stored) return null
+  if (isRecorded(stored)) return null
+  if (stored.status !== 'scheduled') return null
+  return { status: 'cancelled' }
+}
+
 const DEFAULT_WINDOW_BACK_DAYS = 21
 const DEFAULT_WINDOW_FORWARD_DAYS = 2
 
@@ -458,6 +480,7 @@ function displayStatus(row, now = new Date()) {
 
 module.exports = {
   isRecorded,
+  retireDeleted,
   DISPLAY_STATUS,
   displayStatus,
   sameInstant,
