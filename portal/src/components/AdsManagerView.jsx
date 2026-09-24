@@ -16,6 +16,7 @@ import CampaignModal from './adsmanager/CampaignModal'
 import AdsetModal from './adsmanager/AdsetModal'
 import DuplicateAdsetModal from './adsmanager/DuplicateAdsetModal'
 import AdVariantsModal from './adsmanager/AdVariantsModal'
+import FlexibleAdModal from './adsmanager/FlexibleAdModal'
 import AdEditModal from './adsmanager/AdEditModal'
 import StrandedAdsModal from './adsmanager/StrandedAdsModal'
 import ClubSetupModal from './adsmanager/ClubSetupModal'
@@ -26,20 +27,23 @@ import LaunchToClubsModal from './adsmanager/LaunchToClubsModal'
 // enforces and the one Ads Manager teaches. Reporting deliberately lives
 // elsewhere (Reporting → Meta Ads); this screen only creates and edits.
 
-function Column({ title, count, onAdd, addLabel, disabled, children }) {
+function Column({ title, count, onAdd, addLabel, disabled, extra, children }) {
   return (
     <div className="flex flex-col min-h-0 rounded-xl border border-border bg-surface">
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border">
         <h3 className="text-xs font-bold uppercase tracking-wider text-text-muted">
           {title}{count !== undefined && <span className="ml-2 text-text-primary">{count}</span>}
         </h3>
-        {onAdd && (
-          <button
-            onClick={onAdd}
-            disabled={disabled}
-            className="text-xs font-semibold text-wcs-red hover:underline disabled:text-text-muted disabled:no-underline disabled:cursor-not-allowed"
-          >{addLabel}</button>
-        )}
+        <div className="flex items-center gap-3">
+          {extra}
+          {onAdd && (
+            <button
+              onClick={onAdd}
+              disabled={disabled}
+              className="text-xs font-semibold text-wcs-red hover:underline disabled:text-text-muted disabled:no-underline disabled:cursor-not-allowed"
+            >{addLabel}</button>
+          )}
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto min-h-0">{children}</div>
     </div>
@@ -514,7 +518,17 @@ export default function AdsManagerView({ onBack }) {
           count={selectedAdset ? visibleAds.length : undefined}
           addLabel="+ New ads"
           disabled={!selectedAdset}
-          onAdd={() => selectedAdset && setModal({ type: 'ads' })}
+          // A Dynamic Creative ad set only takes the many-versions ad, so its
+          // "+ New ads" goes straight there instead of to a certain rejection.
+          onAdd={() => selectedAdset && setModal({ type: selectedAdset.is_dynamic_creative ? 'flexibleAd' : 'ads' })}
+          extra={
+            <button
+              onClick={() => selectedAdset && setModal({ type: 'flexibleAd' })}
+              disabled={!selectedAdset}
+              className="text-xs text-text-muted hover:text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
+              title="One ad holding several images, videos and copy versions"
+            >One ad, many versions</button>
+          }
         >
           {!selectedAdset ? (
             <EmptyState title="Pick an ad set" hint="Then build as many creative variants in it as you want." />
@@ -522,11 +536,23 @@ export default function AdsManagerView({ onBack }) {
             <EmptyState
               title={ads.length > 0 ? 'None match the status filter' : 'No ads yet'}
               hint={ads.length > 0 ? `${ads.length} hidden by the Status filter.` : 'Drop in a batch of images and get one ad each, sharing the same copy.'}
-              action={<Button onClick={() => setModal({ type: 'ads' })}>Create ads</Button>}
+              action={
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button onClick={() => setModal({ type: selectedAdset.is_dynamic_creative ? 'flexibleAd' : 'ads' })}>Create ads</Button>
+                  <Button variant="secondary" onClick={() => setModal({ type: 'flexibleAd' })}>One ad, many versions</Button>
+                </div>
+              }
             />
           ) : visibleAds.map(ad => {
             const spec = (ad.creative && ad.creative.object_story_spec) || {}
-            const linkData = spec.link_data || spec.video_data || {}
+            // A many-versions ad keeps its copy in the asset feed, not the
+            // story spec; show its first version of each.
+            const feed = (ad.creative && ad.creative.asset_feed_spec) || {}
+            const firstText = list => (list && list[0] && list[0].text) || undefined
+            const linkData = spec.link_data || spec.video_data || {
+              message: firstText(feed.bodies),
+              name: firstText(feed.titles),
+            }
             const thumb = ad.creative && (ad.creative.thumbnail_url || ad.creative.image_url)
             return (
               <Row key={ad.id} onClick={() => setModal({ type: 'editAd', ad })}>
@@ -602,6 +628,17 @@ export default function AdsManagerView({ onBack }) {
           adset={selectedAdset}
           campaign={selectedCampaign}
           account={account}
+          onClose={() => setModal(null)}
+          onCreated={() => loadAds(selectedAdset.id)}
+        />
+      )}
+
+      {modal && modal.type === 'flexibleAd' && selectedAdset && (
+        <FlexibleAdModal
+          adset={selectedAdset}
+          campaign={selectedCampaign}
+          account={account}
+          hasAds={ads.length > 0}
           onClose={() => setModal(null)}
           onCreated={() => loadAds(selectedAdset.id)}
         />

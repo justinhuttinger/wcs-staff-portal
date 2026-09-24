@@ -13,6 +13,7 @@ const { requireRole } = require('../middleware/role')
 const { diskUpload, formPartFromFile, cleanupUploads } = require('./metaMediaUpload')
 const { uploadVideoChunked } = require('./metaVideoUpload')
 const { urlTagsFor } = require('../lib/metaUrlTags')
+const { buildFlexibleCreative, adsetProblem } = require('../lib/metaFlexibleAd')
 
 const router = Router()
 router.use(authenticate)
@@ -664,7 +665,7 @@ router.delete('/campaigns/:id', async (req, res) => {
 
 const ADSET_FIELDS = 'id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,' +
   'billing_event,optimization_goal,bid_strategy,bid_amount,targeting,promoted_object,' +
-  'destination_type,start_time,end_time,created_time,updated_time'
+  'destination_type,is_dynamic_creative,start_time,end_time,created_time,updated_time'
 
 router.get('/adsets', async (req, res) => {
   try {
@@ -716,7 +717,7 @@ function buildAdsetBody(input) {
   const {
     name, campaign_id, status, daily_budget, lifetime_budget, billing_event,
     optimization_goal, bid_strategy, bid_amount, targeting, promoted_object,
-    destination_type, start_time, end_time, advantage_audience,
+    destination_type, start_time, end_time, advantage_audience, is_dynamic_creative,
   } = input || {}
 
   const body = {}
@@ -730,6 +731,9 @@ function buildAdsetBody(input) {
   if (end_time) body.end_time = end_time
   if (targeting) body.targeting = withAdvantageAudience(targeting, advantage_audience)
   if (promoted_object) body.promoted_object = promoted_object
+  // Only ever switched on, and only at create: Meta fixes it for the life of
+  // the ad set. It is what lets the ad set hold a "one ad, many versions" ad.
+  if (is_dynamic_creative === true) body.is_dynamic_creative = true
 
   const daily = toMinorUnits(daily_budget)
   const lifetime = toMinorUnits(lifetime_budget)
@@ -773,7 +777,9 @@ router.put('/adsets/:id', async (req, res) => {
     const { token } = getConfig()
     const body = buildAdsetBody(req.body)
     // campaign_id is immutable after creation — sending it back errors.
+    // So is is_dynamic_creative.
     delete body.campaign_id
+    delete body.is_dynamic_creative
     if (!Object.keys(body).length) return res.status(400).json({ error: 'Nothing to update' })
     await metaWrite(`/${req.params.id}`, body, token)
 
@@ -1061,6 +1067,71 @@ router.post('/ads', async (req, res) => {
     res.json({ created, failed: results.length - created, results })
   } catch (err) {
     fail(res, err, 'ads create')
+  }
+})
+
+// POST /meta-ads-manager/ads/flexible
+// "One ad, many versions": ONE creative holding several images/videos and
+// several primary texts, headlines and descriptions, and ONE ad in the chosen
+// ad set. Meta mixes the versions and serves the combinations that perform.
+// See lib/metaFlexibleAd.js for the shape and why it is Dynamic Creative.
+//
+// Every version reports as this one ad, so the FB ROAS report and GHL credit
+// the ad as a whole, never an individual image or line of copy.
+router.post('/ads/flexible', async (req, res) => {
+  try {
+    const { token, accountId } = getConfig()
+    const {
+      adset_id, name, page_id, instagram_user_id, link, call_to_action,
+      lead_gen_form_id, status, media, bodies, titles, descriptions,
+    } = req.body || {}
+
+    if (!adset_id) return res.status(400).json({ error: 'Ad set is required' })
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'The ad needs a name' })
+
+    let built
+    try {
+      built = buildFlexibleCreative({
+        page_id, instagram_user_id, link, call_to_action, lead_gen_form_id,
+        media, bodies, titles, descriptions,
+      })
+    } catch (err) {
+      return res.status(400).json({ error: err.message, problems: err.problems })
+    }
+
+    // Two reads before any write: a Dynamic Creative ad set takes exactly one
+    // ad, and only if it was created that way. Catching a wrong pick here
+    // keeps an orphan creative out of the account.
+    const target = await metaFetch(`/${adset_id}`, { fields: 'is_dynamic_creative,destination_type' }, token)
+    const existing = await metaFetch(`/${adset_id}/ads`, { fields: 'id,status', limit: 5 }, token)
+    const liveAds = (existing.data || []).filter(a => a.status !== 'DELETED').length
+    const blocked = adsetProblem(target, liveAds, !!lead_gen_form_id)
+    if (blocked) return res.status(400).json({ error: blocked })
+
+    const creative = await metaWrite(`/${accountId}/adcreatives`, {
+      name: String(name).trim() + ' — creative',
+      object_story_spec: built.object_story_spec,
+      asset_feed_spec: built.asset_feed_spec,
+      // The same opt-outs as every other ad here. Meta mixes the text it was
+      // given; none of these features is needed for that, and leaving
+      // text_optimizations off is what stops it writing or moving copy.
+      degrees_of_freedom_spec: degreesOfFreedom(false),
+      // urlTagsFor reads the button off an object_story_spec. The feed keeps
+      // it in asset_feed_spec instead, so hand it the same button in the shape
+      // it expects: website ads get the HighLevel template, form ads nothing.
+      url_tags: urlTagsFor({ link_data: { call_to_action: built.call_to_action } }),
+    }, token)
+
+    const ad = await metaWrite(`/${accountId}/ads`, {
+      name: String(name).trim(),
+      adset_id,
+      creative: { creative_id: creative.id },
+      status: status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED',
+    }, token)
+
+    res.json({ ok: true, ad_id: ad.id, creative_id: creative.id, name: String(name).trim() })
+  } catch (err) {
+    fail(res, err, 'flexible ad create')
   }
 })
 
