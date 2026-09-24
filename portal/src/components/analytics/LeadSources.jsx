@@ -5,6 +5,7 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { PALETTE, OTHER_COLOR, UNKNOWN_COLOR, fmtInt, fmtPct } from './chartPalette'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
+import LeadSourceBreakdowns from './LeadSourceBreakdowns'
 
 // ---------------------------------------------------------------------------
 // Lead Sources — Analytics (admin only)
@@ -233,6 +234,10 @@ export default function LeadSources({ startDate, endDate, locationSlug }) {
           {data.notes?.noSource && (
             <p className="text-[11px] text-text-muted px-1">{data.notes.noSource}</p>
           )}
+
+          {/* Facebook drill-down only on the observed view: "claimed Facebook"
+              is what someone said, and names no ad. */}
+          <LeadSourceBreakdowns query={query} showFacebook={attribution === 'real'} />
         </>
       )}
     </div>

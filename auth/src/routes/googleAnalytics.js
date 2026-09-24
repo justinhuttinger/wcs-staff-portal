@@ -455,3 +455,5 @@ router.get('/key-events', authenticate, requireReportAccess('corporate', ['googl
 })
 
 module.exports = router
+// Reused by Analytics > Lead Sources (website traffic by channel).
+module.exports.ga4 = { getPropertyId, runReport, buildLocationFilter }
