@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
+import InstructorPicker from './InstructorPicker'
 
 // Badges default to a month out. Long enough that members notice, short enough
 // that a forgotten badge ages off by itself.
@@ -188,19 +189,7 @@ export default function CreateClassModal({ club, classTypes, instructors, defaul
 
           <div>
             <label className="block text-xs font-medium text-text-muted mb-1">Instructor</label>
-            <select
-              value={employeeId}
-              onChange={e => setEmployeeId(e.target.value)}
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface text-text-primary"
-              required
-            >
-              <option value="">Select an instructor</option>
-              {instructors.map(i => (
-                <option key={i.employee_id} value={i.employee_id}>
-                  {i.display_name} ({i.department})
-                </option>
-              ))}
-            </select>
+            <InstructorPicker instructors={instructors} value={employeeId} onChange={setEmployeeId} />
           </div>
 
           <div className="grid grid-cols-3 gap-3">
