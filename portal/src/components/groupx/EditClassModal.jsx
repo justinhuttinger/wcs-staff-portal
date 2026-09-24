@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { api } from '../../lib/api'
 import { parseLocalTimestamp } from '../../lib/weekGrid'
 import EditScopeToggle from '../schedule/EditScopeToggle'
+import InstructorPicker from './InstructorPicker'
 
 const DAYS = [
   { value: 1, label: 'Mon' }, { value: 2, label: 'Tue' }, { value: 3, label: 'Wed' },
@@ -347,15 +348,7 @@ export default function EditClassModal({ club, classTypes, instructors, event, o
 
             <div>
               <label className="block text-xs font-medium text-text-muted mb-1">Instructor</label>
-              <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} required
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-surface text-text-primary">
-                <option value="">Select an instructor</option>
-                {instructors.map(i => (
-                  <option key={i.employee_id} value={i.employee_id}>
-                    {i.display_name} ({i.department})
-                  </option>
-                ))}
-              </select>
+              <InstructorPicker instructors={instructors} value={employeeId} onChange={setEmployeeId} />
             </div>
 
             <div className="grid grid-cols-3 gap-3">
