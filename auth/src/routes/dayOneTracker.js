@@ -4,6 +4,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole, resolveRole, ROLE_HIERARCHY } = require('../middleware/role')
 const { getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
+const { applyAppointmentRow } = require('../lib/dayOneCalendarStatus')
 
 const router = Router()
 router.use(authenticate)
@@ -157,12 +158,30 @@ router.get('/appointments', async (req, res) => {
       }
     }
 
+    // Per-appointment status, which beats the contact's custom fields wherever
+    // a row exists — see lib/dayOneCalendarStatus for why. A failed lookup only
+    // costs the override, so it degrades to the old behaviour instead of a 500.
+    const rowsByEventId = {}
+    const eventIds = [...new Set(allEvents.map(e => e.id).filter(Boolean))]
+    try {
+      for (let i = 0; i < eventIds.length; i += 200) {
+        const { data: rows, error } = await supabaseAdmin
+          .from('day_one_appointments')
+          .select('id, ghl_appointment_id, status, outcome, pt_sale_type, why_no_sale, trainer_name, booked_by_name')
+          .in('ghl_appointment_id', eventIds.slice(i, i + 200))
+        if (error) throw error
+        for (const r of rows || []) rowsByEventId[r.ghl_appointment_id] = r
+      }
+    } catch (e) {
+      console.warn('[DayOneTracker] day_one_appointments lookup failed, using contact fields:', e.message)
+    }
+
     const appointments = allEvents
       .map(evt => {
         const contact = contactData[evt.contactId] || {}
         const assignedUser = userMap[evt.assignedUserId] || {}
         const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(' ') || 'Unknown'
-        return {
+        return applyAppointmentRow({
           id: evt.id,
           contact_id: evt.contactId || null,
           contact_name: contactName,
@@ -179,7 +198,7 @@ router.get('/appointments', async (req, res) => {
           why_no_sale: contact.why_no_sale || null,
           day_one_booking_team_member: contact.day_one_booking_team_member || null,
           day_one_trainer: contact.day_one_trainer || null,
-        }
+        }, rowsByEventId[evt.id])
       })
       .sort((a, b) => new Date(b.appointment_time) - new Date(a.appointment_time))
 
