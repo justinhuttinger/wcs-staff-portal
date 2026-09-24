@@ -5,7 +5,7 @@ const {
   validateOutcome, legacyGhlFields, pickOpenAppointments,
   linkReschedules, diffAppointment, statusFromGhl, pacificDate,
   rowFromEvent, bookerFromEvent, flattenWebhookBody, webhookLabels,
-  displayStatus, isRecorded,
+  displayStatus, isRecorded, retireDeleted,
 } = require('./dayOneOutcomes')
 
 // --- the conditional form ---------------------------------------------------
@@ -602,4 +602,25 @@ test('a real cancellation still produces exactly one event', () => {
   assert.equal(events[0].event_type, 'cancelled')
   // And re-running against the now-cancelled row produces nothing further.
   assert.deepEqual(diffAppointment(written, written), [])
+})
+
+// --- appointments deleted in GHL ---------------------------------------------
+
+test('retireDeleted: an open scheduled row becomes cancelled', () => {
+  assert.deepEqual(retireDeleted({ status: 'scheduled', outcome_recorded_at: null }), { status: 'cancelled' })
+})
+
+test('retireDeleted: a recorded outcome is never overridden', () => {
+  assert.equal(retireDeleted({ status: 'completed', outcome: 'Sale', outcome_recorded_at: '2026-09-04T20:00:00Z' }), null)
+  assert.equal(retireDeleted({ status: 'no_show', outcome_recorded_at: '2026-09-04T20:00:00Z' }), null)
+})
+
+test('retireDeleted: already cancelled, or nothing stored, is a no-op', () => {
+  assert.equal(retireDeleted({ status: 'cancelled', outcome_recorded_at: null }), null)
+  assert.equal(retireDeleted(null), null)
+})
+
+test('retireDeleted: a stray timestamp on a scheduled row does not block it', () => {
+  // isRecorded ignores outcome_recorded_at without a recorded status.
+  assert.deepEqual(retireDeleted({ status: 'scheduled', outcome_recorded_at: '2026-09-04T20:00:00Z' }), { status: 'cancelled' })
 })
