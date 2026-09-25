@@ -35,6 +35,7 @@ class TabManager {
     const preload = options.preload || undefined
 
     const isPortalPreload = preload && preload.includes('portal-preload')
+    const isAbcPreload = preload && preload.includes('abc-scraper') && require('./app-mode').IS_ABC_ONLY
     const view = new BrowserView({
       webPreferences: {
         preload,
@@ -47,6 +48,9 @@ class TabManager {
     // Set Chrome user agent so sites like GHL don't block Electron
     const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
     view.webContents.setUserAgent(chromeUA)
+    // WCS ABC: mute ABC's own sounds (all of them: media, Web Audio, frames).
+    // The check-in alert cues play from alert-sound.js instead.
+    if (isAbcPreload) view.webContents.setAudioMuted(true)
 
     attachContextMenu(view.webContents)
 

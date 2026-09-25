@@ -3,6 +3,12 @@
 
 const { ipcRenderer } = require('electron')
 
+// WCS ABC app only: the check-in alert cues below are off in the Portal app.
+// (ABC's own sounds are muted for the whole tab in tabs.js.)
+const IS_ABC_APP = (() => {
+  try { return ipcRenderer.sendSync('wcs-app-mode') === 'abc' } catch (e) { return false }
+})()
+
 // Login overlay for ABC
 let overlayEl = null
 function showABCOverlay() {
@@ -424,8 +430,169 @@ function updateToolbar() {
   if (show) positionToolbar(host)
 }
 
+// --- Check-in alert cues ----------------------------------------------------
+// ABC's check-in feed (right-hand panel of the main shell) adds one
+// `.checkin-card[cilid]` per check-in, with a `.datatrak-alert <severity>` tag
+// per alert (e.g. "PAYMENT OVERDUE 12 DAYS", "MEMBER IS MINOR"). When a NEW
+// card arrives with alerts, play a sound and show a banner (red alerts also
+// flash the screen edge) so the front desk can't miss it. Cards already in the feed
+// when the page loads are the baseline and never cue.
+//
+// Only two kinds of alert cue:
+//   red         = past due / overdue balance, cancelled, expired, RFC / return
+//                 for collections: BEEP BEEP BEEP + flashing red edge + banner
+//   blue-double = need photo / DOB / address: double chime + blue banner
+// Every other alert (minor, already checked in, prospect, ...) gets no cue.
+const RED_ALERT_RE = /overdue|past due|balance due|cancel|expired|\bRFC\b|collections?/i
+const IGNORE_ALERT_RE = /manual check ?in|free drink/i
+// Missing member info: blue banner + the chime twice. Nothing else cues.
+const NEED_INFO_RE = /need (photo|dob|date of birth|birth ?date|address)/i
+const IGNORE_SEVERITIES = ['success', 'dark'] // ABC's green / grey info tags
+
+function alertLevel(el) {
+  const text = (el.textContent || '').trim()
+  if (!text || IGNORE_ALERT_RE.test(text)) return null
+  if (RED_ALERT_RE.test(text)) return 'red'
+  if (IGNORE_SEVERITIES.some(c => el.classList.contains(c))) return null
+  // Missing member info gets the double chime; every other alert gets no cue.
+  return NEED_INFO_RE.test(text) ? 'blue-double' : null
+}
+
+// Only cue check-ins that just happened. The feed loads OLDER check-ins as
+// staff scroll, and those are unseen too, so "unseen" alone isn't enough: the
+// card's check-in time (`.timesince[title="YYYY-MM-DD HH:MM:SS"]`, club local
+// time) must be within FRESH_MS of now. Cards without a readable time only
+// cue if they're at the top of the feed.
+const FRESH_MS = 2 * 60 * 1000
+function isFreshCheckin(card) {
+  const t = card.querySelector('.timesince[title]')
+  const m = t && /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(t.getAttribute('title'))
+  if (m) {
+    const at = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime()
+    return Math.abs(Date.now() - at) <= FRESH_MS
+  }
+  const first = card.parentElement && card.parentElement.querySelector('.checkin-card[cilid]')
+  return first === card
+}
+
+const seenCheckins = new Set()
+let alertBaselineDone = false
+const pendingRecheck = new Map() // cilid -> tries left (alerts can render a beat after the card)
+
+function scanCheckinFeed() {
+  if (window.top !== window) return
+  const cards = document.querySelectorAll('.checkin-card[cilid]')
+  if (!alertBaselineDone) {
+    // Wait for the feed to render before taking the baseline.
+    if (!cards.length && !document.querySelector('#checkin-panel')) return
+    cards.forEach(c => seenCheckins.add(c.getAttribute('cilid')))
+    alertBaselineDone = true
+    return
+  }
+  let worst = null
+  const hits = []
+  let name = ''
+  cards.forEach(card => {
+    const id = card.getAttribute('cilid')
+    const isNew = !seenCheckins.has(id)
+    if (!isNew && !pendingRecheck.has(id)) return
+    seenCheckins.add(id)
+    if (isNew && !isFreshCheckin(card)) return // older check-in loaded by scrolling
+    const found = []
+    card.querySelectorAll('.datatrak-alert').forEach(a => {
+      const level = alertLevel(a)
+      if (level) found.push({ text: (a.textContent || '').trim(), level })
+    })
+    if (!found.length) {
+      const left = isNew ? 2 : pendingRecheck.get(id) - 1
+      if (left > 0) pendingRecheck.set(id, left); else pendingRecheck.delete(id)
+      return
+    }
+    pendingRecheck.delete(id)
+    const t = card.querySelector('.title')
+    if (!name && t) name = tidyName(t.textContent.trim())
+    found.forEach(f => {
+      hits.push(f)
+      // red > blue-double > blue
+      if (f.level === 'red') worst = 'red'
+      else if (f.level === 'blue-double' && worst !== 'red') worst = 'blue-double'
+      else if (!worst) worst = 'blue'
+    })
+  })
+  if (worst) showAlertCue(worst, name, hits)
+}
+
+// The ABC tab is muted (so ABC's own sounds never play), so the cue sound is
+// played by the main process from its own hidden window (alert-sound.js).
+function playCue(level) {
+  ipcRenderer.send('abc-alert-sound', level)
+}
+
+let cueHost = null
+let cueRoot = null
+let cueTimer = null
+function showAlertCue(sound, name, hits) {
+  playCue(sound)
+  const level = sound === 'red' ? 'red' : 'blue' // blue-double looks the same as blue
+  if (!cueHost) {
+    cueHost = document.createElement('div')
+    cueHost.id = 'wcs-alert-cue'
+    cueHost.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;'
+    cueRoot = cueHost.attachShadow({ mode: 'closed' })
+    cueRoot.innerHTML = '<style>' +
+      '.edge{position:fixed;inset:0;pointer-events:none;animation:pulse 0.8s ease-in-out 4;}' +
+      '.edge.red{box-shadow:inset 0 0 0 10px #e53e3e,inset 0 0 60px 20px rgba(229,62,62,.55);}' +
+      '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}' +
+      '.banner{position:fixed;top:14px;left:50%;transform:translateX(-50%);max-width:min(720px,90vw);' +
+      'pointer-events:auto;cursor:pointer;border-radius:12px;padding:14px 22px;color:#fff;' +
+      "font:600 18px/1.35 'Inter',-apple-system,'Segoe UI',sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.35);}" +
+      '.banner.red{background:#c53030;}.banner.blue{background:#2b6cb0;}' +
+      '.name{font-size:20px;font-weight:800;margin-bottom:4px;}' +
+      '.alerts{display:flex;flex-wrap:wrap;gap:6px;}' +
+      '.tag{background:rgba(255,255,255,.18);border-radius:6px;padding:2px 8px;font-size:15px;}' +
+      '.hint{font-size:12px;font-weight:500;opacity:.8;margin-top:6px;}' +
+      '</style><div class="edge"></div><div class="banner"><div class="name"></div>' +
+      '<div class="alerts"></div><div class="hint">Click to dismiss</div></div>'
+    cueRoot.querySelector('.banner').addEventListener('click', hideAlertCue)
+    document.documentElement.appendChild(cueHost)
+  }
+  const edge = cueRoot.querySelector('.edge')
+  const banner = cueRoot.querySelector('.banner')
+  // Red flashes the screen edge; blue is banner + chime only.
+  edge.style.display = level === 'red' ? '' : 'none'
+  edge.className = 'edge ' + level
+  // Restart the pulse for back-to-back check-ins.
+  edge.style.animation = 'none'
+  void edge.offsetWidth
+  edge.style.animation = ''
+  banner.className = 'banner ' + level
+  cueRoot.querySelector('.name').textContent = (level === 'red' ? '⚠ ' : '') + (name || 'Check-in alert')
+  const alerts = cueRoot.querySelector('.alerts')
+  alerts.textContent = ''
+  hits.forEach(h => {
+    const tag = document.createElement('span')
+    tag.className = 'tag'
+    tag.textContent = h.text
+    alerts.appendChild(tag)
+  })
+  cueHost.style.display = ''
+  clearTimeout(cueTimer)
+  cueTimer = setTimeout(hideAlertCue, level === 'red' ? 15000 : 8000)
+}
+
+function hideAlertCue() {
+  clearTimeout(cueTimer)
+  if (cueHost) cueHost.style.display = 'none'
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   tryAutoFill()
+
+  // WCS ABC only: check-in alert cues (main shell)
+  if (IS_ABC_APP) {
+    scanCheckinFeed()
+    setInterval(scanCheckinFeed, 750)
+  }
 
   updateToolbar()
   setInterval(updateToolbar, 1000)
