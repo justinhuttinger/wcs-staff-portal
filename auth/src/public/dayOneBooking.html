@@ -14,6 +14,7 @@
     --fill-2: #9ca3af;
     --danger: #b42318;
     --ok: #2f7d4f;
+    --accent: #c8102e;
   }
   * { box-sizing: border-box; }
   html, body { background: #fff; }
@@ -250,6 +251,19 @@
   }
   body.compact .time { padding: 11px 4px; font-size: 14px; }
   body.compact .time-pair { grid-column: 1 / -1; }
+  /* Compact: the chosen time stays where it is (bold red) and Select sits under
+     the whole grid. Splicing a two-button row into the middle of the grid
+     shoved every later time down and read as a layout glitch. */
+  body.compact .time.sel {
+    border: 2px solid var(--accent); color: var(--accent); font-weight: 800;
+    background: #fff; padding: 10px 3px;
+  }
+  body.compact .confirm-bottom {
+    grid-column: 1 / -1; margin-top: 4px;
+    background: var(--ink); color: #fff; border: 0; border-radius: 8px;
+    padding: 13px 8px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  body.compact .confirm-bottom:hover { background: #000; }
   body.compact .form-pane { padding: 14px 16px; }
   body.compact .two { grid-template-columns: 1fr; gap: 0; }
 
@@ -807,7 +821,15 @@
         (S.key ? ' for this trainer' : '') + '.</span>'
       return
     }
-    $('times').innerHTML = list.map(function (iso) {
+    if (COMPACT) {
+      $('times').innerHTML = list.map(function (iso) {
+        var on = iso === S.startTime
+        return '<button class="time' + (on ? ' sel' : '') + '" data-iso="' + iso + '"' +
+          ' aria-pressed="' + on + '">' + fmtTime(iso) + '</button>'
+      }).join('') +
+        (S.startTime && list.indexOf(S.startTime) !== -1
+          ? '<button class="confirm confirm-bottom">Select</button>' : '')
+    } else $('times').innerHTML = list.map(function (iso) {
       if (iso === S.startTime) {
         return '<div class="time-pair"><div class="chosen">' + fmtTime(iso) + '</div>' +
           '<button class="confirm" data-iso="' + iso + '">Select</button></div>'
