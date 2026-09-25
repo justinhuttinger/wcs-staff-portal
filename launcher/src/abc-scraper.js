@@ -174,6 +174,8 @@ function isSearchInput(el) {
 
 function readField(el) {
   if (!el || isSearchInput(el)) return ''
+  // Hidden edit dialogs on the member record hold stale/other-member values.
+  if (el.closest && el.closest('.modal, .fake-modal-bootstrap')) return ''
   if ('value' in el && typeof el.value === 'string' && el.tagName !== 'BUTTON') return el.value.trim()
   const input = el.querySelector && el.querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea')
   if (input) return isSearchInput(input) ? '' : (input.value || '').trim()
@@ -202,9 +204,50 @@ function findByLabel(doc, re) {
   return ''
 }
 
+// ABC member record (Personal tab, inside the #main frame) tags each value with
+// data-automation-id. Empty values render as "--". Hidden edit dialogs in the
+// same frame reuse similar fields, so anything inside a modal is skipped.
+function readRecord(doc, id) {
+  for (const el of doc.querySelectorAll(`[data-automation-id="${id}"]`)) {
+    if (el.closest('.modal, .fake-modal-bootstrap')) continue
+    const v = readField(el)
+    if (v && v !== '--') return v
+  }
+  return ''
+}
+
+// ABC shows names in caps ("JANE  DOE"); title-case them for the booking form.
+function tidyName(s) {
+  return s === s.toUpperCase() ? s.toLowerCase().replace(/(^|[\s'-])\S/g, c => c.toUpperCase()) : s
+}
+
+function scrapeRecord(doc, out) {
+  if (!out.firstName || !out.lastName) {
+    const parts = (readRecord(doc, 'name') || '').split(/\s+/).filter(Boolean)
+    // Drop a lone middle initial: "JANE Q DOE" -> Jane / Doe
+    if (parts.length > 2 && /^[A-Za-z]\.?$/.test(parts[1])) parts.splice(1, 1)
+    if (parts.length >= 2) {
+      out.firstName = out.firstName || tidyName(parts[0])
+      out.lastName = out.lastName || tidyName(parts.slice(1).join(' '))
+    }
+  }
+  const email = readRecord(doc, 'emailAddress')
+  if (!out.email && isValid('email', email)) out.email = email
+  const cell = readRecord(doc, 'cellPhone')
+  const primary = readRecord(doc, 'homePhone')    // labelled "Primary Phone"
+  if (!out.cellPhone && isValid('phone', cell)) out.cellPhone = cell
+  if (!out.primaryPhone && isValid('phone', primary)) out.primaryPhone = primary
+  if (!out.phone) out.phone = out.cellPhone || out.primaryPhone || ''
+  if (!out.barcode) out.barcode = readRecord(doc, 'barcode')
+  if (!out.birthday) out.birthday = readRecord(doc, 'birthday')   // "Date of Birth"
+}
+
 function scrapeProfile() {
   const out = {}
   const docs = collectDocs()
+  for (const doc of docs) {
+    try { scrapeRecord(doc, out) } catch (e) {}
+  }
   const keys = ['firstName', 'lastName', 'email', 'phone']
   for (const doc of docs) {
     for (const key of keys) {
