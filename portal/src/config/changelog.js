@@ -11,7 +11,7 @@
 // audience fields (all optional; an entry shows only if ALL present conditions
 // pass):
 //   minRole : tier floor — 'lead' | 'manager' | 'corporate' | 'admin'
-//   tool    : must have this tool visible — 'inventory' | 'forms' | 'admin' |
+//   tool    : must have this tool visible — 'inventory' | 'forms' | 'quizzes' | 'admin' |
 //             'trainerAvail' | 'groupX' | 'facility'
 //   report  : must be able to see this report key — e.g. 'till', 'pos-sales'
 
@@ -43,6 +43,7 @@ function canSeeTool(tool, { role, visibleTools }) {
   switch (tool) {
     case 'inventory': return (visibleTools || []).includes('inventory')
     case 'forms': return idx >= ROLE_LEVELS.admin || (visibleTools || []).includes('forms')
+    case 'quizzes': return idx >= ROLE_LEVELS.admin || (visibleTools || []).includes('quizzes')
     case 'trainerAvail': return (visibleTools || []).includes('trainerAvail')
     case 'till': return (visibleTools || []).includes('till')
     case 'groupX': return (visibleTools || []).includes('groupX')
@@ -69,6 +70,12 @@ export function visibleChangelog(ctx) {
 }
 
 export const CHANGELOG = [
+  {
+    id: 17, date: '2026-09-25',
+    title: 'Quiz Funnels',
+    body: 'Marketing has a new Quiz Funnels tile. Build a multi-step lead quiz, turn it on for the clubs you want, and every answer lands in a Google Sheet and that club’s GHL webhook. Each club link can load GHL External Tracking, plus a Meta Pixel and GTM for the quiz.',
+    audience: { tool: 'quizzes' },
+  },
   {
     id: 16, date: '2026-09-16',
     title: 'Inventory, Ordering, Insights and Send Notifications are in Roles & Permissions',

@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { forms as formsApi } from '../../lib/api'
+import { forms as defaultFormsApi, quizzes as quizzesApi } from '../../lib/api'
 import FieldEditor from './FieldEditor'
 import FormPreview from './FormPreview'
 import FormSharePanel from './FormSharePanel'
 import FormQrPanel from './FormQrPanel'
 import FormAuditPanel from './FormAuditPanel'
+import { quizSettingsFrom } from './quizDefaults'
+import { QuizContactPanel, QuizThankYouPanel, QuizTrackingPanel } from './QuizSettingsPanels'
+import QuizClubsPanel from './QuizClubsPanel'
+import QuizSubmissionsPanel from './QuizSubmissionsPanel'
 
 // Mirror the backend role canonicalization (auth/src/middleware/role.js):
 // front_desk/personal_trainer -> team_member, director -> corporate; custom sits
@@ -44,6 +48,19 @@ const TABS = [
   { key: 'audit', label: 'Audit' },
 ]
 
+// Quiz Funnels reuse this builder (kind='quiz'): questions only, one per
+// screen on the public page, plus contact/clubs/tracking tabs.
+const QUIZ_TABS = [
+  { key: 'build', label: 'Questions' },
+  { key: 'contact', label: 'Contact' },
+  { key: 'clubs', label: 'Clubs' },
+  { key: 'tracking', label: 'Tracking' },
+  { key: 'settings', label: 'After Submit' },
+  { key: 'submissions', label: 'Submissions' },
+  { key: 'share', label: 'Share' },
+  { key: 'audit', label: 'Audit' },
+]
+
 // Sentinel for the "all locations" choice (location_id is NULL on the backend).
 const ALL_LOCATIONS_VALUE = '__all_locations__'
 
@@ -63,7 +80,11 @@ function makeField(type, existingIds) {
   return field
 }
 
-export default function FormBuilder({ formId, onBack, me }) {
+export default function FormBuilder({ formId, onBack, me, kind = 'form' }) {
+  const isQuiz = kind === 'quiz'
+  const formsApi = isQuiz ? quizzesApi : defaultFormsApi
+  const tabs = isQuiz ? QUIZ_TABS : TABS
+  const fieldTypes = isQuiz ? FIELD_TYPES.filter(t => !DISPLAY_TYPES.includes(t.type)) : FIELD_TYPES
   const [form, setForm] = useState(null)
   const [shares, setShares] = useState([])
   const [loadError, setLoadError] = useState('')
@@ -74,6 +95,7 @@ export default function FormBuilder({ formId, onBack, me }) {
   const [schema, setSchema] = useState([])
   const [successMessage, setSuccessMessage] = useState('')
   const [allowResubmit, setAllowResubmit] = useState(false)
+  const [quizSettings, setQuizSettings] = useState(() => quizSettingsFrom(null))
   // location_id as a form value: a club UUID, or the all-locations sentinel.
   const [locationValue, setLocationValue] = useState(ALL_LOCATIONS_VALUE)
   const [baseline, setBaseline] = useState('')
@@ -99,15 +121,15 @@ export default function FormBuilder({ formId, onBack, me }) {
   // Settings map to the backend settings blob. Kept in the same dirty/baseline
   // snapshot as title/description/schema so one Save covers everything.
   const settings = useMemo(
-    () => ({ success_message: successMessage, allow_resubmit: allowResubmit }),
-    [successMessage, allowResubmit]
+    () => (isQuiz ? quizSettings : { success_message: successMessage, allow_resubmit: allowResubmit }),
+    [isQuiz, quizSettings, successMessage, allowResubmit]
   )
   const dirty = useMemo(
     () => baseline !== '' && JSON.stringify({ title, description, schema, settings, location: locationValue }) !== baseline,
     [baseline, title, description, schema, settings, locationValue]
   )
   const selectedField = schema.find(f => f.id === selectedId) || null
-  const publicUrl = form?.slug ? `https://forms.westcoaststrength.com/f/${form.slug}` : ''
+  const publicUrl = !isQuiz && form?.slug ? `https://forms.westcoaststrength.com/f/${form.slug}` : ''
 
   function syncLoaded(f) {
     const t = f.title || ''
@@ -116,6 +138,7 @@ export default function FormBuilder({ formId, onBack, me }) {
     const set = f.settings || {}
     const sm = typeof set.success_message === 'string' ? set.success_message : ''
     const ar = !!set.allow_resubmit
+    const qs = quizSettingsFrom(set)
     const loc = f.location_id || ALL_LOCATIONS_VALUE
     setForm(f)
     setTitle(t)
@@ -123,11 +146,12 @@ export default function FormBuilder({ formId, onBack, me }) {
     setSchema(s)
     setSuccessMessage(sm)
     setAllowResubmit(ar)
+    setQuizSettings(qs)
     setLocationValue(loc)
     setEditingTitle(false)
     setBaseline(JSON.stringify({
       title: t, description: d, schema: s,
-      settings: { success_message: sm, allow_resubmit: ar },
+      settings: isQuiz ? qs : { success_message: sm, allow_resubmit: ar },
       location: loc,
     }))
   }
@@ -259,7 +283,7 @@ export default function FormBuilder({ formId, onBack, me }) {
       if (res.sheet_error) {
         setSheetWarning(`Form published. Google Sheet could not be created yet: ${res.sheet_error}. Submissions are safe and will sync once the sheet connects.`)
       }
-      setTab('qr')
+      setTab(isQuiz ? 'clubs' : 'qr')
     } catch (err) {
       setActionError(err.message || 'Failed to publish form')
     } finally {
@@ -295,7 +319,7 @@ export default function FormBuilder({ formId, onBack, me }) {
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-4 w-full">
         <div className="bg-red-50 border border-red-200 text-wcs-red rounded-xl px-4 py-3 text-sm">{loadError}</div>
         <button onClick={onBack} className="px-4 py-2 text-sm text-text-muted border border-border rounded-lg hover:text-text-primary transition-colors">
-          Back to Forms
+          {isQuiz ? 'Back to Quiz Funnels' : 'Back to Forms'}
         </button>
       </div>
     )
@@ -448,7 +472,7 @@ export default function FormBuilder({ formId, onBack, me }) {
 
       {/* Tab bar */}
       <div className="bg-surface border border-border rounded-xl p-2 flex flex-wrap gap-1">
-        {TABS.map(t => (
+        {tabs.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -461,7 +485,7 @@ export default function FormBuilder({ formId, onBack, me }) {
         ))}
       </div>
 
-      {tab === 'settings' && (
+      {tab === 'settings' && !isQuiz && (
         <div className="bg-surface rounded-xl border border-border p-5 space-y-5">
           <div>
             <h3 className="text-sm font-bold text-text-primary">Form settings</h3>
@@ -516,9 +540,24 @@ export default function FormBuilder({ formId, onBack, me }) {
         </div>
       )}
 
-      {tab === 'share' && <FormSharePanel form={form} shares={shares} onChanged={load} />}
+      {isQuiz && tab === 'settings' && (
+        <QuizThankYouPanel value={quizSettings.thank_you} disabled={!canEdit}
+          onChange={v => setQuizSettings(s => ({ ...s, thank_you: v }))} />
+      )}
+      {isQuiz && tab === 'contact' && (
+        <QuizContactPanel value={quizSettings.contact_step} disabled={!canEdit}
+          onChange={v => setQuizSettings(s => ({ ...s, contact_step: v }))} />
+      )}
+      {isQuiz && tab === 'tracking' && (
+        <QuizTrackingPanel value={quizSettings.tracking} disabled={!canEdit}
+          onChange={v => setQuizSettings(s => ({ ...s, tracking: v }))} />
+      )}
+      {isQuiz && tab === 'clubs' && <QuizClubsPanel form={form} api={formsApi} canEdit={canEdit} />}
+      {isQuiz && tab === 'submissions' && <QuizSubmissionsPanel form={form} api={formsApi} canEdit={canEdit} />}
+
+      {tab === 'share' && <FormSharePanel form={form} shares={shares} onChanged={load} api={formsApi} />}
       {tab === 'qr' && <FormQrPanel form={form} />}
-      {tab === 'audit' && <FormAuditPanel form={form} isCorporate={isCorporate} />}
+      {tab === 'audit' && <FormAuditPanel form={form} isCorporate={isCorporate} api={formsApi} />}
 
       {tab === 'build' && (
         <>
@@ -531,7 +570,7 @@ export default function FormBuilder({ formId, onBack, me }) {
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-semibold text-text-muted">Intro text (optional)</label>
+                <label className="block text-xs font-semibold text-text-muted">{isQuiz ? 'Intro screen (optional, leave blank to start on question 1)' : 'Intro text (optional)'}</label>
                 {canEdit && (
                   <div className="flex gap-1">
                     <button type="button" onClick={() => wrapIntroSelection('**')} title="Bold (select text first)"
@@ -555,18 +594,18 @@ export default function FormBuilder({ formId, onBack, me }) {
             {/* Left: field list */}
             <div className="w-full md:w-80 shrink-0 bg-surface rounded-xl border border-border p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-text-primary">Fields</h3>
+                <h3 className="text-sm font-bold text-text-primary">{isQuiz ? 'Questions' : 'Fields'}</h3>
                 {canEdit && (
                   <div className="relative">
                     <button onClick={() => setAddMenuOpen(o => !o)}
                       className="px-3 py-1.5 text-xs font-medium bg-wcs-red text-white rounded-lg hover:opacity-90 transition-opacity">
-                      Add Field
+                      {isQuiz ? 'Add Question' : 'Add Field'}
                     </button>
                     {addMenuOpen && (
                       <>
                         <div className="fixed inset-0 z-10" onClick={() => setAddMenuOpen(false)} />
                         <div className="absolute right-0 top-full mt-1 z-20 w-44 bg-surface border border-border rounded-xl shadow-lg py-1 max-h-72 overflow-y-auto">
-                          {FIELD_TYPES.map(t => (
+                          {fieldTypes.map(t => (
                             <button key={t.type} onClick={() => addField(t.type)}
                               className="w-full text-left px-3 py-1.5 text-xs text-text-primary hover:bg-bg transition-colors">
                               {t.label}

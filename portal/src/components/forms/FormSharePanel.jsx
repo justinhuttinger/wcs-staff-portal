@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { forms as formsApi } from '../../lib/api'
+import { forms as defaultFormsApi } from '../../lib/api'
 
 const inputClass = 'w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red disabled:opacity-60'
 const labelClass = 'block text-xs font-semibold text-text-muted mb-1'
@@ -10,7 +10,7 @@ const VISIBILITY_OPTIONS = [
   { value: 'shared', title: 'Specific people', desc: 'Only people you add' },
 ]
 
-export default function FormSharePanel({ form, shares, onChanged }) {
+export default function FormSharePanel({ form, shares, onChanged, api: formsApi = defaultFormsApi }) {
   const canEdit = !!form?.access?.edit
   const visibility = form?.visibility || 'private'
   const locationName = form?.location_name || 'your location'
