@@ -3,7 +3,9 @@ const { PORTAL_URL, getLocation } = require('./config')
 
 let overlayWindow = null
 
-function showOverlay(memberData, mainWindow, tabManager) {
+// options.mode = 'dayone' opens straight to the Day One booking widget
+// (member profile button) instead of the post-signup two-step flow.
+function showOverlay(memberData, mainWindow, tabManager, options = {}) {
   if (overlayWindow) {
     overlayWindow.focus()
     return
@@ -17,6 +19,7 @@ function showOverlay(memberData, mainWindow, tabManager) {
   if (memberData.phone)       welcomeUrl.searchParams.set('phone', memberData.phone)
   if (memberData.salesperson) welcomeUrl.searchParams.set('salesperson', memberData.salesperson)
   welcomeUrl.searchParams.set('location', location)
+  if (options.mode) welcomeUrl.searchParams.set('mode', options.mode)
 
   // Child window of main — appears on top like a modal, can't go behind
   overlayWindow = new BrowserWindow({

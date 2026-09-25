@@ -187,6 +187,15 @@
     document.getElementById('btn-vip-next').addEventListener('click', () => { if (currentStep === 'step1') goToBooking('step2'); else closeOverlay(); });
     document.getElementById('btn-booking-back').addEventListener('click', () => goToVip('step1'));
     document.getElementById('btn-vip-back').addEventListener('click', () => goToBooking('step1'));
+
+    // mode=dayone: opened from the ABC member profile "Book Day One" button.
+    // Skip the intro and VIP step; booking is the only screen.
+    if (params.get('mode') === 'dayone') {
+      goToBooking('only');
+      document.getElementById('booking-badge').style.display = 'none';
+      document.getElementById('btn-booking-back').style.display = 'none';
+      document.getElementById('btn-booking-next').textContent = 'Done ✕';
+    }
   </script>
 </body>
 </html>
