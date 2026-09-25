@@ -254,9 +254,10 @@
   /* Compact: the chosen time stays where it is (bold red) and Select sits under
      the whole grid. Splicing a two-button row into the middle of the grid
      shoved every later time down and read as a layout glitch. */
-  body.compact .time.sel {
-    border: 2px solid var(--accent); color: var(--accent); font-weight: 800;
-    background: #fff; padding: 10px 3px;
+  body.compact .time.sel,
+  body.compact .time.sel:hover {
+    border: 1px solid var(--accent); color: #fff; font-weight: 700;
+    background: var(--accent);
   }
   body.compact .confirm-bottom {
     grid-column: 1 / -1; margin-top: 4px;
