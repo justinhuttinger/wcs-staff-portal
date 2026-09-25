@@ -443,6 +443,15 @@ app.on('ready', async () => {
     latestMemberData = {}
   })
 
+  // "Book Day One" button on an ABC member profile. The staff member at the
+  // kiosk is the one booking, so they're credited as the booking team member.
+  ipcMain.on('abc-book-day-one', (e, data) => {
+    const staff = auth.getStaff() || {}
+    const staffName = [staff.first_name, staff.last_name].filter(Boolean).join(' ') || staff.display_name || ''
+    log('ABC profile Book Day One - calling showOverlay')
+    showOverlay({ ...(data || {}), salesperson: staffName }, mainWindow, tabManager, { mode: 'dayone' })
+  })
+
   // Credential IPC — preload scripts request creds for auto-fill.
   // Logs to C:\WCS\app.log for diagnostics — silent failures here have
   // historically hidden auth-token / shared-credential issues.

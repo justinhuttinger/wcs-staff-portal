@@ -131,8 +131,140 @@ function watchMainFrame() {
   })
 }
 
+// ── Member profile: "Book Day One" button ───────────────────────────────────
+// ABC's member screens render inside the #main iframe (sometimes nested
+// further). Unlike scrapeAll() above, which accumulates across a signup, this
+// reads the page FRESH on every call so the popup never carries a previous
+// member's details.
+
+function collectDocs() {
+  const docs = [document]
+  for (let i = 0; i < docs.length && docs.length < 10; i++) {
+    let frames = []
+    try { frames = docs[i].querySelectorAll('iframe, frame') } catch (e) {}
+    frames.forEach(f => {
+      try { if (f.contentDocument && f.contentDocument.body) docs.push(f.contentDocument) } catch (e) {}
+    })
+  }
+  return docs
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const profileLabels = {
+  firstName: /^first\s*name\s*:?\*?$/i,
+  lastName:  /^last\s*name\s*:?\*?$/i,
+  email:     /^e-?mail(\s*address)?\s*:?\*?$/i,
+  phone:     /^(cell|mobile)(\s*(phone|number|#))?\s*:?\*?$/i,
+  homePhone: /^(home\s*)?phone(\s*(number|#))?\s*:?\*?$/i,
+}
+
+function isValid(key, v) {
+  if (!v) return false
+  if (key === 'email') return EMAIL_RE.test(v)
+  if (key === 'phone' || key === 'homePhone') return v.replace(/\D/g, '').length >= 10
+  return v.length > 1 && v.length < 60 && !/:$/.test(v)
+}
+
+function readField(el) {
+  if (!el) return ''
+  if ('value' in el && typeof el.value === 'string' && el.tagName !== 'BUTTON') return el.value.trim()
+  const input = el.querySelector && el.querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea')
+  if (input) return (input.value || '').trim()
+  return (el.textContent || '').replace(/\s+/g, ' ').trim()
+}
+
+// Label-based lookup: find a short element whose text is the label, then read
+// the field it belongs to (label[for], the next cell, or the next sibling).
+function findByLabel(doc, re) {
+  const candidates = doc.querySelectorAll('label, td, th, span, div, dt, b, strong')
+  for (const el of candidates) {
+    if (el.children.length > 2) continue
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim()
+    if (!text || text.length > 30 || !re.test(text)) continue
+    if (el.tagName === 'LABEL' && el.htmlFor) {
+      const target = doc.getElementById(el.htmlFor)
+      if (target) return readField(target)
+    }
+    const cell = el.closest('td, th, dt')
+    const next = (cell || el).nextElementSibling
+    if (next) {
+      const v = readField(next)
+      if (v) return v
+    }
+  }
+  return ''
+}
+
+function scrapeProfile() {
+  const out = {}
+  const docs = collectDocs()
+  const keys = ['firstName', 'lastName', 'email', 'phone']
+  for (const doc of docs) {
+    for (const key of keys) {
+      if (out[key]) continue
+      for (const sel of fieldSelectors[key]) {
+        try {
+          const v = readField(doc.querySelector(sel))
+          if (isValid(key, v)) { out[key] = v; break }
+        } catch (e) {}
+      }
+    }
+  }
+  for (const doc of docs) {
+    for (const key of Object.keys(profileLabels)) {
+      const target = key === 'homePhone' ? 'phone' : key
+      if (out[target]) continue
+      try {
+        const v = findByLabel(doc, profileLabels[key])
+        if (isValid(key, v)) out[target] = v
+      } catch (e) {}
+    }
+  }
+  return out
+}
+
+let dayOneHost = null
+function ensureDayOneButton() {
+  if (dayOneHost && document.body.contains(dayOneHost)) return dayOneHost
+  dayOneHost = document.createElement('div')
+  dayOneHost.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:999998;display:none;'
+  const root = dayOneHost.attachShadow({ mode: 'closed' })
+  root.innerHTML = `
+    <style>
+      button{display:flex;align-items:center;gap:8px;padding:12px 18px;border:0;border-radius:999px;
+        background:#e53e3e;color:#fff;font:600 14px 'Inter',-apple-system,'Segoe UI',sans-serif;
+        box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer;transition:transform .12s,background .12s}
+      button:hover{background:#c53030;transform:translateY(-1px)}
+      button:active{transform:translateY(0)}
+    </style>
+    <button type="button" title="Open the Day One booking widget prefilled with this member">
+      <span aria-hidden="true">📅</span> Book Day One
+    </button>`
+  root.querySelector('button').addEventListener('click', () => {
+    const data = scrapeProfile()
+    console.log('[WCS Scraper] Book Day One:', JSON.stringify(data))
+    ipcRenderer.send('abc-book-day-one', data)
+  })
+  document.body.appendChild(dayOneHost)
+  return dayOneHost
+}
+
+// Show the button only when the page looks like a member record: a first and
+// last name plus a way to reach them. Hidden on the login screen.
+function updateDayOneButton() {
+  if (!document.body) return
+  const host = ensureDayOneButton()
+  const onLogin = !!document.querySelector('input[type="password"]')
+  const d = onLogin ? {} : scrapeProfile()
+  const show = !!(d.firstName && d.lastName && (d.email || d.phone))
+  host.style.display = show ? 'block' : 'none'
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   tryAutoFill()
+
+  updateDayOneButton()
+  setInterval(updateDayOneButton, 1000)
   console.log('[WCS Scraper] Loaded on:', window.location.href)
 
   setInterval(() => {
