@@ -223,7 +223,9 @@ function tidyName(s) {
 
 function scrapeRecord(doc, out) {
   if (!out.firstName || !out.lastName) {
-    const parts = (readRecord(doc, 'name') || '').split(/\s+/).filter(Boolean)
+    // Personal tab uses "name"; the member Dashboard header uses "memberFullName".
+    const full = readRecord(doc, 'name') || readRecord(doc, 'memberFullName')
+    const parts = (full || '').split(/\s+/).filter(Boolean)
     // Drop a lone middle initial: "JANE Q DOE" -> Jane / Doe
     if (parts.length > 2 && /^[A-Za-z]\.?$/.test(parts[1])) parts.splice(1, 1)
     if (parts.length >= 2) {
@@ -240,6 +242,11 @@ function scrapeRecord(doc, out) {
   if (!out.phone) out.phone = out.cellPhone || out.primaryPhone || ''
   if (!out.barcode) out.barcode = readRecord(doc, 'barcode')
   if (!out.birthday) out.birthday = readRecord(doc, 'birthday')   // "Date of Birth"
+  // The Dashboard's Personal card has no automation ids: <dt>BIRTHDAY</dt><dd>…</dd>
+  if (!out.birthday) {
+    const b = findByLabel(doc, /^(birthday|date of birth)$/i)
+    if (b && b !== '--') out.birthday = b
+  }
 }
 
 function scrapeProfile() {
@@ -276,50 +283,101 @@ function scrapeProfile() {
   return out
 }
 
-let dayOneHost = null
-function ensureDayOneButton() {
-  if (dayOneHost && document.body.contains(dayOneHost)) return dayOneHost
-  dayOneHost = document.createElement('div')
-  dayOneHost.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:999998;display:none;'
-  const root = dayOneHost.attachShadow({ mode: 'closed' })
+// WCS toolbar: a collapsed "WCS" tab that expands into a list of member
+// actions. Add future actions to TOOLBAR_ACTIONS.
+const TOOLBAR_ACTIONS = [
+  {
+    id: 'dayone', icon: '📅', label: 'Book Day One',
+    title: 'Open the Day One booking widget prefilled with this member',
+    run(data) { ipcRenderer.send('abc-book-day-one', data) },
+  },
+]
+
+let toolbarHost = null
+let toolbarOpen = false
+function ensureToolbar() {
+  if (toolbarHost && document.body.contains(toolbarHost)) return toolbarHost
+  toolbarHost = document.createElement('div')
+  toolbarHost.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:999998;display:none;'
+  const root = toolbarHost.attachShadow({ mode: 'closed' })
   root.innerHTML = `
     <style>
-      button{display:flex;align-items:center;gap:8px;padding:12px 18px;border:0;border-radius:999px;
-        background:#e53e3e;color:#fff;font:600 14px 'Inter',-apple-system,'Segoe UI',sans-serif;
-        box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer;transition:transform .12s,background .12s}
-      button:hover{background:#c53030;transform:translateY(-1px)}
-      button:active{transform:translateY(0)}
+      :host{font:600 14px 'Inter',-apple-system,'Segoe UI',sans-serif}
+      .bar{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+      .actions{display:none;flex-direction:column;gap:6px;padding:8px;border-radius:14px;
+        background:#1f2937;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+      .bar.open .actions{display:flex}
+      .action{display:flex;align-items:center;gap:8px;padding:10px 14px;border:0;border-radius:10px;
+        background:#e53e3e;color:#fff;font:inherit;cursor:pointer;white-space:nowrap;text-align:left}
+      .action:hover{background:#c53030}
+      .toggle{display:flex;align-items:center;gap:6px;padding:10px 16px;border:0;border-radius:999px;
+        background:#e53e3e;color:#fff;font:inherit;letter-spacing:.04em;cursor:pointer;
+        box-shadow:0 6px 20px rgba(0,0,0,.25)}
+      .toggle:hover{background:#c53030}
+      .chev{display:inline-block;transition:transform .15s}
+      .bar.open .chev{transform:rotate(180deg)}
     </style>
-    <button type="button" title="Open the Day One booking widget prefilled with this member">
-      <span aria-hidden="true">📅</span> Book Day One
-    </button>`
-  root.querySelector('button').addEventListener('click', () => {
-    const data = scrapeProfile()
-    console.log('[WCS Scraper] Book Day One:', JSON.stringify(data))
-    ipcRenderer.send('abc-book-day-one', data)
+    <div class="bar">
+      <div class="actions"></div>
+      <button type="button" class="toggle" title="WCS tools"><span>WCS</span><span class="chev">▲</span></button>
+    </div>`
+  const bar = root.querySelector('.bar')
+  const actions = root.querySelector('.actions')
+  for (const a of TOOLBAR_ACTIONS) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'action'
+    btn.title = a.title
+    btn.innerHTML = `<span aria-hidden="true">${a.icon}</span>`
+    btn.appendChild(document.createTextNode(' ' + a.label))
+    btn.addEventListener('click', () => {
+      const data = scrapeProfile()
+      console.log('[WCS Scraper] ' + a.label + ':', JSON.stringify(data))
+      a.run(data)
+      toolbarOpen = false
+      bar.classList.remove('open')
+    })
+    actions.appendChild(btn)
+  }
+  root.querySelector('.toggle').addEventListener('click', () => {
+    toolbarOpen = !toolbarOpen
+    bar.classList.toggle('open', toolbarOpen)
   })
-  document.body.appendChild(dayOneHost)
-  return dayOneHost
+  bar.classList.toggle('open', toolbarOpen)
+  document.body.appendChild(toolbarHost)
+  return toolbarHost
 }
 
-// Show the button only when the page looks like a member record: a first and
+// Sit just left of ABC's check-in panel (#checkin-panel) when it is showing.
+function positionToolbar(host) {
+  let right = 20
+  const panel = document.getElementById('checkin-panel')
+  if (panel && panel.offsetParent) {
+    const rect = panel.getBoundingClientRect()
+    if (rect.width > 0 && rect.left > 0) right = Math.max(20, window.innerWidth - rect.left + 16)
+  }
+  host.style.right = right + 'px'
+}
+
+// Show the toolbar only when the page looks like a member record: a first and
 // last name plus a way to reach them. Hidden on the login screen.
-function updateDayOneButton() {
+function updateToolbar() {
   if (!document.body) return
-  const host = ensureDayOneButton()
+  const host = ensureToolbar()
   // Only a VISIBLE password field means the login screen: the ABC shell keeps
   // a hidden password-type input (employeeClockInBarcode) on every page.
   const onLogin = Array.from(document.querySelectorAll('input[type="password"]')).some(el => el.offsetParent)
   const d = onLogin ? {} : scrapeProfile()
   const show = !!(d.firstName && d.lastName && (d.email || d.phone))
   host.style.display = show ? 'block' : 'none'
+  if (show) positionToolbar(host)
 }
 
 window.addEventListener('DOMContentLoaded', () => {
   tryAutoFill()
 
-  updateDayOneButton()
-  setInterval(updateDayOneButton, 1000)
+  updateToolbar()
+  setInterval(updateToolbar, 1000)
   console.log('[WCS Scraper] Loaded on:', window.location.href)
 
   setInterval(() => {
