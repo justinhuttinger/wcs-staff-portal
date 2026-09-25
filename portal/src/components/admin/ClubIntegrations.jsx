@@ -38,6 +38,17 @@ function urlProblem(value) {
   return null
 }
 
+// Light client check on a pasted GHL External Tracking snippet; the server
+// does the full host/path validation.
+const TRACKING_ID_IN_SNIPPET = /data-tracking-id\s*=\s*["'](tk_[A-Za-z0-9]{8,64})["']/i
+function snippetProblem(value) {
+  if (!value) return null
+  if (!/external-tracking\.js/i.test(value) || !TRACKING_ID_IN_SNIPPET.test(value)) {
+    return 'Paste the full <script> snippet from GHL Settings > External Tracking'
+  }
+  return null
+}
+
 export default function ClubIntegrations() {
   const [clubs, setClubs] = useState([])
   const [warning, setWarning] = useState('')
@@ -98,11 +109,14 @@ function ClubCard({ club }) {
   const [values, setValues] = useState(() =>
     Object.fromEntries(FIELDS.map(f => [f.key, club[f.key] || ''])),
   )
+  // undefined = untouched (the saved snippet stays); '' clears it.
+  const [snippet, setSnippet] = useState(undefined)
+  const [trackingId, setTrackingId] = useState(club.ghl_tracking_id || '')
   const [fieldErrors, setFieldErrors] = useState({})
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
 
-  const dirty = FIELDS.some(f => (values[f.key] || '') !== (club[f.key] || ''))
+  const dirty = snippet !== undefined || FIELDS.some(f => (values[f.key] || '') !== (club[f.key] || ''))
   const configured = FIELDS.filter(f => values[f.key]).length
 
   function set(key, v) {
@@ -116,9 +130,11 @@ function ClubCard({ club }) {
       const problem = urlProblem((values[f.key] || '').trim())
       if (problem) problems[f.key] = problem
     }
+    const sp = snippetProblem((snippet || '').trim())
+    if (sp) problems.ghl_tracking_snippet = sp
     if (Object.keys(problems).length) {
       setFieldErrors(problems)
-      setMsg('Check the highlighted URLs')
+      setMsg('Check the highlighted fields')
       return
     }
 
@@ -126,9 +142,16 @@ function ClubCard({ club }) {
     setMsg('')
     setFieldErrors({})
     try {
-      await clubIntegrationsAdmin.update(club.abc_club_number, values)
+      const body = snippet === undefined ? values : { ...values, ghl_tracking_snippet: snippet.trim() }
+      await clubIntegrationsAdmin.update(club.abc_club_number, body)
       // Reflect the saved state so the dirty check settles.
       FIELDS.forEach(f => { club[f.key] = values[f.key] })
+      if (snippet !== undefined) {
+        const id = (snippet.match(TRACKING_ID_IN_SNIPPET) || [])[1] || ''
+        club.ghl_tracking_id = id
+        setTrackingId(id)
+        setSnippet(undefined)
+      }
       setMsg('Saved')
       setTimeout(() => setMsg(''), 1500)
     } catch (e) {
@@ -165,6 +188,33 @@ function ClubCard({ club }) {
           )}
         </div>
       ))}
+
+      <div>
+        <label className="block text-xs font-medium text-text-muted mb-1">GHL External Tracking</label>
+        <textarea
+          rows={2}
+          value={snippet ?? ''}
+          onChange={e => {
+            setSnippet(e.target.value)
+            if (fieldErrors.ghl_tracking_snippet) setFieldErrors(prev => ({ ...prev, ghl_tracking_snippet: undefined }))
+          }}
+          placeholder={trackingId ? `Saved: ${trackingId} (paste a new snippet to replace)` : '<script src="https://…/js/external-tracking.js" data-tracking-id="tk_…"></script>'}
+          className={`w-full rounded-lg border bg-surface px-3 py-2 text-xs font-mono text-text-primary ${
+            fieldErrors.ghl_tracking_snippet ? 'border-wcs-red' : 'border-border'
+          }`}
+        />
+        {fieldErrors.ghl_tracking_snippet ? (
+          <p className="text-xs text-wcs-red mt-1">{fieldErrors.ghl_tracking_snippet}</p>
+        ) : (
+          <p className="text-xs text-text-muted mt-1">
+            From GHL: Settings, External Tracking, Copy Script. Loaded on every quiz and form for this club.{' '}
+            {trackingId ? `Current: ${trackingId}.` : 'Not set.'}
+            {trackingId && snippet === undefined && (
+              <button type="button" onClick={() => setSnippet('')} className="ml-1 text-wcs-red hover:underline">Remove</button>
+            )}
+          </p>
+        )}
+      </div>
 
       <div className="flex items-center gap-3">
         <button

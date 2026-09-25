@@ -18,6 +18,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { NAME_TO_CLUB } = require('../config/clubMap')
+const { parseGhlTrackingSnippet } = require('../services/quizSchema')
 
 const router = Router()
 router.use(authenticate)
@@ -97,6 +98,17 @@ function invalidUrl(value) {
   return null
 }
 
+// GHL External Tracking is set once per club here and used by every quiz and
+// form at that club (a quiz can still override it per club). The admin pastes
+// GHL's <script> snippet; we store its src + data-tracking-id. Absent key =
+// leave as is, blank = clear.
+function trackingPatch(body) {
+  if (!body || !('ghl_tracking_snippet' in body)) return { ok: true, patch: {} }
+  const t = parseGhlTrackingSnippet(body.ghl_tracking_snippet)
+  if (!t.ok) return { ok: false, error: t.error }
+  return { ok: true, patch: { ghl_tracking_src: t.src, ghl_tracking_id: t.trackingId } }
+}
+
 // GET /admin/club-integrations
 router.get('/', async (req, res) => {
   try {
@@ -128,6 +140,7 @@ router.get('/', async (req, res) => {
         updated_at: row.updated_at,
       }
       for (const f of EDITABLE_FIELDS) out[f] = row[f] || ''
+      out.ghl_tracking_id = row.ghl_tracking_id || ''
       return out
     })
 
@@ -160,6 +173,8 @@ router.put('/:clubNumber', async (req, res) => {
     const problem = invalidPhone(String(body.fallback_phone || '').trim())
     if (problem) errors.fallback_phone = problem
   }
+  const tracking = trackingPatch(body)
+  if (!tracking.ok) errors.ghl_tracking_snippet = tracking.error
   if (Object.keys(errors).length) {
     return res.status(400).json({ error: 'Check the highlighted fields', fields: errors })
   }
@@ -185,6 +200,8 @@ router.put('/:clubNumber', async (req, res) => {
     }
   }
 
+  Object.assign(patch, tracking.patch)
+
   try {
     const { error } = await supabaseAdmin
       .from('club_integrations')
@@ -205,3 +222,4 @@ module.exports.WEBHOOK_FIELDS = WEBHOOK_FIELDS
 module.exports.FALLBACK_FIELDS = FALLBACK_FIELDS
 module.exports.invalidState = invalidState
 module.exports.invalidPhone = invalidPhone
+module.exports.trackingPatch = trackingPatch
