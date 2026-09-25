@@ -196,6 +196,19 @@ function resolveGhlTracking(override, clubDefault) {
   return null
 }
 
+// { [club_slug]: {src, tracking_id} } for the 7 clubs that have a complete
+// snippet. All-Locations forms send this so the renderer can load the tracking
+// for whichever club the visitor picks in the form's location dropdown.
+function trackingByClub(rowsBySlug) {
+  const out = {}
+  for (const [slug, row] of Object.entries(rowsBySlug || {})) {
+    if (!CLUB_SLUGS.includes(slug)) continue
+    const t = resolveGhlTracking(null, row)
+    if (t) out[slug] = t
+  }
+  return out
+}
+
 // What the public renderer may see. Deliberately rebuilt field-by-field so the
 // club's webhook URL can never leak.
 function publicQuizView(form, location, club, clubDefault = null) {
@@ -270,5 +283,5 @@ module.exports = {
   CLUB_SLUGS, DEFAULT_QUIZ_SETTINGS, PIXEL_RE, GTM_RE, TRACKING_ID_RE,
   quizSettingsWithDefaults, normalizeQuizSettings, parseGhlTrackingSnippet, validateWebhookUrl,
   validateContact, questionFields, buildWebhookPayload, sampleSubmission, publicQuizView,
-  quizPublicUrl, clubRowsView, planClubUpserts, resolveGhlTracking,
+  quizPublicUrl, clubRowsView, planClubUpserts, resolveGhlTracking, trackingByClub,
 }

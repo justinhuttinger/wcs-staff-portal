@@ -4,8 +4,8 @@ const { supabaseAdmin } = require('../services/supabase')
 const { validateSubmission, sanitizeUtm } = require('../services/formsSchema')
 const formsSheets = require('../services/formsSheets')
 const formsAudit = require('../services/formsAudit')
-const { getClubTracking } = require('../services/clubTracking')
-const { resolveGhlTracking } = require('../services/quizSchema')
+const { getClubTracking, getAllClubTracking } = require('../services/clubTracking')
+const { resolveGhlTracking, trackingByClub } = require('../services/quizSchema')
 
 // Public form renderer endpoints. Intentionally NOT behind authenticate:
 // anyone with the URL can view and submit a published form (spec section 7).
@@ -43,14 +43,17 @@ router.get('/:slug', async (req, res) => {
     if (s.success_message !== undefined) publicSettings.success_message = s.success_message
     if (s.allow_resubmit !== undefined) publicSettings.allow_resubmit = s.allow_resubmit
     // A club form loads that club's GHL External Tracking (Admin -> Club
-    // Integrations). All-locations forms span sub-accounts, so they get none.
+    // Integrations). An all-locations form spans sub-accounts, so it gets every
+    // club's snippet instead; the renderer loads the one matching the visitor's
+    // location pick at submit time.
     const ghl = form.location_id && loc?.name ? resolveGhlTracking(null, await getClubTracking(loc.name)) : null
+    const ghlByClub = form.location_id ? undefined : trackingByClub(await getAllClubTracking())
     res.json({
       form: {
         slug: form.slug, title: form.title, description: form.description,
         schema: form.schema, location_name: locationName,
         settings: publicSettings,
-        tracking: { ghl },
+        tracking: { ghl, ...(ghlByClub ? { ghl_by_club: ghlByClub } : {}) },
       },
     })
   } catch (err) {

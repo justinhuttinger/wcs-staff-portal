@@ -154,3 +154,13 @@ test('publicQuizView uses the club default when the quiz has no override', () =>
     { ghl_tracking_src: 'https://link.msgsndr.com/js/external-tracking.js', ghl_tracking_id: 'tk_def12345' })
   assert.deepEqual(v.tracking.ghl, { src: 'https://link.msgsndr.com/js/external-tracking.js', tracking_id: 'tk_def12345' })
 })
+
+test('trackingByClub keeps only clubs with a complete snippet', () => {
+  const src = 'https://link.msgsndr.com/js/external-tracking.js'
+  assert.deepEqual(q.trackingByClub({
+    salem: { location_slug: 'salem', ghl_tracking_src: src, ghl_tracking_id: 'tk_salem123' },
+    keizer: { location_slug: 'keizer', ghl_tracking_src: null, ghl_tracking_id: null },
+    portland: { location_slug: 'portland', ghl_tracking_src: src, ghl_tracking_id: 'tk_nope1234' },
+  }), { salem: { src, tracking_id: 'tk_salem123' } })
+  assert.deepEqual(q.trackingByClub(null), {})
+})
