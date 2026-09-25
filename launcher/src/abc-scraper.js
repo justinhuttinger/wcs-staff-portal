@@ -291,6 +291,11 @@ const TOOLBAR_ACTIONS = [
     title: 'Open the Day One booking widget prefilled with this member',
     run(data) { ipcRenderer.send('abc-book-day-one', data) },
   },
+  {
+    id: 'vip', icon: '⭐', label: 'VIPs',
+    title: "Open this club's staff VIP referral form with this member as the referrer",
+    run(data) { ipcRenderer.send('abc-open-vip', data) },
+  },
 ]
 
 let toolbarHost = null

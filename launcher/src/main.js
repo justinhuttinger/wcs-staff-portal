@@ -452,6 +452,23 @@ app.on('ready', async () => {
     showOverlay({ ...(data || {}), salesperson: staffName }, mainWindow, tabManager, { mode: 'dayone' })
   })
 
+  // ABC toolbar "VIPs": open this club's staff VIP referral form in a new tab
+  // with the member as the referrer and the logged-in staff member preselected.
+  ipcMain.on('abc-open-vip', (e, data) => {
+    const d = data || {}
+    const staff = auth.getStaff() || {}
+    const staffName = [staff.first_name, staff.last_name].filter(Boolean).join(' ') || staff.display_name || ''
+    const slug = String(getLocation() || 'Salem').trim().toLowerCase()
+    const url = new URL(`https://vip.westcoaststrength.com/${encodeURIComponent(slug)}/staff`)
+    if (d.firstName) url.searchParams.set('firstName', d.firstName)
+    if (d.lastName) url.searchParams.set('lastName', d.lastName)
+    if (d.email) url.searchParams.set('email', d.email)
+    if (d.phone) url.searchParams.set('phone', d.phone)
+    if (staffName) url.searchParams.set('employee', staffName)
+    log('ABC toolbar VIPs - opening ' + url.origin + url.pathname)
+    tabManager.createTab(url.toString(), 'VIPs', { preload: path.join(__dirname, 'credential-capture.js') })
+  })
+
   // Credential IPC — preload scripts request creds for auto-fill.
   // Logs to C:\WCS\app.log for diagnostics — silent failures here have
   // historically hidden auth-token / shared-credential issues.
