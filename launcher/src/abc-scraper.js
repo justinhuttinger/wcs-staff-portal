@@ -3,6 +3,31 @@
 
 const { ipcRenderer } = require('electron')
 
+// --- Mute ABC's own sounds -------------------------------------------------
+// ABC plays its check-in / error sounds through <audio> elements (and
+// `new Audio()`). Staff find them grating, so every media element on ABC
+// pages is forced silent. Our check-in alert cues (below) use Web Audio, which
+// this doesn't touch. Patched here in the top frame before ABC's scripts run,
+// and in same-origin frames as they appear (see muteFrameMedia).
+function muteMediaIn(win) {
+  try {
+    const proto = win.HTMLMediaElement && win.HTMLMediaElement.prototype
+    if (!proto || proto._wcsMuted) return
+    const origPlay = proto.play
+    proto.play = function () {
+      try { this.muted = true; this.volume = 0 } catch (e) {}
+      return origPlay.apply(this, arguments)
+    }
+    proto._wcsMuted = true
+  } catch (e) {}
+}
+muteMediaIn(window)
+function muteFrameMedia() {
+  document.querySelectorAll('iframe, frame').forEach(f => {
+    try { if (f.contentWindow) muteMediaIn(f.contentWindow) } catch (e) {}
+  })
+}
+
 // Login overlay for ABC
 let overlayEl = null
 function showABCOverlay() {
@@ -424,8 +449,166 @@ function updateToolbar() {
   if (show) positionToolbar(host)
 }
 
+// --- Check-in alert cues ----------------------------------------------------
+// ABC's check-in feed (right-hand panel of the main shell) adds one
+// `.checkin-card[cilid]` per check-in, with a `.datatrak-alert <severity>` tag
+// per alert (e.g. "PAYMENT OVERDUE 12 DAYS", "MEMBER IS MINOR"). When a NEW
+// card arrives with alerts that matter, play a sound and flash the screen
+// edge + a banner so the front desk can't miss it. Cards already in the feed
+// when the page loads are the baseline and never cue.
+//
+// Level per alert: first matching rule by text, else by ABC's severity class.
+// red = buzzer + red flash, amber = chime + amber flash, null = ignore.
+const ALERT_RULES = [
+  { re: /overdue|past due|collections?|declined/i, level: 'red' },
+  { re: /access restriction|restricted|denied|frozen|expired|cancel/i, level: 'red' },
+  { re: /member is minor/i, level: 'red' },
+  { re: /prospect/i, level: 'red' },
+  { re: /already checked in/i, level: 'amber' },
+  { re: /need photo/i, level: 'amber' },
+  { re: /manual check ?in|free drink/i, level: null },
+]
+const SEVERITY_LEVELS = { danger: 'red', warning: 'amber', primary: 'amber' } // success/dark/info: ignore
+
+function alertLevel(el) {
+  const text = (el.textContent || '').trim()
+  for (const r of ALERT_RULES) if (r.re.test(text)) return r.level
+  for (const cls of el.classList) if (SEVERITY_LEVELS[cls]) return SEVERITY_LEVELS[cls]
+  return null
+}
+
+const seenCheckins = new Set()
+let alertBaselineDone = false
+const pendingRecheck = new Map() // cilid -> tries left (alerts can render a beat after the card)
+
+function scanCheckinFeed() {
+  if (window.top !== window) return
+  const cards = document.querySelectorAll('.checkin-card[cilid]')
+  if (!alertBaselineDone) {
+    // Wait for the feed to render before taking the baseline.
+    if (!cards.length && !document.querySelector('#checkin-panel')) return
+    cards.forEach(c => seenCheckins.add(c.getAttribute('cilid')))
+    alertBaselineDone = true
+    return
+  }
+  let worst = null
+  const hits = []
+  let name = ''
+  cards.forEach(card => {
+    const id = card.getAttribute('cilid')
+    const isNew = !seenCheckins.has(id)
+    if (!isNew && !pendingRecheck.has(id)) return
+    seenCheckins.add(id)
+    const found = []
+    card.querySelectorAll('.datatrak-alert').forEach(a => {
+      const level = alertLevel(a)
+      if (level) found.push({ text: (a.textContent || '').trim(), level })
+    })
+    if (!found.length) {
+      const left = isNew ? 2 : pendingRecheck.get(id) - 1
+      if (left > 0) pendingRecheck.set(id, left); else pendingRecheck.delete(id)
+      return
+    }
+    pendingRecheck.delete(id)
+    const t = card.querySelector('.title')
+    if (!name && t) name = tidyName(t.textContent.trim())
+    found.forEach(f => {
+      hits.push(f)
+      if (f.level === 'red') worst = 'red'
+      else if (!worst) worst = 'amber'
+    })
+  })
+  if (worst) showAlertCue(worst, name, hits)
+}
+
+let audioCtx = null
+function playCue(level) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)()
+    if (audioCtx.state === 'suspended') audioCtx.resume()
+    const now = audioCtx.currentTime
+    // red: three sharp buzzes; amber: a soft two-note chime
+    const notes = level === 'red'
+      ? [[0, 880, 0.14, 'square'], [0.2, 880, 0.14, 'square'], [0.4, 660, 0.28, 'square']]
+      : [[0, 784, 0.18, 'sine'], [0.2, 1175, 0.3, 'sine']]
+    for (const [at, freq, dur, type] of notes) {
+      const osc = audioCtx.createOscillator()
+      const gain = audioCtx.createGain()
+      osc.type = type
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.0001, now + at)
+      gain.gain.exponentialRampToValueAtTime(level === 'red' ? 0.25 : 0.2, now + at + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + at + dur)
+      osc.connect(gain).connect(audioCtx.destination)
+      osc.start(now + at)
+      osc.stop(now + at + dur + 0.02)
+    }
+  } catch (e) {}
+}
+
+let cueHost = null
+let cueRoot = null
+let cueTimer = null
+function showAlertCue(level, name, hits) {
+  playCue(level)
+  if (!cueHost) {
+    cueHost = document.createElement('div')
+    cueHost.id = 'wcs-alert-cue'
+    cueHost.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;'
+    cueRoot = cueHost.attachShadow({ mode: 'closed' })
+    cueRoot.innerHTML = '<style>' +
+      '.edge{position:fixed;inset:0;pointer-events:none;animation:pulse 0.8s ease-in-out 4;}' +
+      '.edge.red{box-shadow:inset 0 0 0 10px #e53e3e,inset 0 0 60px 20px rgba(229,62,62,.55);}' +
+      '.edge.amber{box-shadow:inset 0 0 0 8px #f59e0b,inset 0 0 50px 16px rgba(245,158,11,.45);}' +
+      '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}' +
+      '.banner{position:fixed;top:14px;left:50%;transform:translateX(-50%);max-width:min(720px,90vw);' +
+      'pointer-events:auto;cursor:pointer;border-radius:12px;padding:14px 22px;color:#fff;' +
+      "font:600 18px/1.35 'Inter',-apple-system,'Segoe UI',sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.35);}" +
+      '.banner.red{background:#c53030;}.banner.amber{background:#b45309;}' +
+      '.name{font-size:20px;font-weight:800;margin-bottom:4px;}' +
+      '.alerts{display:flex;flex-wrap:wrap;gap:6px;}' +
+      '.tag{background:rgba(255,255,255,.18);border-radius:6px;padding:2px 8px;font-size:15px;}' +
+      '.hint{font-size:12px;font-weight:500;opacity:.8;margin-top:6px;}' +
+      '</style><div class="edge"></div><div class="banner"><div class="name"></div>' +
+      '<div class="alerts"></div><div class="hint">Click to dismiss</div></div>'
+    cueRoot.querySelector('.banner').addEventListener('click', hideAlertCue)
+    document.documentElement.appendChild(cueHost)
+  }
+  const edge = cueRoot.querySelector('.edge')
+  const banner = cueRoot.querySelector('.banner')
+  edge.className = 'edge ' + level
+  // Restart the pulse for back-to-back check-ins.
+  edge.style.animation = 'none'
+  void edge.offsetWidth
+  edge.style.animation = ''
+  banner.className = 'banner ' + level
+  cueRoot.querySelector('.name').textContent = (level === 'red' ? '⚠ ' : '') + (name || 'Check-in alert')
+  const alerts = cueRoot.querySelector('.alerts')
+  alerts.textContent = ''
+  hits.forEach(h => {
+    const tag = document.createElement('span')
+    tag.className = 'tag'
+    tag.textContent = h.text
+    alerts.appendChild(tag)
+  })
+  cueHost.style.display = ''
+  clearTimeout(cueTimer)
+  cueTimer = setTimeout(hideAlertCue, level === 'red' ? 15000 : 8000)
+}
+
+function hideAlertCue() {
+  clearTimeout(cueTimer)
+  if (cueHost) cueHost.style.display = 'none'
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   tryAutoFill()
+
+  // Check-in alert cues (main shell only) + keep ABC's own sounds muted
+  scanCheckinFeed()
+  setInterval(scanCheckinFeed, 750)
+  muteFrameMedia()
+  setInterval(muteFrameMedia, 1000)
 
   updateToolbar()
   setInterval(updateToolbar, 1000)

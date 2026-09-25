@@ -35,9 +35,12 @@ class TabManager {
     const preload = options.preload || undefined
 
     const isPortalPreload = preload && preload.includes('portal-preload')
+    const isAbcPreload = preload && preload.includes('abc-scraper')
     const view = new BrowserView({
       webPreferences: {
         preload,
+        // ABC tabs play the check-in alert sound without waiting for a click.
+        ...(isAbcPreload ? { autoplayPolicy: 'no-user-gesture-required' } : {}),
         contextIsolation: isPortalPreload ? true : false,
         nodeIntegration: false,
         partition: 'persist:wcs-portal',
