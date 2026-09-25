@@ -1,12 +1,16 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
 const path = require('path')
 const silentUpdater = require('./silent-updater')
 const { appendLog: log } = require('./paths')
+const { APP_MODE, IS_ABC_ONLY, APP_DISPLAY_NAME } = require('./app-mode')
 
-app.setName('Portal')
+app.setName(APP_DISPLAY_NAME)
+// The ABC-only app keeps its own cookies/session and single-instance lock so
+// it can run next to Portal on the same machine.
+if (IS_ABC_ONLY) app.setPath('userData', path.join(app.getPath('appData'), APP_DISPLAY_NAME))
 // Windows notification grouping — no-op on macOS / Linux.
-if (process.platform === 'win32') app.setAppUserModelId('Portal')
-log('=== APP STARTING === platform=' + process.platform + ' version=' + app.getVersion())
+if (process.platform === 'win32') app.setAppUserModelId(APP_DISPLAY_NAME)
+log('=== APP STARTING === platform=' + process.platform + ' version=' + app.getVersion() + ' mode=' + APP_MODE)
 const { PORTAL_URL, getAbcUrl, getLocation, readConfig, writeConfig } = require('./config')
 const { LOCATIONS } = require('./locations')
 const TabManager = require('./tabs')
@@ -21,7 +25,10 @@ const deepLink = require('./deep-link')
 
 // Register wcsportal:// so a clicked one-time link launches/focuses us with the
 // token. In dev (`electron .`) the script path must be passed through.
-if (process.defaultApp) {
+// The ABC-only app never claims the scheme; deep links belong to Portal.
+if (IS_ABC_ONLY) {
+  // no protocol registration
+} else if (process.defaultApp) {
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient(deepLink.SCHEME, process.execPath, [path.resolve(process.argv[1])])
   }
@@ -95,6 +102,7 @@ if (!gotLock) {
       mainWindow.show()
       mainWindow.focus()
     }
+    if (IS_ABC_ONLY) return
     const link = deepLink.findDeepLink(argv)
     if (link) deepLink.redeemAndApply(link, applyLocationConfig)
   })
@@ -102,6 +110,7 @@ if (!gotLock) {
 
 app.on('open-url', (event, url) => {
   event.preventDefault()
+  if (IS_ABC_ONLY) return
   if (tabManager) deepLink.redeemAndApply(url, applyLocationConfig)
   else pendingDeepLink = url
 })
@@ -109,6 +118,31 @@ app.on('open-url', (event, url) => {
 const TAB_BAR_HEIGHT = 52
 let mainWindow = null
 let tabManager = null
+
+// ---- ABC-only flavor ----
+// No portal sign-in: the app opens straight to the ABC tab for this kiosk's
+// location. Staff identity comes from ABC itself (abc-scraper sends
+// `staffName`, the ABC employee signed in to the workstation).
+let abcTabId = null
+
+function abcTabUrl() {
+  return getAbcUrl() || 'https://prod02.abcfinancial.com'
+}
+
+// Staff name for Day One / VIP prefill: the portal-signed-in staff member
+// (Portal app, unchanged), else the ABC employee the scraper found (WCS ABC,
+// which has no portal sign-in).
+function staffNameFor(data) {
+  const staff = auth.getStaff() || {}
+  return [staff.first_name, staff.last_name].filter(Boolean).join(' ') || staff.display_name ||
+    String((data && data.staffName) || '').trim()
+}
+
+// ABC names carry middle initials ("First M Last"); the VIP team-member
+// dropdown lists "First Last", so drop single-letter middle parts.
+function stripMiddleInitials(name) {
+  return String(name || '').replace(/\s+[A-Za-z]\.?(?=\s)/g, '').replace(/\s+/g, ' ').trim()
+}
 
 // Persist a new location/abc_url to config.json (preserving install_id and any
 // other fields) and reload the portal tab with the fresh params. Shared by the
@@ -121,6 +155,14 @@ function applyLocationConfig({ location, abc_url } = {}) {
     if (abc_url) next.abc_url = abc_url
     writeConfig(next)
     log('[config] applied location=' + next.location)
+    if (IS_ABC_ONLY) {
+      const abcTab = tabManager && abcTabId && tabManager.tabs.get(abcTabId)
+      if (abcTab && !abcTab.view.webContents.isDestroyed()) {
+        abcTab.view.webContents.loadURL(abcTabUrl())
+        log('[config] reloaded ABC tab')
+      }
+      return { success: true }
+    }
     const portalTab = tabManager && tabManager.tabs.get(1)
     if (portalTab && !portalTab.view.webContents.isDestroyed()) {
       const url = `${PORTAL_URL}?location=${next.location}` +
@@ -161,30 +203,36 @@ app.on('ready', async () => {
   // BrowserWindow's `icon` option only matters on Windows / Linux —
   // macOS reads its dock icon from the packaged .icns the builder
   // emits, so we leave it unset on darwin.
+  const iconBase = IS_ABC_ONLY ? 'abc-icon' : 'icon'
   const winIcon = process.platform === 'win32'
-    ? path.join(__dirname, '..', 'assets', 'icon.ico')
-    : path.join(__dirname, '..', 'assets', 'icon.png')
+    ? path.join(__dirname, '..', 'assets', iconBase + '.ico')
+    : path.join(__dirname, '..', 'assets', iconBase + '.png')
 
   // Window chrome differs by platform:
   //   - Windows/Linux: fully frameless, custom in-tab-bar min/max/close buttons.
   //   - macOS: keep native traffic lights (hiddenInset overlays them on
   //     the tab bar). Going frameless on macOS hides the traffic lights
   //     entirely, which violates Mac UX expectations.
-  const chrome = process.platform === 'darwin'
-    ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 } }
-    : { frame: false, titleBarStyle: 'hidden' }
+  //   - WCS ABC: no tab bar at all, so it keeps the native title bar and
+  //     window controls, with ABC filling the rest.
+  const chrome = IS_ABC_ONLY
+    ? {}
+    : process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 } }
+      : { frame: false, titleBarStyle: 'hidden' }
 
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'Portal',
+    title: APP_DISPLAY_NAME,
     icon: winIcon,
     autoHideMenuBar: true,
     ...chrome,
   })
 
   mainWindow.maximize()
-  createTray(mainWindow)
+  if (IS_ABC_ONLY) createTray(mainWindow, 'abc-tray-icon.png')
+  else createTray(mainWindow)
 
   // openAtLogin works on both Windows and macOS. The `path` option is
   // Windows-only — on macOS it's ignored at best, and providing
@@ -194,17 +242,27 @@ app.on('ready', async () => {
   if (process.platform === 'win32') loginItem.path = app.getPath('exe')
   app.setLoginItemSettings(loginItem)
 
-  tabManager = new TabManager(mainWindow, TAB_BAR_HEIGHT)
+  // WCS ABC: one full-window ABC view, no tab bar (height 0, never created).
+  // TabManager still hosts the view for its UA, context menu, link routing
+  // and DevTools shortcuts.
+  if (IS_ABC_ONLY) {
+    mainWindow.setMenu(null)
+    mainWindow.on('page-title-updated', (e) => e.preventDefault())
+  }
+  tabManager = new TabManager(mainWindow, IS_ABC_ONLY ? 0 : TAB_BAR_HEIGHT)
   tabManager.setLogger(log)
-  tabManager.initTabBar()
+  if (!IS_ABC_ONLY) tabManager.initTabBar()
 
   // Silent background updates (no dialogs) - see silent-updater.js
   silentUpdater.start(log)
 
   // Force-update polling — relaunches the kiosk if its version drops below
-  // the min_launcher_version pinned via the admin panel.
-  versionCheck.setLogger(log)
-  versionCheck.start()
+  // the min_launcher_version pinned via the admin panel. That pin is a Portal
+  // version number, so the ABC-only app (own version line) skips it.
+  if (!IS_ABC_ONLY) {
+    versionCheck.setLogger(log)
+    versionCheck.start()
+  }
 
   // Auth module logs through the same C:\WCS\app.log
   auth.setLogger(log)
@@ -214,27 +272,57 @@ app.on('ready', async () => {
   const abcUrl = getAbcUrl()
   const portalUrl = `${PORTAL_URL}?location=${location}` + (abcUrl ? `&abc_url=${encodeURIComponent(abcUrl)}` : '')
 
-  tabManager.createTab(portalUrl, 'Portal', {
-    closable: false,
-    preload: path.join(__dirname, 'portal-preload.js'),
-  })
+  if (IS_ABC_ONLY) {
+    // No sign-in: straight to ABC, filling the window.
+    abcTabId = tabManager.createTab(abcTabUrl(), 'ABC Financial', {
+      closable: false,
+      preload: path.join(__dirname, 'abc-scraper.js'),
+    })
+    // Browser keys without chrome: F5 / Ctrl+R reload, Alt+Left/Right
+    // back/forward. (F12 / Ctrl+Shift+I DevTools come from TabManager.)
+    const abcWc = tabManager.tabs.get(abcTabId).view.webContents
+    abcWc.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return
+      const key = input.key
+      if (key === 'F5' || (input.control && !input.shift && (key === 'r' || key === 'R'))) {
+        event.preventDefault()
+        abcWc.reload()
+      } else if (input.alt && key === 'ArrowLeft') {
+        event.preventDefault()
+        if (abcWc.canGoBack()) abcWc.goBack()
+      } else if (input.alt && key === 'ArrowRight') {
+        event.preventDefault()
+        if (abcWc.canGoForward()) abcWc.goForward()
+      }
+    })
+  } else {
+    tabManager.createTab(portalUrl, 'Portal', {
+      closable: false,
+      preload: path.join(__dirname, 'portal-preload.js'),
+    })
+  }
 
-  // Install registry heartbeat — reports this machine and applies any target
-  // location an admin set from the Kiosk Installs panel.
-  heartbeat.setLogger(log)
-  deepLink.setLogger(log)
-  heartbeat.start(applyLocationConfig)
+  // Install heartbeat, receipt printing and deep links are Portal-only: the
+  // ABC app shares this machine's C:\WCS\config.json install_id, so it must
+  // not report or print a second time.
+  if (!IS_ABC_ONLY) {
+    // Install registry heartbeat — reports this machine and applies any target
+    // location an admin set from the Kiosk Installs panel.
+    heartbeat.setLogger(log)
+    deepLink.setLogger(log)
+    heartbeat.start(applyLocationConfig)
 
-  // Till-close receipt printing — poll for print jobs and silent-print them to
-  // the admin-selected local printer. See Admin Panel > Print Devices.
-  printPoller.start({ getWindow: () => mainWindow, logger: log })
+    // Till-close receipt printing — poll for print jobs and silent-print them to
+    // the admin-selected local printer. See Admin Panel > Print Devices.
+    printPoller.start({ getWindow: () => mainWindow, logger: log })
 
-  // Deep link that cold-started the app: Windows passes it in argv; macOS may
-  // have stashed it from an early open-url.
-  const coldLink = deepLink.findDeepLink(process.argv) || pendingDeepLink
-  if (coldLink) {
-    pendingDeepLink = null
-    deepLink.redeemAndApply(coldLink, applyLocationConfig)
+    // Deep link that cold-started the app: Windows passes it in argv; macOS may
+    // have stashed it from an early open-url.
+    const coldLink = deepLink.findDeepLink(process.argv) || pendingDeepLink
+    if (coldLink) {
+      pendingDeepLink = null
+      deepLink.redeemAndApply(coldLink, applyLocationConfig)
+    }
   }
 
   // Auth state bridge — portal notifies us when user logs in/out
@@ -410,6 +498,10 @@ app.on('ready', async () => {
 
   ipcMain.on('abc-signup-detected', (e, data) => {
     latestMemberData = { ...latestMemberData, ...data }
+    // WCS ABC: if the agreement had no salesperson, credit the ABC employee.
+    if (IS_ABC_ONLY && !latestMemberData.salesperson && latestMemberData.staffName) {
+      latestMemberData.salesperson = latestMemberData.staffName
+    }
     log('SIGNUP DETECTED - calling showOverlay')
     showOverlay(latestMemberData, mainWindow, tabManager)
     latestMemberData = {}
@@ -418,8 +510,8 @@ app.on('ready', async () => {
   // "Book Day One" button on an ABC member profile. The staff member at the
   // kiosk is the one booking, so they're credited as the booking team member.
   ipcMain.on('abc-book-day-one', (e, data) => {
-    const staff = auth.getStaff() || {}
-    const staffName = [staff.first_name, staff.last_name].filter(Boolean).join(' ') || staff.display_name || ''
+    // welcome.html strips middle initials for the booking widget itself.
+    const staffName = staffNameFor(data)
     log('ABC profile Book Day One - calling showOverlay')
     showOverlay({ ...(data || {}), salesperson: staffName }, mainWindow, tabManager, { mode: 'dayone' })
   })
@@ -428,8 +520,7 @@ app.on('ready', async () => {
   // with the member as the referrer and the logged-in staff member preselected.
   ipcMain.on('abc-open-vip', (e, data) => {
     const d = data || {}
-    const staff = auth.getStaff() || {}
-    const staffName = [staff.first_name, staff.last_name].filter(Boolean).join(' ') || staff.display_name || ''
+    const staffName = IS_ABC_ONLY ? stripMiddleInitials(staffNameFor(d)) : staffNameFor(d)
     const slug = String(getLocation() || 'Salem').trim().toLowerCase()
     const url = new URL(`https://vip.westcoaststrength.com/${encodeURIComponent(slug)}/staff`)
     if (d.firstName) url.searchParams.set('firstName', d.firstName)
@@ -458,6 +549,9 @@ app.on('ready', async () => {
   // Logs to C:\WCS\app.log for diagnostics — silent failures here have
   // historically hidden auth-token / shared-credential issues.
   ipcMain.handle('get-credentials', async (e, service) => {
+    // WCS ABC has no portal sign-in, so there is no vault to read: staff type
+    // their ABC login and the persisted session keeps them signed in.
+    if (IS_ABC_ONLY) return null
     log('[get-credentials] request service=' + service + ' loggedIn=' + auth.isLoggedIn())
     const cred = auth.getCachedCredential(service)
     if (cred) {
@@ -520,6 +614,18 @@ app.on('ready', async () => {
 
   tabManager.onNewWindow = (url) => {
     const abcUrl = getAbcUrl()
+    // ABC-only: there are no tabs. Cross-host ABC links (abcfinancial <->
+    // abcfitness) navigate the one ABC view (same-host ones already do, in
+    // TabManager); anything else goes to the default browser.
+    if (IS_ABC_ONLY) {
+      if (url.includes('abcfinancial.com') || url.includes('abcfitness.com')) {
+        const abcTab = tabManager.tabs.get(abcTabId)
+        if (abcTab && !abcTab.view.webContents.isDestroyed()) abcTab.view.webContents.loadURL(url)
+      } else if (/^https?:/i.test(url)) {
+        shell.openExternal(url).catch(() => {})
+      }
+      return
+    }
     if (url.includes('abcfinancial.com') || url.includes('kiosk.html')) {
       const abcDirect = abcUrl || 'https://prod02.abcfinancial.com'
       tabManager.createTab(abcDirect, 'ABC Financial', {

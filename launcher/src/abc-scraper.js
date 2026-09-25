@@ -124,7 +124,8 @@ function watchMainFrame() {
       const url = mainFrame.contentDocument && mainFrame.contentDocument.location.href
       if (url && url.includes('StandAloneAgreementPdfCommand.pml')) {
         scrapeAll() // Final scrape
-        ipcRenderer.send('abc-signup-detected', { ...memberData })
+        const staffName = scrapeStaffName()
+        ipcRenderer.send('abc-signup-detected', staffName ? { ...memberData, staffName } : { ...memberData })
         memberData = {} // Reset for next signup
       }
     } catch(e) {}
@@ -299,6 +300,28 @@ function scrapeProfile() {
   return out
 }
 
+// The ABC employee signed in to this workstation. ABC pages set
+// `var userMonitoringInfo = {..."employeeName":"First M Last",...}` in the
+// shell and/or the #main frame. contextIsolation is off for ABC tabs, so the
+// page's globals are readable; inline script text is the fallback. Used as the
+// staff name when the launcher has no portal sign-in (WCS ABC app).
+const EMPLOYEE_RE = /"employeeName"\s*:\s*"([^"]+)"/
+function scrapeStaffName() {
+  for (const doc of collectDocs()) {
+    try {
+      const info = doc.defaultView && doc.defaultView.userMonitoringInfo
+      if (info && info.employeeName) return String(info.employeeName).trim()
+    } catch (e) {}
+    try {
+      for (const s of doc.querySelectorAll('script:not([src])')) {
+        const m = EMPLOYEE_RE.exec(s.textContent || '')
+        if (m) return m[1].trim()
+      }
+    } catch (e) {}
+  }
+  return ''
+}
+
 // Actions toolbar: a collapsed "Actions" tab that expands into a list of member
 // actions. Add future actions to TOOLBAR_ACTIONS.
 const TOOLBAR_ACTIONS = [
@@ -358,6 +381,8 @@ function ensureToolbar() {
     btn.appendChild(document.createTextNode(' ' + a.label))
     btn.addEventListener('click', () => {
       const data = scrapeProfile()
+      const staffName = scrapeStaffName()
+      if (staffName) data.staffName = staffName
       console.log('[WCS Scraper] ' + a.label + ':', JSON.stringify(data))
       a.run(data)
       toolbarOpen = false
