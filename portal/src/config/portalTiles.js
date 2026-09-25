@@ -30,6 +30,7 @@ export const PORTAL_TILE_CATALOG = [
   { key: 'trainerAvail',    label: 'D1 Availability',  desc: 'Trainers',      group: 'tools' },
   { key: 'reporting',       label: 'Reporting',        desc: 'Reports',       group: 'tools' },
   { key: 'forms',           label: 'Forms',            desc: 'Signups',       group: 'tools' },
+  { key: 'quizzes',         label: 'Quiz Funnels',     desc: 'Lead quizzes',  group: 'tools' },
   { key: 'groupX',          label: 'Group X',          desc: 'Classes',       group: 'tools' },
   { key: 'facility',        label: 'Courts & Pool',    desc: 'Schedules',     group: 'tools' },
   // Till is lead-tier and the custom role sits above lead, so a granted member

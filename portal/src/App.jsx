@@ -102,6 +102,7 @@ export default function App() {
   const [showDriveHub, setShowDriveHub] = useState(false)
   const [showMediaLibrary, setShowMediaLibrary] = useState(false)
   const [showForms, setShowForms] = useState(false)
+  const [showQuizzes, setShowQuizzes] = useState(false)
   const [showNps, setShowNps] = useState(false)
   const [showAdsManager, setShowAdsManager] = useState(false)
   const [showAnalytics, setShowAnalytics] = useState(false)
@@ -210,6 +211,7 @@ export default function App() {
   useEffect(() => { if (showTicketsBoard) logEvent('view.tickets') }, [showTicketsBoard])
   useEffect(() => { if (showDrive) logEvent('view.drive') }, [showDrive])
   useEffect(() => { if (showForms) logEvent('view.forms') }, [showForms])
+  useEffect(() => { if (showQuizzes) logEvent('view.quizzes') }, [showQuizzes])
   useEffect(() => { if (showNps) logEvent('view.nps') }, [showNps])
   useEffect(() => { if (showAnalytics) logEvent('view.analytics') }, [showAnalytics])
 
@@ -259,6 +261,7 @@ export default function App() {
         setShowHR(false)
         setShowHelpCenter(false)
         setShowForms(false)
+        setShowQuizzes(false)
         if (window.wcsElectron) window.wcsElectron.onLogout()
       })
     }
@@ -275,6 +278,7 @@ export default function App() {
         setShowHR(false)
         setShowHelpCenter(false)
         setShowForms(false)
+        setShowQuizzes(false)
         // Navigate to requested view
         if (view === 'calendar') setShowCalendar(true)
         else setShowCalendar(false)
@@ -308,6 +312,7 @@ export default function App() {
       setShowHelpCenter(false)
       setShowDrive(false)
       setShowForms(false)
+      setShowQuizzes(false)
       if (kioskMode === 'dayone' && kioskKey) {
         api('/auth/kiosk', { method: 'POST', body: JSON.stringify({ key: kioskKey }) })
           .then(data => {
@@ -372,6 +377,7 @@ export default function App() {
     setShowHR(false)
     setShowHelpCenter(false)
     setShowForms(false)
+    setShowQuizzes(false)
     if (window.location.hash) window.location.hash = ''
     // Notify Electron main process about the login
     if (window.wcsElectron) {
@@ -395,6 +401,7 @@ export default function App() {
     setShowCommunicationNotes(false)
     setShowHR(false)
     setShowForms(false)
+    setShowQuizzes(false)
     // Clear personal background state so it cannot bleed into the next
     // person's session on a shared kiosk. hydrateUiPrefs() re-applies the
     // next signed-in user's real prefs once it resolves.
@@ -484,7 +491,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showGroupX && !showFacility && !showTill && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showNps && !showAdsManager && !showAnalytics && !showProfile
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showGroupX && !showFacility && !showTill && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showQuizzes && !showNps && !showAdsManager && !showAnalytics && !showProfile
 
   function exitImpersonation() {
     setImpersonateId(null)
@@ -514,6 +521,7 @@ export default function App() {
     setShowMediaLibrary(false)
     setShowAdsManager(false)
     setShowForms(false)
+    setShowQuizzes(false)
     setShowNps(false)
     setShowAnalytics(false)
     setShowProfile(false)
@@ -575,6 +583,7 @@ export default function App() {
     // inside the Marketing folder and Feedback inside Admin, the pins carry the
     // same gate their new homes do.
     { key: 'tool:forms', label: 'Forms', desc: 'Signups', show: isAdmin || (user?.visible_tools || []).includes('forms'), open: () => setShowForms(true) },
+    { key: 'tool:quizzes', label: 'Quiz Funnels', desc: 'Lead quizzes', show: isAdmin || (user?.visible_tools || []).includes('quizzes'), open: () => setShowQuizzes(true) },
     { key: 'tool:nps', label: 'Feedback', desc: 'Member surveys', show: isAdmin, open: () => setShowNps(true) },
     { key: 'tool:marketingTracker', label: 'Marketing', desc: 'Campaigns', icon: 'reporting', show: mAccess.tracker, open: () => setShowMarketingTracker(true) },
     { key: 'tool:adsManager', label: 'Ads Manager', desc: 'Meta', show: isAdmin, open: () => setShowAdsManager(true) },
@@ -612,6 +621,7 @@ export default function App() {
     : showCommunicationNotes ? 'tool:commNotes'
     : showInventory ? 'tool:inventory'
     : showForms ? 'tool:forms'
+    : showQuizzes ? 'tool:quizzes'
     : showNps ? 'tool:nps'
     : showMarketingTracker ? 'tool:marketingTracker'
     : showAdsManager ? 'tool:adsManager'
@@ -804,6 +814,8 @@ export default function App() {
         <MediaLibraryView onBack={() => setShowMediaLibrary(false)} userRole={user?.staff?.role} />
       ) : showForms ? (
         <FormsView onBack={handleBackToPortal} me={user.staff} />
+      ) : showQuizzes ? (
+        <FormsView kind="quiz" onBack={handleBackToPortal} me={user.staff} />
       ) : showNps ? (
         <NpsView onBack={handleBackToPortal} />
       ) : showAnalytics && canAnalytics ? (
@@ -819,7 +831,7 @@ export default function App() {
         <AdsManagerView onBack={() => setShowAdsManager(false)} />
       ) : (
         <main className={`flex-1 flex items-start pt-1 pb-12${press ? ' press-single' : ''}`}>
-          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onAdsManager={() => setShowAdsManager(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onQuizzes={() => setShowQuizzes(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onAdsManager={() => setShowAdsManager(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>

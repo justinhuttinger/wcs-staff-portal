@@ -23,20 +23,25 @@ function canAccessForm(staff, form, shares = []) {
   return none
 }
 
-// Module gate: who may enter the forms module at all. Admin tier and up, or
-// an explicit 'forms' permission (RBAC v2 role toggle / override) an admin
-// granted. Mirrors the requireReportAccess pattern in middleware/role.js.
-async function requireFormsBuilder(req, res, next) {
-  if (!req.staff) return res.status(401).json({ error: 'Authentication required' })
-  if (roleLevel(req.staff.role) >= ADMIN_LEVEL) return next()
-  try {
-    const { getEffectivePermissions } = require('./permissions')
-    const perms = await getEffectivePermissions(req.staff)
-    if (perms.includes('forms')) return next()
-  } catch (err) {
-    console.error('[forms] effective-perm check failed:', err.message)
+// Module gates: who may enter a builder module at all. Admin tier and up, or
+// an explicit RBAC grant for `permKey` (role toggle / override) an admin gave.
+// Mirrors the requireReportAccess pattern in middleware/role.js.
+function makeModuleGate(permKey, label) {
+  return async function moduleGate(req, res, next) {
+    if (!req.staff) return res.status(401).json({ error: 'Authentication required' })
+    if (roleLevel(req.staff.role) >= ADMIN_LEVEL) return next()
+    try {
+      const { getEffectivePermissions } = require('./permissions')
+      const perms = await getEffectivePermissions(req.staff)
+      if (perms.includes(permKey)) return next()
+    } catch (err) {
+      console.error(`[${permKey}] effective-perm check failed:`, err.message)
+    }
+    return res.status(403).json({ error: `${label} access requires admin or a ${permKey} grant` })
   }
-  return res.status(403).json({ error: 'Forms access requires admin or a forms grant' })
 }
 
-module.exports = { canAccessForm, requireFormsBuilder }
+const requireFormsBuilder = makeModuleGate('forms', 'Forms')
+const requireQuizBuilder = makeModuleGate('quizzes', 'Quiz Funnels')
+
+module.exports = { canAccessForm, requireFormsBuilder, requireQuizBuilder, makeModuleGate }

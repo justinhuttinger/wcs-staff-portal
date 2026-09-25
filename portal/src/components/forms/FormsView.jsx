@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { forms as formsApi } from '../../lib/api'
+import { forms as defaultFormsApi, quizzes as quizzesApi } from '../../lib/api'
 import FormBuilder from './FormBuilder'
 
 const STATUS_STYLES = {
@@ -12,7 +12,11 @@ const STATUS_STYLES = {
 // backend). Non-empty so it never collides with the filter's "no filter" value.
 const ALL_LOCATIONS_VALUE = '__all_locations__'
 
-export default function FormsView({ onBack, me }) {
+export default function FormsView({ onBack, me, kind = 'form' }) {
+  // kind='quiz' turns this into the Quiz Funnels list (same backend handlers).
+  const isQuiz = kind === 'quiz'
+  const formsApi = isQuiz ? quizzesApi : defaultFormsApi
+  const noun = isQuiz ? 'quizzes' : 'forms'
   const [items, setItems] = useState(null)
   const [driveFolderId, setDriveFolderId] = useState(null)
   const [error, setError] = useState('')
@@ -33,7 +37,7 @@ export default function FormsView({ onBack, me }) {
   useEffect(() => { load() }, [])
 
   if (openFormId) {
-    return <FormBuilder formId={openFormId} me={me} onBack={() => { setOpenFormId(null); load() }} />
+    return <FormBuilder kind={kind} formId={openFormId} me={me} onBack={() => { setOpenFormId(null); load() }} />
   }
 
   // Filter options come from the forms themselves, so the dropdown only ever
@@ -60,17 +64,19 @@ export default function FormsView({ onBack, me }) {
       <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-text-primary">Forms</h2>
-            <p className="text-xs text-text-muted">Build signup forms, share them with a QR code, and collect responses in Google Sheets</p>
+            <h2 className="text-lg font-bold text-text-primary">{isQuiz ? 'Quiz Funnels' : 'Forms'}</h2>
+            <p className="text-xs text-text-muted">{isQuiz
+              ? 'Build multi-step lead quizzes, turn them on per club, and send every answer to Google Sheets and GHL'
+              : 'Build signup forms, share them with a QR code, and collect responses in Google Sheets'}</p>
           </div>
           <button
             onClick={() => setShowCreate(true)}
             className="px-4 py-2 text-sm font-medium bg-wcs-red text-white rounded-lg hover:opacity-90 transition-opacity shrink-0"
-          >New Form</button>
+          >{isQuiz ? 'New Quiz' : 'New Form'}</button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-lg border border-border overflow-hidden">
-            {[['forms', 'Forms'], ['submissions', 'Submissions']].map(([key, label]) => (
+            {[['forms', isQuiz ? 'Quizzes' : 'Forms'], ['submissions', 'Submissions']].map(([key, label]) => (
               <button key={key} onClick={() => setTab(key)}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${tab === key
                   ? 'bg-wcs-red text-white'
@@ -83,11 +89,13 @@ export default function FormsView({ onBack, me }) {
             placeholder="Search by name..."
             className="flex-1 min-w-[160px] px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red"
           />
-          <select value={locFilter} onChange={e => setLocFilter(e.target.value)}
-            className="px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red">
-            <option value="">All locations</option>
-            {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
+          {!isQuiz && (
+            <select value={locFilter} onChange={e => setLocFilter(e.target.value)}
+              className="px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red">
+              <option value="">All locations</option>
+              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          )}
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
             className="px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red">
             <option value="active">Active</option>
@@ -101,11 +109,11 @@ export default function FormsView({ onBack, me }) {
         <div className="loading-card" />
       ) : items.length === 0 ? (
         <div className="bg-surface rounded-xl border border-border p-10 text-center text-sm text-text-muted">
-          No forms yet. Create your first one.
+          No {noun} yet. Create your first one.
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-surface rounded-xl border border-border p-10 text-center text-sm text-text-muted">
-          No forms match your search or filter.
+          No {noun} match your search or filter.
         </div>
       ) : tab === 'forms' ? (
         <div className="bg-surface rounded-xl border border-border divide-y divide-border">
@@ -114,7 +122,7 @@ export default function FormsView({ onBack, me }) {
               className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-bg transition-colors">
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-text-primary truncate">{f.title}</div>
-                <div className="text-xs text-text-muted">{f.owner_name} · {f.location_name}</div>
+                <div className="text-xs text-text-muted">{f.owner_name} · {isQuiz ? `Live at ${f.club_count || 0} club${f.club_count === 1 ? '' : 's'}` : f.location_name}</div>
               </div>
               <div className="text-xs text-text-muted">{f.submission_count} submissions</div>
               <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${STATUS_STYLES[f.status]}`}>
@@ -138,7 +146,7 @@ export default function FormsView({ onBack, me }) {
               <div key={f.id} className="flex items-center gap-4 px-5 py-4">
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-text-primary truncate">{f.title}</div>
-                  <div className="text-xs text-text-muted">{f.location_name} · {f.submission_count} submissions</div>
+                  <div className="text-xs text-text-muted">{isQuiz ? 'Quiz' : f.location_name} · {f.submission_count} submissions</div>
                 </div>
                 {f.sheet_id ? (
                   <a href={`https://docs.google.com/spreadsheets/d/${f.sheet_id}`} target="_blank" rel="noopener noreferrer"
@@ -153,22 +161,24 @@ export default function FormsView({ onBack, me }) {
         </>
       )}
       {showCreate && (
-        <CreateFormModal me={me} onClose={() => setShowCreate(false)}
+        <CreateFormModal kind={kind} api={formsApi} me={me} onClose={() => setShowCreate(false)}
           onCreated={(form) => { setShowCreate(false); setOpenFormId(form.id) }} />
       )}
     </div>
   )
 }
 
-function CreateFormModal({ me, onClose, onCreated }) {
+function CreateFormModal({ kind, api, me, onClose, onCreated }) {
+  const isQuiz = kind === 'quiz'
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [locationId, setLocationId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const locations = me?.locations || []
-  const needsPicker = locations.length > 1
-  useEffect(() => { if (locations.length === 1) setLocationId(locations[0].id) }, [locations])
+  // Quizzes have no owning club (clubs are chosen in the builder).
+  const needsPicker = !isQuiz && locations.length > 1
+  useEffect(() => { if (!isQuiz && locations.length === 1) setLocationId(locations[0].id) }, [isQuiz, locations])
 
   async function submit() {
     if (!title.trim()) { setError('Title is required'); return }
@@ -177,7 +187,7 @@ function CreateFormModal({ me, onClose, onCreated }) {
       const body = { title, description }
       if (locationId === ALL_LOCATIONS_VALUE) body.all_locations = true
       else if (locationId) body.location_id = locationId
-      const res = await formsApi.create(body)
+      const res = await api.create(body)
       onCreated(res.form)
     } catch (err) { setError(err.message); setSaving(false) }
   }
@@ -186,14 +196,14 @@ function CreateFormModal({ me, onClose, onCreated }) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-surface rounded-2xl border border-border w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold text-text-primary">New Form</h3>
+          <h3 className="text-lg font-bold text-text-primary">{isQuiz ? 'New Quiz' : 'New Form'}</h3>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary text-2xl leading-none">&times;</button>
         </div>
         {error && <div className="bg-red-50 border border-red-200 text-wcs-red rounded-xl px-4 py-3 text-sm mb-4">{error}</div>}
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-text-muted mb-1">Title</label>
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Summer Bash Signup"
+            <input value={title} onChange={e => setTitle(e.target.value)} placeholder={isQuiz ? 'Find Your Fit' : 'Summer Bash Signup'}
               className="w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red" />
           </div>
           <div>
@@ -217,7 +227,7 @@ function CreateFormModal({ me, onClose, onCreated }) {
           <button onClick={onClose} className="px-4 py-2 text-sm text-text-muted border border-border rounded-lg hover:text-text-primary transition-colors">Cancel</button>
           <button onClick={submit} disabled={saving}
             className="px-4 py-2 text-sm font-medium bg-wcs-red text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50">
-            {saving ? 'Creating...' : 'Create Form'}
+            {saving ? 'Creating...' : isQuiz ? 'Create Quiz' : 'Create Form'}
           </button>
         </div>
       </div>

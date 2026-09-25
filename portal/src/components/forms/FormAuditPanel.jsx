@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { forms as formsApi } from '../../lib/api'
+import { forms as defaultFormsApi } from '../../lib/api'
 
 const inputClass = 'w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red disabled:opacity-60'
 
@@ -96,7 +96,7 @@ function EventRow({ event }) {
   )
 }
 
-export default function FormAuditPanel({ form, isCorporate }) {
+export default function FormAuditPanel({ form, isCorporate, api: formsApi = defaultFormsApi }) {
   const [scopeAll, setScopeAll] = useState(false)
   const [staffFilter, setStaffFilter] = useState('')
   const [formFilter, setFormFilter] = useState('')

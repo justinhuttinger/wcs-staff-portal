@@ -34,6 +34,7 @@ const TILE_ICONS = {
   adsManager: 'M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 1 1 0-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253 1.076.523 2.144.81 3.205.09.333.06.694-.116.99a3 3 0 0 1-5.198-3c.19-.33.09-.75-.11-1.07m4.614-.135a48.176 48.176 0 0 1 5.795 1.256c.24.068.492.02.694-.135a3.001 3.001 0 0 0 0-4.512.703.703 0 0 0-.694-.135 48.174 48.174 0 0 1-5.795 1.256m0 2.27V6.66',
   blog: 'M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 0 1-2.25 2.25M16.5 7.5V18a2.25 2.25 0 0 0 2.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 0 0 2.25 2.25h13.5M6 7.5h3v3H6v-3Z',
   forms: 'M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z',
+  quizzes: 'M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
   nps: 'M8 10.5h8m-8 3h5m-5 6.5 -3 2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8z',
   analytics: 'M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z',
 }
@@ -111,7 +112,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onNps, onAdsManager, onGroupX, onFacility, onTill, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
+export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onQuizzes, onNps, onAdsManager, onGroupX, onFacility, onTill, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
   // DECLARED HERE, ABOVE EVERY READER. It used to sit ~200 lines further down,
   // next to the leaderboard score card that first needed it, which was fine
   // until marketingCells started reading it from further up: a `const` is in
@@ -326,6 +327,10 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
       <SvgTileButton key="forms" onClick={() => { setShowMarketing(false); onForms() }}
         iconPath={TILE_ICONS.forms} label="Forms" desc="Signups" />
     ),
+    onQuizzes && (roleIdx >= ROLE_LEVELS.admin || (visibleTools || []).includes('quizzes')) && (
+      <SvgTileButton key="quizzes" onClick={() => { setShowMarketing(false); onQuizzes() }}
+        iconPath={TILE_ICONS.quizzes} label="Quiz Funnels" desc="Lead quizzes" />
+    ),
   ].filter(Boolean)
 
   if (showMarketing) {
@@ -422,6 +427,8 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           return onReporting && <SvgTileButton key={key} onClick={() => { window.location.hash = '#reporting'; onReporting() }} iconPath={TILE_ICONS.reporting} label="Reporting" desc="Reports" />
         case 'forms':
           return onForms && <SvgTileButton key={key} onClick={onForms} iconPath={TILE_ICONS.forms} label="Forms" desc="Signups" />
+        case 'quizzes':
+          return onQuizzes && <SvgTileButton key={key} onClick={onQuizzes} iconPath={TILE_ICONS.quizzes} label="Quiz Funnels" desc="Lead quizzes" />
         case 'groupX':
           return onGroupX && <SvgTileButton key={key} onClick={onGroupX} iconPath={TILE_ICONS.groupX} label="Group X" desc="Classes" />
         case 'facility':
@@ -748,7 +755,7 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
               granted the 'forms' tile without any marketing capability still
               has to be able to reach Forms, and hiding the folder on them would
               have quietly removed access they already had. */}
-          {marketingCells.length > 0 && <SvgTileButton onClick={() => setShowMarketing(true)} iconPath={TILE_ICONS.marketing} label="Marketing" desc="Campaigns, ads & forms" />}
+          {marketingCells.length > 0 && <SvgTileButton onClick={() => setShowMarketing(true)} iconPath={TILE_ICONS.marketing} label="Marketing" desc="Campaigns, ads, forms & quizzes" />}
           {/* 6.6. Inventory — role/override-driven (seeded lead+ in migration 203).
               Sales/margin stay manager+ inside the view and on the API. */}
           {onInventory && (visibleTools || []).includes('inventory') && <SvgTileButton onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />}

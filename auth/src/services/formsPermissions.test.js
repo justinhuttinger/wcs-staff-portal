@@ -63,3 +63,14 @@ test('missing staff or form is no access', () => {
   assert.deepStrictEqual(canAccessForm(null, FORM, []), { view: false, edit: false })
   assert.deepStrictEqual(canAccessForm(staff(), null, []), { view: false, edit: false })
 })
+
+test('module gates: admin passes, missing staff 401', async () => {
+  const { requireQuizBuilder } = require('./formsPermissions')
+  let passed = false
+  await requireQuizBuilder({ staff: { role: 'admin' } }, {}, () => { passed = true })
+  assert.strictEqual(passed, true)
+  let status
+  const res = { status(s) { status = s; return { json() {} } } }
+  await requireQuizBuilder({}, res, () => {})
+  assert.strictEqual(status, 401)
+})
