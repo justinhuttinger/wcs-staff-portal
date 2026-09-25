@@ -50,3 +50,27 @@ test('a calendar with no team members yields an empty roster, not a throw', () =
   assert.deepEqual(toRoster({}, users), [])
   assert.deepEqual(toRoster({ teamMembers: null }, users), [])
 })
+
+// Some clubs run Day Ones on a second calendar (Milwaukie: Kirstyn's own
+// calendar, Clackamas: "Stretch"). Their members join the picker, tagged with
+// the calendar a booking must go to.
+const { toExtraRoster, trainerKey } = require('./ghlBooking')
+
+test('an extra calendar member carries its calendar and a unique key', () => {
+  const cal = { id: 'cal-stretch', name: 'Stretch', teamMembers: [{ userId: 'u-seth', priority: 1 }] }
+  assert.deepEqual(toExtraRoster(cal, users), [{
+    userId: 'u-seth', name: 'Seth Tripp', email: 'seth@x.com', priority: 1,
+    calendarId: 'cal-stretch', calendarName: 'Stretch', note: 'Stretch',
+    key: 'u-seth@cal-stretch',
+  }])
+})
+
+test('a personal calendar named after its owner gets no redundant note', () => {
+  const cal = { id: 'cal-k', name: "Anna Reed's Calendar", teamMembers: ['u-anna'] }
+  assert.equal(toExtraRoster(cal, users)[0].note, null)
+})
+
+test('the same person on the main and an extra calendar stays two distinct choices', () => {
+  assert.notEqual(trainerKey({ userId: 'u-seth' }), trainerKey({ userId: 'u-seth', calendarId: 'cal-stretch' }))
+  assert.equal(trainerKey({ userId: 'u-seth' }), 'u-seth')
+})

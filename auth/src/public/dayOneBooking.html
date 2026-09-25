@@ -78,6 +78,8 @@
   }
   .opt .avatar.any { background: var(--fill-2); }
   .opt .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Which of the club's other Day One calendars a trainer books onto (e.g. Stretch). */
+  .nt { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 4px; }
   .opt .tick { flex: none; opacity: 0; color: var(--ink); }
   .opt[aria-selected="true"] .tick { opacity: 1; }
   .opt-sep { height: 1px; background: var(--line); margin: 6px 4px; }
@@ -451,8 +453,10 @@
   var S = {
     // One link per location, so this is fixed for the life of the page.
     location: '{{WIDGET_LOCATION}}',
-    // Defaults to "Anyone" — the round-robin path is the normal case.
-    userId: '', date: '', startTime: '',
+    // Defaults to "Anyone" — the round-robin path is the normal case. The key
+    // names a person ON a calendar, since the same trainer can take Day Ones
+    // on the main calendar and on a club's other one (Stretch).
+    key: '', date: '', startTime: '',
     cfg: null, days: {}, view: null, tz: 'America/Los_Angeles',
   }
   var $ = function (id) { return document.getElementById(id) }
@@ -569,15 +573,22 @@
     return ((parts[0] || '')[0] || '' ) + ((parts[parts.length - 1] || '')[0] || '')
   }
 
+  // The chosen trainer, or null for "Anyone".
+  function selected() {
+    if (!S.key || !S.cfg) return null
+    return (S.cfg.trainers || []).filter(function (t) { return (t.key || t.userId) === S.key })[0] || null
+  }
+
   function renderTrainerMenu(trainers) {
-    var rows = [{ userId: '', name: 'Anyone', any: true }].concat(trainers)
+    var rows = [{ key: '', name: 'Anyone', any: true }].concat(trainers)
     $('trainer-menu').innerHTML = rows.map(function (t, i) {
       return (i === 1 ? '<div class="opt-sep"></div>' : '') +
-        '<button type="button" class="opt" role="option" data-uid="' + esc(t.userId) + '"' +
-        ' aria-selected="' + (t.userId === S.userId) + '">' +
+        '<button type="button" class="opt" role="option" data-key="' + esc(t.key || t.userId || '') + '"' +
+        ' aria-selected="' + ((t.key || t.userId || '') === S.key) + '">' +
         '<span class="avatar' + (t.any ? ' any' : '') + '">' +
           (t.any ? '&#183;&#183;' : esc(initials(t.name).toUpperCase())) + '</span>' +
-        '<span class="nm">' + esc(t.name) + '</span>' +
+        '<span class="nm">' + esc(t.name) +
+          (t.note ? ' <span class="nt">' + esc(t.note) + '</span>' : '') + '</span>' +
         '<svg class="tick" width="15" height="15" viewBox="0 0 24 24" fill="none" ' +
           'stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>' +
         '</button>'
@@ -590,21 +601,25 @@
         '<span class="nm">Refresh trainer list</span></button>'
     Array.prototype.forEach.call($('trainer-menu').querySelectorAll('.opt'), function (b) {
       if (b.id === 'refresh-roster') return
-      b.addEventListener('click', function () { selectTrainer(b.getAttribute('data-uid')) })
+      b.addEventListener('click', function () { selectTrainer(b.getAttribute('data-key')) })
     })
     $('refresh-roster').addEventListener('click', function (e) {
       e.stopPropagation()
       $('refresh-roster').querySelector('.nm').textContent = 'Refreshing…'
       loadConfig({ refresh: true })
     })
-    syncTrainerLabel(rows)
+    // A refresh can drop the chosen trainer (removed from the calendar in GHL);
+    // fall back to Anyone rather than keep sending a stale choice.
+    if (S.key && !selected()) S.key = ''
+    syncTrainerLabel()
   }
 
-  function syncTrainerLabel(rows) {
-    var match = rows.filter(function (t) { return t.userId === S.userId })[0]
-    $('trainer-label').textContent = match ? match.name : 'Anyone'
+  function syncTrainerLabel() {
+    var t = selected()
+    $('trainer-label').textContent = t ? t.name + (t.note ? ' · ' + t.note : '') : 'Anyone'
     Array.prototype.forEach.call($('trainer-menu').querySelectorAll('.opt'), function (b) {
-      b.setAttribute('aria-selected', String(b.getAttribute('data-uid') === S.userId))
+      if (b.id === 'refresh-roster') return
+      b.setAttribute('aria-selected', String(b.getAttribute('data-key') === S.key))
     })
   }
 
@@ -613,12 +628,12 @@
     $('trainer-btn').setAttribute('aria-expanded', String(on))
   }
 
-  function selectTrainer(uid) {
+  function selectTrainer(key) {
     openPicker(false)
-    if (uid === S.userId) return
-    S.userId = uid
+    if (key === S.key) return
+    S.key = key || ''
     S.startTime = ''
-    syncTrainerLabel([{ userId: '', name: 'Anyone' }].concat(S.cfg.trainers || []))
+    syncTrainerLabel()
     loadSlots()
   }
 
@@ -643,7 +658,9 @@
     $('times').innerHTML = '<span class="muted"><span class="spin"></span> Loading…</span>'
     var q = '/api/slots?location=' + encodeURIComponent(S.location) +
       '&days=31&timezone=' + encodeURIComponent(S.tz)
-    if (S.userId) q += '&userId=' + encodeURIComponent(S.userId)
+    var t = selected()
+    if (t) q += '&userId=' + encodeURIComponent(t.userId)
+    if (t && t.calendarId) q += '&calendarId=' + encodeURIComponent(t.calendarId)
     api(q).then(function (d) {
       S.days = d.days || {}
       var keys = Object.keys(S.days).sort()
@@ -759,7 +776,7 @@
     var list = (S.date && S.days[S.date]) || []
     if (!list.length) {
       $('times').innerHTML = '<span class="muted">No open times' +
-        (S.userId ? ' for this trainer' : '') + '.</span>'
+        (S.key ? ' for this trainer' : '') + '.</span>'
       return
     }
     $('times').innerHTML = list.map(function (iso) {
@@ -807,9 +824,10 @@
   function resolveWho() {
     S.pick = ''
     show($('who'), true)
-    if (S.userId) {
-      var t = (S.cfg.trainers || []).filter(function (x) { return x.userId === S.userId })[0]
-      $('who').innerHTML = 'Day One with <b>' + esc(t ? t.name : 'selected trainer') + '</b>'
+    if (S.key) {
+      var t = selected()
+      $('who').innerHTML = 'Day One with <b>' + esc(t ? t.name : 'selected trainer') + '</b>' +
+        (t && t.note ? ' <span class="nt">' + esc(t.note) + '</span>' : '')
       return
     }
     $('who').innerHTML = '<span class="spin"></span> Assigning a trainer…'
@@ -848,11 +866,14 @@
     $('book-state').innerHTML = '<span class="spin"></span> Booking…'
     api('/api/book', { method: 'POST', body: {
       location: S.location,
-      userId: S.userId || undefined,
+      userId: selected() ? selected().userId : undefined,
+      // Only set for a club's other Day One calendar (Stretch, Kirstyn's); the
+      // server checks it is one of that club's Day One calendars.
+      calendarId: selected() && selected().calendarId ? selected().calendarId : undefined,
       // What the page displayed for an "Anyone" booking. The server re-resolves
       // and reports if availability shifted, so the confirmation never quietly
       // disagrees with what was shown.
-      expectedUserId: S.userId ? undefined : (S.pick || undefined),
+      expectedUserId: S.key ? undefined : (S.pick || undefined),
       timezone: S.tz,
       startTime: S.startTime,
       firstName: $('firstName').value.trim(),
@@ -862,9 +883,9 @@
       tourMember: $('tourMember').value,
       notes: $('notes').value.trim(),
     }}).then(function (r) {
-      var name = r.assignedUserId
+      var name = selected() ? selected().name : (r.assignedUserId
         ? ((S.cfg.trainers || []).filter(function (x) { return x.userId === r.assignedUserId })[0] || {}).name
-        : null
+        : null)
       // Who and when, nothing else. Ids and field-write status were useful while
       // building this, but they are noise to the person who just booked — and
       // the API response and server logs still carry them if support needs them.

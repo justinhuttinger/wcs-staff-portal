@@ -31,6 +31,8 @@ const { ghlFetch } = require('../services/ghlClient')
 const {
   cached, bookableDays, mapLimit, slotsFor, clearSlotsCache,
   getDayOneCalendar, getUsersById, trainerRoster, clearRosterCache,
+  extraTrainerRoster, getExtraDayOneCalendars,
+  resolveBookingCalendar, clearExtraCalendarCache, trainerKey,
 } = require('../lib/ghlBooking')
 
 const router = Router()
@@ -95,6 +97,7 @@ const CACHE_TTL = 5 * 60 * 1000
 // cleared through the lib rather than reached into directly.
 function clearCaches(slug) {
   clearRosterCache(slug)
+  clearExtraCalendarCache(slug)
   delete fieldCache[slug]
   delete loadCache[slug]
   clearSlotsCache(slug)
@@ -150,6 +153,18 @@ function getTrainerSlots(loc, calendar, timezone, days) {
     })
     return byUser
   })
+}
+
+// Extra calendars are an addition to the picker. If one cannot be read (renamed
+// in GHL, a 500), the club still books Day Ones on its main calendar rather than
+// losing the whole page.
+async function extraRosterSafe(loc) {
+  try {
+    return await extraTrainerRoster(loc)
+  } catch (e) {
+    console.warn(`[DayOneWidget] ${loc.slug}: extra Day One calendars unavailable:`, e.message)
+    return []
+  }
 }
 
 function optionLabel(o) {
@@ -230,9 +245,12 @@ router.get('/api/config', readLimiter, async (req, res) => {
     // Secret-gated with the rest of this endpoint, so members cannot use it to
     // hammer GHL through us.
     if (req.query.refresh) clearCaches(loc.slug)
-    const [calendar, trainers, fields] = await Promise.all([
-      getDayOneCalendar(loc), trainerRoster(loc), getFieldsByKey(loc),
+    const [calendar, roster, extras, fields] = await Promise.all([
+      getDayOneCalendar(loc), trainerRoster(loc), extraRosterSafe(loc), getFieldsByKey(loc),
     ])
+    // Main-calendar trainers first (they are the "Anyone" pool), then the
+    // people who take Day Ones on the club's other Day One calendars.
+    const trainers = roster.map(t => ({ ...t, key: trainerKey(t) })).concat(extras)
     const teamField = fields[DAY_ONE_TEAM_FIELD]
     res.json({
       location: { slug: loc.slug, name: loc.name },
@@ -271,7 +289,7 @@ router.get('/api/slots', readLimiter, async (req, res) => {
   if (!loc) return res.status(400).json({ error: 'Unknown location' })
   const requested = Math.min(Math.max(parseInt(req.query.days, 10) || 14, 1), 31)
   try {
-    const calendar = await getDayOneCalendar(loc)
+    const calendar = await resolveBookingCalendar(loc, req.query.calendarId)
     // Never ask for a wider window than the calendar will actually book. The
     // page asks for a month so it can drive its grid, but Day One caps at
     // allowBookingFor (10 days) — the extra three weeks are pure latency for
@@ -294,7 +312,7 @@ router.get('/api/slots', readLimiter, async (req, res) => {
     res.json({ calendarId: calendar.id, days: byDate })
   } catch (e) {
     console.error('[DayOneWidget] slots failed:', e.message)
-    res.status(502).json({ error: e.message })
+    res.status(e.status || 502).json({ error: e.message })
   }
 })
 
@@ -411,7 +429,7 @@ router.get('/api/slot-trainers', readLimiter, async (req, res) => {
 router.post('/api/book', bookLimiter, async (req, res) => {
   const {
     location, firstName, lastName, email, phone,
-    userId, startTime, tourMember, notes,
+    userId, calendarId, startTime, tourMember, notes,
   } = req.body || {}
 
   const loc = getLocationBySlug(String(location || '').toLowerCase())
@@ -423,7 +441,17 @@ router.post('/api/book', bookLimiter, async (req, res) => {
   }
 
   try {
-    const calendar = await getDayOneCalendar(loc)
+    const calendar = await resolveBookingCalendar(loc, calendarId)
+    const isExtra = calendar.id !== (await getDayOneCalendar(loc)).id
+
+    // An extra Day One calendar is only ever booked with a named trainer who is
+    // actually on it. "Anyone" belongs to the main calendar.
+    if (isExtra) {
+      const members = (calendar.teamMembers || []).map(m => (typeof m === 'string' ? m : (m.userId || m.id)))
+      if (!userId || !members.includes(userId)) {
+        return res.status(400).json({ error: 'Pick a trainer on that calendar' })
+      }
+    }
 
     // 0. Decide the trainer BEFORE writing anything. "Anyone" is resolved here,
     // at booking time, by the same code that produced the pre-submit preview —
@@ -541,6 +569,7 @@ router.post('/api/book', bookLimiter, async (req, res) => {
       appointmentId: appt.id,
       contactId,
       assignedUserId: appt.assignedUserId || assignTo || null,
+      calendarId: calendar.id,
       autoAssigned,
       reassignedFrom,
       startTime: appt.startTime || startTime,
@@ -553,7 +582,7 @@ router.post('/api/book', bookLimiter, async (req, res) => {
     })
   } catch (e) {
     console.error('[DayOneWidget] booking failed:', e.message)
-    res.status(502).json({ error: e.message })
+    res.status(e.status || 502).json({ error: e.message })
   }
 })
 
@@ -600,24 +629,46 @@ const manageLimiter = rateLimit({
 // the caller gives no id and more than one exists, this returns them all and
 // refuses to guess — the page asks which.
 async function upcomingForContact(loc, contactId, appointmentId) {
-  const calendar = await getDayOneCalendar(loc)
-  const data = await ghlFetch('/calendars/events', loc.apiKey, {
-    params: {
-      locationId: loc.id,
-      calendarId: calendar.id,
-      startTime: Date.now(),
-      endTime: Date.now() + 120 * 86400000,
-    },
-    version: CAL_VERSION,
-  })
-  const mine = (data.events || [])
+  const primary = await getDayOneCalendar(loc)
+  // A Day One can live on the club's other Day One calendars too, and a manage
+  // link sent for one of those must find it. An extra calendar that fails to
+  // load is skipped, never allowed to break the main one.
+  let extras = []
+  try { extras = await getExtraDayOneCalendars(loc) } catch (e) {
+    console.warn(`[DayOneWidget] ${loc.slug}: extra calendars skipped for manage link:`, e.message)
+  }
+  const calendarsById = { [primary.id]: primary }
+  for (const c of extras) calendarsById[c.id] = c
+  const perCalendar = await Promise.all(Object.keys(calendarsById).map(async id => {
+    try {
+      const data = await ghlFetch('/calendars/events', loc.apiKey, {
+        params: {
+          locationId: loc.id,
+          calendarId: id,
+          startTime: Date.now(),
+          endTime: Date.now() + 120 * 86400000,
+        },
+        version: CAL_VERSION,
+      })
+      return (data.events || []).map(e => ({ ...e, calendarId: e.calendarId || id }))
+    } catch (e) {
+      if (id === primary.id) throw e
+      console.warn(`[DayOneWidget] ${loc.slug}: calendar ${id} skipped for manage link:`, e.message)
+      return []
+    }
+  }))
+  const seen = new Set()
+  const events = perCalendar.flat().filter(e => (seen.has(e.id) ? false : seen.add(e.id)))
+  const mine = events
     .filter(e => e.contactId === contactId && !e.deleted)
     .filter(e => String(e.appointmentStatus || '').toLowerCase() !== 'cancelled')
     .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
 
   const usersById = await getUsersById(loc)
+  // Every caller that reads `calendar` wants the one the appointment is on:
+  // reschedule slots and slot length both come from it.
   const withTrainer = appt => ({
-    calendar,
+    calendar: (appt && calendarsById[appt.calendarId]) || primary,
     appointment: appt,
     trainer: appt ? (usersById[appt.assignedUserId] || null) : null,
     candidates: mine,
@@ -629,7 +680,7 @@ async function upcomingForContact(loc, contactId, appointmentId) {
     const exact = mine.find(e => e.id === appointmentId)
     return withTrainer(exact || null)
   }
-  if (mine.length > 1) return { calendar, appointment: null, trainer: null, candidates: mine }
+  if (mine.length > 1) return { calendar: primary, appointment: null, trainer: null, candidates: mine }
   return withTrainer(mine[0] || null)
 }
 
