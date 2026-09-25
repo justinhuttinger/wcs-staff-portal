@@ -234,13 +234,20 @@ app.on('ready', async () => {
   if (IS_ABC_ONLY) createTray(mainWindow, 'abc-tray-icon.png')
   else createTray(mainWindow)
 
-  // openAtLogin works on both Windows and macOS. The `path` option is
-  // Windows-only — on macOS it's ignored at best, and providing
-  // app.getPath('exe') points inside the app bundle which confuses
-  // Login Items, so we omit it on darwin.
-  const loginItem = { openAtLogin: true }
-  if (process.platform === 'win32') loginItem.path = app.getPath('exe')
-  app.setLoginItemSettings(loginItem)
+  // Don't open at sign-in. Older builds registered a login item, so actively
+  // turn it off: this removes that entry (HKCU Run key on Windows, Login
+  // Items on macOS) the first time a user runs this version. `path` is
+  // Windows-only; on macOS it points inside the bundle and confuses Login
+  // Items, so it's omitted there.
+  // Windows: builds have used both the app name and Electron's default
+  // "electron.app.<name>" as the Run value name, so clear both.
+  if (process.platform === 'win32') {
+    for (const name of [APP_DISPLAY_NAME, 'electron.app.' + APP_DISPLAY_NAME]) {
+      app.setLoginItemSettings({ openAtLogin: false, path: app.getPath('exe'), name })
+    }
+  } else {
+    app.setLoginItemSettings({ openAtLogin: false })
+  }
 
   // WCS ABC: one full-window ABC view, no tab bar (height 0, never created).
   // TabManager still hosts the view for its UA, context menu, link routing
