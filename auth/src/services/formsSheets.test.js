@@ -78,3 +78,30 @@ test('pacificTimestamp formats a fixed instant in America/Los_Angeles', () => {
   const s = pacificTimestamp(new Date('2026-07-08T20:05:33Z'))
   assert.match(s, /^07\/08\/2026 13:05:33$/)
 })
+
+const { leadKeysFor, QUIZ_LEAD_KEYS } = require('./formsSheets')
+
+test('quiz: lead columns come first, then questions, then UTM', () => {
+  const cols = computeColumns(SCHEMA, {}, QUIZ_LEAD_KEYS)
+  assert.deepStrictEqual(cols, {
+    club: 2, first_name: 3, last_name: 4, email: 5, phone: 6,
+    f_name: 7, f_days: 8, utm_source: 9, utm_medium: 10, utm_campaign: 11,
+  })
+  assert.deepStrictEqual(buildHeaderRow(SCHEMA, cols), [
+    'Submitted At', 'Club', 'First Name', 'Last Name', 'Email', 'Phone',
+    'Name', 'Days', 'UTM Source', 'UTM Medium', 'UTM Campaign',
+  ])
+})
+
+test('quiz: a question added after publish appends after existing columns', () => {
+  const existing = computeColumns(SCHEMA, {}, QUIZ_LEAD_KEYS)
+  const grown = computeColumns([...SCHEMA, { id: 'f_new', type: 'radio', label: 'New', options: ['a'] }], existing, QUIZ_LEAD_KEYS)
+  assert.equal(grown.f_new, 12)
+  assert.equal(grown.club, 2)
+})
+
+test('leadKeysFor: quizzes only', () => {
+  assert.deepStrictEqual(leadKeysFor({ kind: 'quiz' }), QUIZ_LEAD_KEYS)
+  assert.deepStrictEqual(leadKeysFor({ kind: 'form' }), [])
+  assert.deepStrictEqual(leadKeysFor({}), [])
+})

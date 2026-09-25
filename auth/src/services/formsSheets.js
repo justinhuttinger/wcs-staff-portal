@@ -10,6 +10,16 @@ const TAB = 'Submissions'
 // all the column math are reused unchanged.
 const UTM_LABELS = { utm_source: 'UTM Source', utm_medium: 'UTM Medium', utm_campaign: 'UTM Campaign' }
 
+// Quiz submissions carry the club + contact fields in `data` alongside the
+// question answers. These keys never collide with f_* field ids.
+const QUIZ_LEAD_KEYS = ['club', 'first_name', 'last_name', 'email', 'phone']
+const QUIZ_LEAD_LABELS = { club: 'Club', first_name: 'First Name', last_name: 'Last Name', email: 'Email', phone: 'Phone' }
+const QUIZ_FOLDER_LABEL = 'Quiz Funnels'
+
+function leadKeysFor(form) {
+  return form && form.kind === 'quiz' ? QUIZ_LEAD_KEYS : []
+}
+
 // Lazy-require: services/supabase creates the client at import time and throws
 // without env vars, so pull it in only when a function actually needs it
 // (matches middleware/role.js). Keeps `node --test` running on the pure funcs.
@@ -36,9 +46,13 @@ function inputFields(schema) {
 // Column 1 is always Submitted At. Existing field->column mappings are never
 // changed or reused; new fields append after the current max. This is what
 // keeps historical Sheet rows aligned when the form changes.
-function computeColumns(schema, existing = {}) {
+function computeColumns(schema, existing = {}, leadKeys = []) {
   const cols = { ...existing }
   let max = Math.max(1, ...Object.values(cols))
+  // Quiz lead columns (Club, name, email, phone) sit ahead of the questions.
+  for (const k of leadKeys) {
+    if (!cols[k]) { max += 1; cols[k] = max }
+  }
   for (const f of inputFields(schema)) {
     if (!cols[f.id]) { max += 1; cols[f.id] = max }
   }
@@ -51,7 +65,7 @@ function computeColumns(schema, existing = {}) {
 }
 
 function buildHeaderRow(schema, columns) {
-  const labels = { ...UTM_LABELS }
+  const labels = { ...UTM_LABELS, ...QUIZ_LEAD_LABELS }
   for (const f of inputFields(schema)) labels[f.id] = f.label
   const max = Math.max(1, ...Object.values(columns))
   const row = new Array(max).fill('')
@@ -112,6 +126,8 @@ function locationLabelFor(locationId, clubName) {
 }
 
 async function locationNameFor(form) {
+  // Quizzes span clubs via quiz_clubs; their sheets live in one folder.
+  if (form.kind === 'quiz') return QUIZ_FOLDER_LABEL
   if (!form.location_id) return ALL_LOCATIONS_LABEL
   try {
     const { data: loc } = await db().from('locations').select('name').eq('id', form.location_id).maybeSingle()
@@ -197,7 +213,7 @@ async function renameSheet(form) {
 async function ensureSheet(form) {
   const token = await getToken()
   let { sheet_id, sheet_tab } = form
-  const columns = computeColumns(form.schema, form.sheet_columns || {})
+  const columns = computeColumns(form.schema, form.sheet_columns || {}, leadKeysFor(form))
 
   if (!sheet_id) {
     const locName = await locationNameFor(form)
@@ -336,5 +352,5 @@ function start() {
 module.exports = {
   computeColumns, buildHeaderRow, buildRowValues, pacificTimestamp,
   ensureSheet, renameSheet, organizeSheet, appendSubmission, retryFormSync, getFolderId, start,
-  locationLabelFor, ALL_LOCATIONS_LABEL,
+  locationLabelFor, ALL_LOCATIONS_LABEL, QUIZ_LEAD_KEYS, leadKeysFor,
 }
