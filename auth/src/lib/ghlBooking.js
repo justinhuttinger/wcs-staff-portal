@@ -55,7 +55,19 @@ async function mapLimit(items, limit, fn) {
 const SLOTS_TTL = 45 * 1000
 const slotsCache = {}
 
-function slotsFor(loc, calendar, params) {
+// free-slots rejects any window longer than 31 days, and a calendar can allow
+// booking further out than that (Milwaukie's Day One allows 32). Asking for the
+// calendar's full window then fails outright, and callers that swallow the
+// error read it as "nobody is free". Clamped here so no caller can ask for more.
+const MAX_SLOT_WINDOW_DAYS = 31
+
+function clampSlotWindow(params) {
+  const maxEnd = params.startDate + MAX_SLOT_WINDOW_DAYS * 86400000
+  return params.endDate > maxEnd ? { ...params, endDate: maxEnd } : params
+}
+
+function slotsFor(loc, calendar, rawParams) {
+  const params = clampSlotWindow(rawParams)
   // Bucket the window so millisecond-different startDates still share an entry.
   const key = [
     loc.slug || loc.id, calendar.id, params.userId || 'any', params.timezone,
@@ -161,6 +173,7 @@ async function trainerRoster(loc) {
 
 module.exports = {
   CAL_VERSION, cached, bookableDays, mapLimit, slotsFor, slotsByDate, clearSlotsCache,
+  MAX_SLOT_WINDOW_DAYS, clampSlotWindow,
   ROSTER_TTL, CALENDAR_NAME, clearRosterCache,
   getDayOneCalendar, getUsersById, toRoster, trainerRoster,
 }
