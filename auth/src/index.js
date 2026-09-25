@@ -36,6 +36,9 @@ app.use('/public/facility', cors({ origin: '*', methods: ['GET'] }))
 // Shared ticket files are pasted into emails and opened from anywhere, so the
 // permissive CORS has to be mounted ahead of the origin-locked one below.
 app.use('/public/ticket-file', cors({ origin: '*', methods: ['GET'] }))
+// Post-signup popup (portal welcome.html) reads a club's Action Links without
+// a sign-in; see routes/publicActionLinks.js.
+app.use('/public/action-links', cors({ origin: '*', methods: ['GET'] }))
 
 app.use(cors({
   origin: (origin, cb) => {
@@ -113,6 +116,7 @@ app.use('/public/facility', require('./routes/publicFacility'))
 // Public, unauthenticated delivery of a ticket attachment a handler chose to
 // share. Token-gated per file; the Storage bucket itself stays private.
 app.use('/public/ticket-file', require('./routes/publicTicketFile'))
+app.use('/public/action-links', require('./routes/publicActionLinks'))
 app.use('/oidc', require('./routes/oidc'))
 
 // OIDC discovery at root level (some providers look here)

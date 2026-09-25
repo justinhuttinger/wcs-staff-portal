@@ -140,19 +140,34 @@
       return '+' + digits;
     }
 
+    // Prefill params. Both spellings are set: the GHL widgets (fallback)
+    // read first_name/last_name, while the Day One page and the VIP site read
+    // firstName/lastName, and each ignores the other set.
     function buildUrl(base) {
       const url = new URL(base);
-      if (member.firstName) url.searchParams.set('first_name', member.firstName);
-      if (member.lastName) url.searchParams.set('last_name', member.lastName);
+      const staff = member.salesperson ? member.salesperson.replace(/\s+[A-Za-z]\s+/g, ' ').trim() : '';
+      if (member.firstName) { url.searchParams.set('first_name', member.firstName); url.searchParams.set('firstName', member.firstName); }
+      if (member.lastName) { url.searchParams.set('last_name', member.lastName); url.searchParams.set('lastName', member.lastName); }
       if (member.email) url.searchParams.set('email', member.email);
       if (member.phone) url.searchParams.set('phone', cleanPhone(member.phone));
-      if (member.salesperson) url.searchParams.set('day_one_booking_team_member', member.salesperson.replace(/\s+[A-Za-z]\s+/g, ' ').trim());
+      if (staff) { url.searchParams.set('day_one_booking_team_member', staff); url.searchParams.set('employee', staff); }
       return url.toString();
     }
 
-    // Preload frames
-    document.getElementById('booking-frame').src = buildUrl(loc.booking);
-    document.getElementById('vip-frame').src = buildUrl(loc.vip);
+    // Links come from Admin -> Action Links (Day One + VIP per club), read
+    // through a public endpoint because WCS ABC has no portal sign-in. The
+    // WCS_LOCATIONS table above is only the fallback if that call fails.
+    const API_BASE = 'https://api.wcstrength.com';
+    function loadFrames(links) {
+      document.getElementById('booking-frame').src = buildUrl((links && links.dayone) || loc.booking);
+      document.getElementById('vip-frame').src = buildUrl((links && links.vip) || loc.vip);
+    }
+    const linksCtl = new AbortController();
+    const linksTimer = setTimeout(() => linksCtl.abort(), 4000);
+    fetch(API_BASE + '/public/action-links/' + encodeURIComponent(locationName.toLowerCase()), { signal: linksCtl.signal })
+      .then(r => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then(links => { clearTimeout(linksTimer); loadFrames(links); });
 
     function showScreen(id) {
       document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
