@@ -27,7 +27,26 @@ export const PASS_DAYS = {
   [DAY_PASS]: 1,
 }
 
-export const grantsAPass = outcome => outcome === CUSTOM_PASS || outcome in PASS_DAYS
+/**
+ * What an outcome hands out: { grants, fixedDays }. fixedDays null on a pass
+ * means staff choose the length on the tour.
+ *
+ * `rules` is the club's list from the server (tour_outcomes, set in Admin ->
+ * Tour Check-In), and wins whenever it is there. The built-in lengths above
+ * are only for a server that has not sent any.
+ */
+export function passRuleFor(outcome, rules) {
+  if (Array.isArray(rules) && rules.length) {
+    const r = rules.find(x => x.outcome === outcome)
+    if (!r || !r.grants_pass) return { grants: false, fixedDays: null }
+    return { grants: true, fixedDays: r.pass_days == null ? null : Number(r.pass_days) }
+  }
+  if (outcome === CUSTOM_PASS) return { grants: true, fixedDays: null }
+  if (outcome in PASS_DAYS) return { grants: true, fixedDays: PASS_DAYS[outcome] }
+  return { grants: false, fixedDays: null }
+}
+
+export const grantsAPass = (outcome, rules) => passRuleFor(outcome, rules).grants
 
 /**
  * How many days the chosen outcome hands out, or an error to show instead.
@@ -35,9 +54,10 @@ export const grantsAPass = outcome => outcome === CUSTOM_PASS || outcome in PASS
  * Bounded at 90: a pass longer than that is somebody fat-fingering an extra
  * digit, and it writes a real expiration date into ABC.
  */
-export function passDaysFor(outcome, customDays) {
-  if (!grantsAPass(outcome)) return { days: null }
-  const n = outcome === CUSTOM_PASS ? Number(customDays) : PASS_DAYS[outcome]
+export function passDaysFor(outcome, customDays, rules) {
+  const { grants, fixedDays } = passRuleFor(outcome, rules)
+  if (!grants) return { days: null }
+  const n = fixedDays == null ? Number(customDays) : fixedDays
   if (!Number.isInteger(n) || n < 1 || n > 90) {
     return { days: null, error: 'Enter between 1 and 90 days for the pass.' }
   }

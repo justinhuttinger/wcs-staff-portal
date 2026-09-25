@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { OUTCOMES, VIP_PASS, CUSTOM_PASS, DAY_PASS, grantsAPass, passDaysFor } from './outcomes.js'
+import { OUTCOMES, VIP_PASS, CUSTOM_PASS, DAY_PASS, grantsAPass, passDaysFor, passRuleFor } from './outcomes.js'
 
 test('both front ends see the same six outcomes, longest access first', () => {
   assert.deepEqual(OUTCOMES, [
@@ -50,4 +50,27 @@ test('rejects a fat-fingered length rather than writing it to ABC', () => {
     assert.equal(r.days, null, `expected ${bad} to be rejected`)
     assert.match(r.error, /1 and 90/)
   }
+})
+
+// The server's list (set in Admin -> Tour Check-In) overrides the built-in one.
+const RULES = [
+  { outcome: 'Started Trial', grants_pass: true, pass_days: 10 },
+  { outcome: 'Custom Pass', grants_pass: true, pass_days: null },
+  { outcome: 'Punch Card', grants_pass: true, pass_days: 30 },
+  { outcome: 'Guest', grants_pass: false, pass_days: null },
+]
+
+test('server rules decide the length when they are sent', () => {
+  assert.equal(passDaysFor('Started Trial', '', RULES).days, 10)
+  assert.equal(passDaysFor('Punch Card', '', RULES).days, 30)
+  assert.equal(passDaysFor('Custom Pass', '5', RULES).days, 5)
+  assert.equal(grantsAPass('Guest', RULES), false)
+  // Not in this club's list: hands out nothing, even if the built-in list says otherwise.
+  assert.equal(grantsAPass(DAY_PASS, RULES), false)
+  assert.deepEqual(passRuleFor('Custom Pass', RULES), { grants: true, fixedDays: null })
+})
+
+test('no rules from the server falls back to the built-in lengths', () => {
+  assert.equal(passDaysFor('Started Trial', '', null).days, 7)
+  assert.equal(passDaysFor('Started Trial', '', []).days, 7)
 })

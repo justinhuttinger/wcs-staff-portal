@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { tourAdmin } from '../../lib/api'
+import TourOutcomesEditor from './TourOutcomesEditor'
 
 function checkinUrl(token) {
   return token ? `${window.location.origin}/tour.html?token=${token}` : ''
@@ -32,6 +33,7 @@ export default function TourCheckinLocations() {
         <h2 className="text-xl font-bold text-text-primary">Tour Check-In</h2>
         <p className="text-sm text-text-muted">Per-location check-in app link, outbound webhook, and Day One calendar link.</p>
       </div>
+      <TourOutcomesEditor />
       {rows.map(row => (
         <LocationCard key={row.location_id} row={row} onChanged={load} />
       ))}

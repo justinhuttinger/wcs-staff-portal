@@ -3,7 +3,7 @@ import { publicTour } from '../lib/api'
 import { buildDayOneUrl } from '../lib/dayOnePrefill'
 import VipReferral from './VipReferral'
 import { useActiveMember, MemberOnlyNotice, MemberCheckPending } from './MemberGate'
-import { OUTCOMES, VIP_PASS, CUSTOM_PASS, PASS_DAYS, grantsAPass, passDaysFor } from './outcomes'
+import { OUTCOMES, VIP_PASS, passRuleFor, passDaysFor } from './outcomes'
 
 const REFRESH_MS = 2000   // poll fast so a new arrival shows within ~2s (only while the app is open)
 
@@ -330,6 +330,7 @@ export default function TourCheckinApp({ token }) {
           // The club's own list from the server (NLPT and Swim only exist at
           // some clubs); the built-in list if an older server sent none.
           outcomes={data.outcomes?.length ? data.outcomes : OUTCOMES}
+          outcomeRules={data.outcome_rules}
           onClose={() => setSelected(null)}
           onSaved={(id) => {
             // The server already deleted the row on save — drop the card from
@@ -346,7 +347,7 @@ export default function TourCheckinApp({ token }) {
   )
 }
 
-function OutcomeModal({ token, intake, dayOneBaseUrl, outcomes, onClose, onSaved }) {
+function OutcomeModal({ token, intake, dayOneBaseUrl, outcomes, outcomeRules, onClose, onSaved }) {
   const [employees, setEmployees] = useState([])
   const [tourMember, setTourMember] = useState('')        // asked every tour
   const [outcome, setOutcome] = useState(intake.outcome || '')
@@ -379,6 +380,9 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, outcomes, onClose, onSaved
     publicTour.employees(token).then(r => setEmployees(r.employees || [])).catch(() => {})
   }, [token])
 
+  // What the chosen outcome hands out, from the club's list set in Admin.
+  const pass = passRuleFor(outcome, outcomeRules)
+
   const dayOneUrl = buildDayOneUrl(dayOneBaseUrl, {
     name: intake.contact_name, email: intake.contact_email,
     phone: intake.contact_phone, tourMember,
@@ -393,8 +397,8 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, outcomes, onClose, onSaved
       // per outcome), so nothing downstream can work it out from the outcome.
       let passDays = null
 
-      if (grantsAPass(outcome)) {
-        const { days: n, error: bad } = passDaysFor(outcome, days)
+      if (pass.grants) {
+        const { days: n, error: bad } = passDaysFor(outcome, days, outcomeRules)
         if (bad) {
           setError(bad)
           setSaving(false)
@@ -503,15 +507,15 @@ function OutcomeModal({ token, intake, dayOneBaseUrl, outcomes, onClose, onSaved
             />
           )}
 
-          {outcome in PASS_DAYS && (
+          {pass.grants && pass.fixedDays != null && (
             <div className="mt-3 rounded-xl border border-gray-200 p-3">
               <p className="text-sm font-semibold text-gray-900">
-                {PASS_DAYS[outcome]} day pass
+                {pass.fixedDays} day pass
               </p>
             </div>
           )}
 
-          {outcome === CUSTOM_PASS && (
+          {pass.grants && pass.fixedDays == null && (
             <div className="mt-3 rounded-xl border border-gray-200 p-3">
               <p className="text-sm font-semibold text-gray-900 mb-2">How many days?</p>
               <div className="flex flex-wrap gap-2">

@@ -12,7 +12,7 @@ const { searchMembersByName } = require('../lib/memberLookup')
 const { resolveAbcId } = require('../lib/resolveAbcId')
 const { resolveEmployeeId, employeeIdMap, normalize: normalizeName } = require('../lib/resolveEmployeeId')
 const { pushConfigured } = require('../lib/tourPush')
-const { loadOutcomeRules, outcomesForLocation } = require('../lib/tourOutcomeRules')
+const { loadOutcomeRules, outcomesForLocation, outcomeRulesForLocation } = require('../lib/tourOutcomeRules')
 
 const router = Router()
 
@@ -92,6 +92,17 @@ async function outcomesFor(location) {
     return list.length ? list : null
   } catch (err) {
     console.error('[public-tour] outcome rules failed, using the built-in list:', err.message)
+    return null
+  }
+}
+
+// The same list with each outcome's pass length, which the app uses instead of
+// its own built-in lengths so the admin editor decides what a trial is worth.
+async function outcomeRulesFor(location) {
+  try {
+    const list = outcomeRulesForLocation(await loadOutcomeRules(), location.name)
+    return list.length ? list : null
+  } catch (err) {
     return null
   }
 }
@@ -180,6 +191,7 @@ router.get('/:token', async (req, res) => {
       // reports notifications working while nothing can ever deliver one.
       push_configured: pushConfigured(),
       outcomes: await outcomesFor(ctx.location),
+      outcome_rules: await outcomeRulesFor(ctx.location),
       ready: (ready || []).map(withAbcId),
     })
   } catch (err) {
