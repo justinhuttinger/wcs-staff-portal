@@ -21,7 +21,7 @@ const submitLimiter = rateLimit({
 
 async function loadPublished(slug) {
   const { data } = await supabaseAdmin.from('forms')
-    .select('*').eq('slug', slug).eq('status', 'published').maybeSingle()
+    .select('*').eq('slug', slug).eq('kind', 'form').eq('status', 'published').maybeSingle()
   return data || null
 }
 

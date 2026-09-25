@@ -233,8 +233,10 @@ app.use('/changelog', require('./routes/changelog'))
 app.use('/ui-preferences', require('./routes/uiPreferences'))
 app.use('/backgrounds', require('./routes/backgrounds'))
 app.use('/forms', require('./routes/forms'))
+app.use('/quizzes', require('./routes/quizzes'))
 app.use('/public/day-one', require('./routes/publicDayOne'))
 app.use('/public/forms', require('./routes/publicForms'))
+app.use('/public/quizzes', require('./routes/publicQuizzes'))
 app.use('/public/nps', require('./routes/publicNps'))
 app.use('/nps', require('./routes/nps'))
 
@@ -404,6 +406,13 @@ app.listen(PORT, () => {
     require('./services/formsSheets').start()
   } catch (err) {
     console.error('[formsSheets] failed to start:', err.message)
+  }
+
+  // Quiz Funnels: GHL webhook retry sweep. Opt out via QUIZ_WEBHOOKS_DISABLED=1.
+  try {
+    require('./services/quizWebhook').start()
+  } catch (err) {
+    console.error('[quizWebhook] failed to start:', err.message)
   }
 
   // RBAC v2: load admin-created role -> base-tier map so the synchronous auth
