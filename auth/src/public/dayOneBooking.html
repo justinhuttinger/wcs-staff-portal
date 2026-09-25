@@ -559,12 +559,40 @@
       $('duration').textContent = cfg.calendar.slotDuration + ' ' +
         (cfg.calendar.slotDurationUnit === 'hours' ? 'hr' : 'min')
       renderTrainerMenu(cfg.trainers || [])
+      var keepMember = $('tourMember').value
       $('tourMember').innerHTML = '<option value="">Select…</option>' +
         (cfg.tourMembers || []).map(function (n) {
           return '<option value="' + esc(n) + '">' + esc(n) + '</option>'
         }).join('')
+      $('tourMember').value = keepMember || matchTeamMember(cfg.tourMembers || [], TEAM_MEMBER_PARAM) || ''
       loadSlots()
     }).catch(function (e) { fail($('cal-err'), e.message) })
+  }
+
+  // Booking Team Member from the link (the launcher's post-signup popup passes
+  // the ABC salesperson as ?day_one_booking_team_member=, the old GHL field
+  // name; ?teamMember= / ?employee= also work). ABC names can be ALL CAPS and
+  // carry a middle initial, so match loosely: exact, then first + last word,
+  // then a unique last name with the same first letter.
+  var TEAM_MEMBER_PARAM = qp.get('day_one_booking_team_member') || qp.get('teamMember') || qp.get('employee') || ''
+  function matchTeamMember(names, wanted) {
+    var words = function (n) {
+      return String(n || '').toLowerCase().replace(/[^a-z\s'-]/g, ' ').split(/\s+/)
+        .filter(function (w) { return w.length > 1 })
+    }
+    var w = words(wanted)
+    if (!w.length) return ''
+    var first = w[0], last = w[w.length - 1], i, n
+    for (i = 0; i < names.length; i++) if (words(names[i]).join(' ') === w.join(' ')) return names[i]
+    for (i = 0; i < names.length; i++) {
+      n = words(names[i])
+      if (n[0] === first && n[n.length - 1] === last) return names[i]
+    }
+    var byLast = names.filter(function (x) {
+      n = words(x)
+      return n[n.length - 1] === last && (n[0] || '')[0] === first[0]
+    })
+    return byLast.length === 1 ? byLast[0] : ''
   }
 
   // --- trainer picker -----------------------------------------------------
