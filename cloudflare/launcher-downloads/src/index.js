@@ -13,6 +13,7 @@
 //   /abc/WCS-ABC-Setup.exe (+ WCS-ABC-mac-arm64.dmg / -x64.dmg)  same for WCS ABC
 //   /{channel}/releases/latest        JSON summary for portal/public/download.html
 //   /                                 download page (Portal + WCS ABC), see landing.js
+//   /portal, /abc                     download page for just that app
 //
 // Channels: "portal" (the WCS Portal launcher) and "abc" (the ABC-only launcher,
 // whose installer is named differently; the stable links resolve per channel).
@@ -62,10 +63,15 @@ export default {
 
     const url = new URL(request.url)
     const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
-    if (parts.length === 0) return landing(env, request)
+    if (parts.length === 0) return landing(env, request, APPS)
 
     const [channel, ...rest] = parts
-    if (!CHANNELS.has(channel) || rest.length === 0) return text('Not found', 404)
+    if (!CHANNELS.has(channel)) return text('Not found', 404)
+    if (rest.length === 0) {
+      // /portal or /abc: the download page for just that app.
+      const app = APPS.find(a => a.channel === channel)
+      return app ? landing(env, request, [app]) : text('Not found', 404)
+    }
     // No path traversal or nested keys beyond "releases/latest".
     if (rest.some(p => p === '..' || p === '.' || /[\\/]/.test(p))) return text('Bad request', 400)
 
@@ -91,16 +97,16 @@ export default {
 }
 
 // "/" : download page for every app, built from the live feeds.
-async function landing(env, request) {
+async function landing(env, request, apps) {
   const feeds = {}
-  await Promise.all(APPS.map(async app => {
+  await Promise.all(apps.map(async app => {
     const [win, mac] = await Promise.all([
       readFeed(env, app.channel, FEEDS[app.channel].win),
       readFeed(env, app.channel, FEEDS[app.channel].mac),
     ])
     feeds[app.channel] = { win, mac }
   }))
-  const html = renderLanding(feeds)
+  const html = renderLanding(feeds, apps)
   return new Response(request.method === 'HEAD' ? null : html, {
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' },
   })

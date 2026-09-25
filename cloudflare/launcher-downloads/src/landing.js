@@ -31,8 +31,10 @@ const day = iso => {
 }
 
 // feeds: { [channel]: { win: feed|null, mac: feed|null } } from readFeed()
-export function renderLanding(feeds) {
-  const cards = APPS.map(app => {
+// apps: which apps to show ("/" = all, "/portal" or "/abc" = just that one).
+export function renderLanding(feeds, apps = APPS) {
+  const title = apps.length === 1 ? `Download ${apps[0].name}` : 'WCS Downloads'
+  const cards = apps.map(app => {
     const { win, mac } = feeds[app.channel] || {}
     const winFile = win && win.files.find(f => /\.exe$/i.test(f.url))
     const armFile = mac && mac.files.find(f => /arm64.*\.dmg$/i.test(f.url))
@@ -63,7 +65,7 @@ export function renderLanding(feeds) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WCS Downloads</title>
+<title>${esc(title)}</title>
 <link rel="icon" type="image/png" href="${PORTAL_ICON}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -78,8 +80,8 @@ export function renderLanding(feeds) {
   main { max-width:760px; margin:0 auto; padding:56px 16px; }
   header { text-align:center; margin-bottom:36px; }
   header h1 { font-size:30px; font-weight:800; letter-spacing:-0.02em; }
-  header p { color:var(--muted); margin-top:6px; }
   .grid { display:grid; gap:20px; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); }
+  .grid.single { max-width:420px; margin:0 auto; grid-template-columns:1fr; }
   .card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:28px; display:flex; flex-direction:column; box-shadow:0 10px 30px rgba(0,0,0,0.06); }
   .head { display:flex; align-items:center; gap:14px; }
   .head img { border-radius:12px; flex:none; }
@@ -94,17 +96,14 @@ export function renderLanding(feeds) {
   .btn.primary span { color:rgba(255,255,255,0.85); }
   .btn.primary:hover { background:var(--red-hover); border-color:var(--red-hover); }
   .empty { color:var(--muted); font-size:14px; }
-  footer { text-align:center; color:var(--muted); font-size:13px; margin-top:32px; }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>WCS Downloads</h1>
-    <p>West Coast Strength desktop apps. Both update themselves once installed.</p>
+    <h1>${esc(title)}</h1>
   </header>
-  <div class="grid">${cards}</div>
-  <footer>Windows installs need an administrator once. Club kiosks are installed through Action1.</footer>
+  <div class="grid${apps.length === 1 ? ' single' : ''}">${cards}</div>
 </main>
 </body>
 </html>`
