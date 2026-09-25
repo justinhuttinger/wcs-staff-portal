@@ -43,6 +43,15 @@ function isBlank(v) {
   return v == null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && v.length === 0)
 }
 
+// US numbers only: 10 digits (optional leading 1), NANP shape (area code and
+// exchange can't start with 0/1). Normalized to "(999) 999-9999" so Sheets
+// always shows one consistent format. Returns null when invalid.
+function normalizePhone(v) {
+  const digits = String(v ?? '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '')
+  if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(digits)) return null
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+}
+
 function validateSubmission(schema, data) {
   const errors = {}
   const cleaned = {}
@@ -73,14 +82,9 @@ function validateSubmission(schema, data) {
         if (!EMAIL_RE.test(v)) { errors[f.id] = 'Enter a valid email address'; continue }
         break
       case 'phone': {
-        // US numbers only: 10 digits (optional leading 1), NANP shape — area
-        // code and exchange can't start with 0/1. Normalized to
-        // "(999) 999-9999" so Sheets always shows one consistent format.
-        const digits = v.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '')
-        if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(digits)) {
-          errors[f.id] = 'Enter a valid 10-digit phone number'; continue
-        }
-        cleaned[f.id] = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+        const p = normalizePhone(v)
+        if (!p) { errors[f.id] = 'Enter a valid 10-digit phone number'; continue }
+        cleaned[f.id] = p
         continue
       }
       case 'number':
@@ -122,4 +126,4 @@ function makeSlug(title) {
   return `${base}-${suffix}`
 }
 
-module.exports = { FIELD_TYPES, INPUT_TYPES, OPTION_TYPES, DISPLAY_TYPES, UTM_KEYS, validateSchema, validateSubmission, sanitizeUtm, makeSlug }
+module.exports = { FIELD_TYPES, INPUT_TYPES, OPTION_TYPES, DISPLAY_TYPES, UTM_KEYS, EMAIL_RE, normalizePhone, validateSchema, validateSubmission, sanitizeUtm, makeSlug }
