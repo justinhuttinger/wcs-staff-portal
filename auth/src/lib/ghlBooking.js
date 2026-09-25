@@ -171,9 +171,96 @@ async function trainerRoster(loc) {
   return toRoster(calendar, usersById)
 }
 
+// ---------------------------------------------------------------------------
+// Extra Day One calendars
+//
+// Two clubs also run Day Ones on a calendar other than "Day One" (Milwaukie:
+// Kirstyn's own calendar, Clackamas: "Stretch"). Which calendars count is the
+// allowlist in config/dayOneCalendars, the same one the reports read, so a
+// booking made here on one of them is counted exactly like any other Day One.
+//
+// Their members are offered as named trainers only. "Anyone" stays on the main
+// calendar: these are different kinds of Day One, and handing one out by
+// rotation would book someone into a session type nobody asked for.
+// ---------------------------------------------------------------------------
+
+// A picker choice is a person ON a calendar. The same trainer can sit on both
+// the main calendar and Stretch, and those are two different bookings.
+function trainerKey(t) {
+  return t.calendarId ? `${t.userId}@${t.calendarId}` : t.userId
+}
+
+function toExtraRoster(calendar, usersById) {
+  const calName = String(calendar.name || '').trim()
+  return toRoster(calendar, usersById).map(t => {
+    const first = String(t.name).trim().split(/\s+/)[0].toLowerCase()
+    // "Kirstyn Pagano-Jackson's Calendar" already says whose it is; "Stretch"
+    // is what tells staff this is not a normal Day One.
+    const note = first && calName.toLowerCase().includes(first) ? null : calName
+    const entry = { ...t, calendarId: calendar.id, calendarName: calName, note }
+    return { ...entry, key: trainerKey(entry) }
+  })
+}
+
+const detailCache = {} // slug|calendarId -> { promise, at }
+
+function getCalendarDetail(loc, calendarId) {
+  return cached(detailCache, `${loc.slug}|${calendarId}`, ROSTER_TTL, async () => {
+    const detail = await ghlFetch(`/calendars/${calendarId}`, loc.apiKey, { version: CAL_VERSION })
+    return detail.calendar || detail
+  })
+}
+
+// Required lazily so this module stays loadable by unit tests that never touch
+// the calendar allowlist.
+function dayOneAllowlist() {
+  return require('../config/dayOneCalendars')
+}
+
+/** The club's non-primary Day One calendars, as full calendar objects. */
+async function getExtraDayOneCalendars(loc) {
+  const [primary, all] = await Promise.all([
+    getDayOneCalendar(loc), dayOneAllowlist().resolveDayOneCalendars(loc),
+  ])
+  const extras = all.filter(c => c.id !== primary.id)
+  return Promise.all(extras.map(c => getCalendarDetail(loc, c.id)))
+}
+
+async function extraTrainerRoster(loc) {
+  const [calendars, usersById] = await Promise.all([getExtraDayOneCalendars(loc), getUsersById(loc)])
+  return calendars.flatMap(c => toExtraRoster(c, usersById))
+}
+
+/**
+ * The calendar a booking or availability request is for. No id means the main
+ * Day One calendar. Any other id must be one of this club's allowlisted Day One
+ * calendars, so a public page can never be pointed at an arbitrary calendar.
+ */
+async function resolveBookingCalendar(loc, calendarId) {
+  const primary = await getDayOneCalendar(loc)
+  if (!calendarId || calendarId === primary.id) return primary
+  const extras = await getExtraDayOneCalendars(loc)
+  const match = extras.find(c => c.id === calendarId)
+  if (!match) {
+    const err = new Error('That calendar is not a Day One calendar for this club')
+    err.status = 400
+    throw err
+  }
+  return match
+}
+
+function clearExtraCalendarCache(slug) {
+  for (const key of Object.keys(detailCache)) {
+    if (key.startsWith(slug + '|')) delete detailCache[key]
+  }
+  dayOneAllowlist().clearCache(slug)
+}
+
 module.exports = {
   CAL_VERSION, cached, bookableDays, mapLimit, slotsFor, slotsByDate, clearSlotsCache,
   MAX_SLOT_WINDOW_DAYS, clampSlotWindow,
   ROSTER_TTL, CALENDAR_NAME, clearRosterCache,
   getDayOneCalendar, getUsersById, toRoster, trainerRoster,
+  trainerKey, toExtraRoster, getCalendarDetail, getExtraDayOneCalendars,
+  extraTrainerRoster, resolveBookingCalendar, clearExtraCalendarCache,
 }
