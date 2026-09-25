@@ -50,3 +50,25 @@ test('a calendar with no team members yields an empty roster, not a throw', () =
   assert.deepEqual(toRoster({}, users), [])
   assert.deepEqual(toRoster({ teamMembers: null }, users), [])
 })
+
+// GHL free-slots rejects any window longer than 31 days. Milwaukie's Day One
+// calendar allows booking 32 days out, so the per-trainer prefetch asked for 32,
+// every trainer's lookup failed, and "Anyone" found nobody free at any time.
+const { clampSlotWindow, MAX_SLOT_WINDOW_DAYS } = require('./ghlBooking')
+
+test('a window longer than GHL accepts is cut to the maximum', () => {
+  const startDate = 1_000_000
+  const out = clampSlotWindow({ startDate, endDate: startDate + 32 * 86400000, userId: 'u' })
+  assert.equal(out.endDate, startDate + MAX_SLOT_WINDOW_DAYS * 86400000)
+  assert.equal(out.startDate, startDate)
+  assert.equal(out.userId, 'u')
+})
+
+test('a window within the limit is left alone', () => {
+  const p = { startDate: 5, endDate: 5 + 10 * 86400000 }
+  assert.deepEqual(clampSlotWindow(p), p)
+})
+
+test('the maximum is 31 days', () => {
+  assert.equal(MAX_SLOT_WINDOW_DAYS, 31)
+})
