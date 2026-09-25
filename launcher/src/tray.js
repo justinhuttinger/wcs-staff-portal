@@ -3,8 +3,9 @@ const path = require('path')
 
 let tray = null
 
-function createTray(mainWindow) {
-  const iconPath = path.join(__dirname, '..', 'assets', 'tray-icon.png')
+// `iconFile` (under assets/) lets the WCS ABC flavor use its own tray icon.
+function createTray(mainWindow, iconFile = 'tray-icon.png') {
+  const iconPath = path.join(__dirname, '..', 'assets', iconFile)
   // On macOS, mark the image as a template so the menu bar inverts it
   // automatically for light/dark mode. Windows ignores the flag.
   const trayImage = nativeImage.createFromPath(iconPath)

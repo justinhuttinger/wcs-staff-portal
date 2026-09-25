@@ -1,9 +1,9 @@
 # "WCS ABC" — the ABC-only flavor of the launcher (same codebase as Portal).
 # Build:  npm run dist:abc
 #
-# The app opens only the ABC Financial tab (Actions toolbar, Book Day One,
-# VIPs, Cancel Tool, post-signup Day One overlay). Staff sign in through the
-# portal login page in a separate window. See src/app-mode.js.
+# No portal sign-in: the app opens straight to the ABC Financial tab for the
+# kiosk's location (Actions toolbar, Book Day One, VIPs, Cancel Tool,
+# post-signup Day One overlay). See src/app-mode.js.
 appId: com.westcoaststrength.abc
 productName: WCS ABC
 directories:
@@ -14,28 +14,32 @@ directories:
 extraMetadata:
   wcsAppMode: abc
 
-# Update feed. Kept identical to electron-builder.yml so it's swapped in one
-# place when hosting moves; `channel: abc` makes this app read abc.yml, so it
-# can never pick up Portal's latest.yml / installer from the same feed.
+# Update feed: private downloads host (see #1014), GitHub as fallback.
+# `channel: abc` makes this app read abc.yml, so it can never pick up
+# Portal's latest.yml / installer.
 publish:
-  provider: github
-  owner: justinhuttinger
-  repo: wcs-staff-portal
-  channel: abc
+  - provider: generic
+    url: https://downloads.westcoaststrength.com/abc
+    channel: abc
+  - provider: github
+    owner: justinhuttinger
+    repo: wcs-staff-portal
+    channel: abc
 
 # No `protocols`: wcsportal:// deep links belong to the Portal app.
 
 # ---- Windows ----
 win:
   target: nsis
-  icon: assets/icon.ico
+  icon: assets/abc-icon.ico
 
 nsis:
   oneClick: false
   perMachine: true
   allowToChangeInstallationDirectory: false
   createDesktopShortcut: always
-  installerIcon: assets/icon.ico
+  installerIcon: assets/abc-icon.ico
+  uninstallerIcon: assets/abc-icon.ico
   # Same kiosk location page -> shared C:\WCS\config.json (skipped if present).
   include: installer.nsh
   artifactName: WCS-ABC-Setup-${version}.${ext}

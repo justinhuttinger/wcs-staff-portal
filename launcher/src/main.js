@@ -120,37 +120,28 @@ let mainWindow = null
 let tabManager = null
 
 // ---- ABC-only flavor ----
-// Staff sign in on the portal's own login page, loaded in loginWindow with the
-// portal preload so the existing auth bridge (portal-auth-login / logout /
-// token-refreshed / trigger-signout) works unchanged. After sign-in it is
-// hidden but kept alive: it keeps the token refreshed and performs sign-out,
-// exactly as the Portal tab does in the full app.
-let loginWindow = null
+// No portal sign-in: the app opens straight to the ABC tab for this kiosk's
+// location. Staff identity comes from ABC itself (abc-scraper sends
+// `staffName`, the ABC employee signed in to the workstation).
 let abcTabId = null
-let abcSignedIn = false
 
 function abcTabUrl() {
   return getAbcUrl() || 'https://prod02.abcfinancial.com'
 }
 
-function openAbcTab() {
-  if (abcTabId && tabManager.tabs.get(abcTabId)) {
-    tabManager.switchTo(abcTabId)
-    return
-  }
-  abcTabId = tabManager.createTab(abcTabUrl(), 'ABC Financial', {
-    closable: false,
-    preload: path.join(__dirname, 'abc-scraper.js'),
-  })
+// Staff name for Day One / VIP prefill: the portal-signed-in staff member
+// (Portal app, unchanged), else the ABC employee the scraper found (WCS ABC,
+// which has no portal sign-in).
+function staffNameFor(data) {
+  const staff = auth.getStaff() || {}
+  return [staff.first_name, staff.last_name].filter(Boolean).join(' ') || staff.display_name ||
+    String((data && data.staffName) || '').trim()
 }
 
-function closeAbcTab() {
-  const tab = abcTabId && tabManager.tabs.get(abcTabId)
-  if (tab) {
-    tab.closable = true
-    tabManager.closeTab(abcTabId)
-  }
-  abcTabId = null
+// ABC names carry middle initials ("First M Last"); the VIP team-member
+// dropdown lists "First Last", so drop single-letter middle parts.
+function stripMiddleInitials(name) {
+  return String(name || '').replace(/\s+[A-Za-z]\.?(?=\s)/g, '').replace(/\s+/g, ' ').trim()
 }
 
 // Persist a new location/abc_url to config.json (preserving install_id and any
@@ -212,9 +203,10 @@ app.on('ready', async () => {
   // BrowserWindow's `icon` option only matters on Windows / Linux —
   // macOS reads its dock icon from the packaged .icns the builder
   // emits, so we leave it unset on darwin.
+  const iconBase = IS_ABC_ONLY ? 'abc-icon' : 'icon'
   const winIcon = process.platform === 'win32'
-    ? path.join(__dirname, '..', 'assets', 'icon.ico')
-    : path.join(__dirname, '..', 'assets', 'icon.png')
+    ? path.join(__dirname, '..', 'assets', iconBase + '.ico')
+    : path.join(__dirname, '..', 'assets', iconBase + '.png')
 
   // Window chrome differs by platform:
   //   - Windows/Linux: fully frameless, custom in-tab-bar min/max/close buttons.
@@ -231,13 +223,12 @@ app.on('ready', async () => {
     title: APP_DISPLAY_NAME,
     icon: winIcon,
     autoHideMenuBar: true,
-    // ABC-only: stays hidden until staff sign in through the login window.
-    show: !IS_ABC_ONLY,
     ...chrome,
   })
 
-  if (!IS_ABC_ONLY) mainWindow.maximize()
-  createTray(mainWindow)
+  mainWindow.maximize()
+  if (IS_ABC_ONLY) createTray(mainWindow, 'abc-tray-icon.png')
+  else createTray(mainWindow)
 
   // openAtLogin works on both Windows and macOS. The `path` option is
   // Windows-only — on macOS it's ignored at best, and providing
@@ -271,34 +262,11 @@ app.on('ready', async () => {
   const portalUrl = `${PORTAL_URL}?location=${location}` + (abcUrl ? `&abc_url=${encodeURIComponent(abcUrl)}` : '')
 
   if (IS_ABC_ONLY) {
-    loginWindow = new BrowserWindow({
-      width: 1000,
-      height: 820,
-      title: APP_DISPLAY_NAME + ' - Sign in',
-      icon: winIcon,
-      center: true,
-      autoHideMenuBar: true,
-      show: false,
-      webPreferences: {
-        preload: path.join(__dirname, 'portal-preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        partition: 'persist:wcs-portal',
-        // Hidden after sign-in but must keep refreshing the token.
-        backgroundThrottling: false,
-      },
+    // No sign-in: straight to ABC. Pinned (not closable) like the Portal tab.
+    abcTabId = tabManager.createTab(abcTabUrl(), 'ABC Financial', {
+      closable: false,
+      preload: path.join(__dirname, 'abc-scraper.js'),
     })
-    loginWindow.on('page-title-updated', (e) => e.preventDefault())
-    // A saved session signs in on load; only show the window if it didn't.
-    loginWindow.webContents.once('did-finish-load', () => {
-      setTimeout(() => {
-        if (!abcSignedIn && loginWindow && !loginWindow.isDestroyed()) loginWindow.show()
-      }, 1500)
-    })
-    // Closing either window quits (the hidden one would keep the app alive).
-    loginWindow.on('closed', () => { loginWindow = null; app.quit() })
-    mainWindow.on('closed', () => app.quit())
-    loginWindow.loadURL(portalUrl)
   } else {
     tabManager.createTab(portalUrl, 'Portal', {
       closable: false,
@@ -332,18 +300,7 @@ app.on('ready', async () => {
   // Auth state bridge — portal notifies us when user logs in/out
   ipcMain.on('portal-auth-login', (e, token, userName) => {
     log('Portal auth: user logged in')
-    if (IS_ABC_ONLY) {
-      abcSignedIn = true
-      if (loginWindow && !loginWindow.isDestroyed()) loginWindow.hide()
-      if (!mainWindow.isVisible()) {
-        mainWindow.maximize()
-        mainWindow.show()
-      }
-      openAbcTab()
-    }
     auth.setToken(token).then(() => {
-      // Tour notifications open the Portal calendar, which the ABC app lacks.
-      if (IS_ABC_ONLY) return
       log('Staff profile loaded, starting tour notifier')
       try {
         const tourNotifier = require('./tour-notifier')
@@ -404,17 +361,6 @@ app.on('ready', async () => {
     // Close all tabs except Portal
     tabManager.closeAllExceptPortal()
 
-    // ABC-only: drop the ABC tab, hide the app, bring back the sign-in window.
-    if (IS_ABC_ONLY) {
-      abcSignedIn = false
-      closeAbcTab()
-      if (!mainWindow.isDestroyed()) mainWindow.hide()
-      if (loginWindow && !loginWindow.isDestroyed()) {
-        loginWindow.show()
-        loginWindow.focus()
-      }
-    }
-
     // Clear all session cookies/storage so GHL etc. sessions don't persist
     const ses = require('electron').session.fromPartition('persist:wcs-portal')
     ses.clearStorageData().catch(() => {})
@@ -429,10 +375,6 @@ app.on('ready', async () => {
 
   // Tab bar sign-out button — tell the portal to trigger its own logout
   ipcMain.on('tabbar-signout', () => {
-    if (IS_ABC_ONLY) {
-      if (loginWindow && !loginWindow.isDestroyed()) loginWindow.webContents.send('trigger-signout')
-      return
-    }
     const portalTab = tabManager.tabs.get(1)
     if (portalTab) {
       portalTab.view.webContents.send('trigger-signout')
@@ -528,6 +470,10 @@ app.on('ready', async () => {
 
   ipcMain.on('abc-signup-detected', (e, data) => {
     latestMemberData = { ...latestMemberData, ...data }
+    // WCS ABC: if the agreement had no salesperson, credit the ABC employee.
+    if (IS_ABC_ONLY && !latestMemberData.salesperson && latestMemberData.staffName) {
+      latestMemberData.salesperson = latestMemberData.staffName
+    }
     log('SIGNUP DETECTED - calling showOverlay')
     showOverlay(latestMemberData, mainWindow, tabManager)
     latestMemberData = {}
@@ -536,8 +482,8 @@ app.on('ready', async () => {
   // "Book Day One" button on an ABC member profile. The staff member at the
   // kiosk is the one booking, so they're credited as the booking team member.
   ipcMain.on('abc-book-day-one', (e, data) => {
-    const staff = auth.getStaff() || {}
-    const staffName = [staff.first_name, staff.last_name].filter(Boolean).join(' ') || staff.display_name || ''
+    // welcome.html strips middle initials for the booking widget itself.
+    const staffName = staffNameFor(data)
     log('ABC profile Book Day One - calling showOverlay')
     showOverlay({ ...(data || {}), salesperson: staffName }, mainWindow, tabManager, { mode: 'dayone' })
   })
@@ -546,8 +492,7 @@ app.on('ready', async () => {
   // with the member as the referrer and the logged-in staff member preselected.
   ipcMain.on('abc-open-vip', (e, data) => {
     const d = data || {}
-    const staff = auth.getStaff() || {}
-    const staffName = [staff.first_name, staff.last_name].filter(Boolean).join(' ') || staff.display_name || ''
+    const staffName = IS_ABC_ONLY ? stripMiddleInitials(staffNameFor(d)) : staffNameFor(d)
     const slug = String(getLocation() || 'Salem').trim().toLowerCase()
     const url = new URL(`https://vip.westcoaststrength.com/${encodeURIComponent(slug)}/staff`)
     if (d.firstName) url.searchParams.set('firstName', d.firstName)
@@ -576,6 +521,9 @@ app.on('ready', async () => {
   // Logs to C:\WCS\app.log for diagnostics — silent failures here have
   // historically hidden auth-token / shared-credential issues.
   ipcMain.handle('get-credentials', async (e, service) => {
+    // WCS ABC has no portal sign-in, so there is no vault to read: staff type
+    // their ABC login and the persisted session keeps them signed in.
+    if (IS_ABC_ONLY) return null
     log('[get-credentials] request service=' + service + ' loggedIn=' + auth.isLoggedIn())
     const cred = auth.getCachedCredential(service)
     if (cred) {
@@ -638,10 +586,14 @@ app.on('ready', async () => {
 
   tabManager.onNewWindow = (url) => {
     const abcUrl = getAbcUrl()
-    // ABC-only: ABC links still open as ABC tabs; anything else goes to the
-    // default browser instead of becoming a tool tab.
-    if (IS_ABC_ONLY && !url.includes('abcfinancial.com') && !url.includes('abcfitness.com')) {
-      if (/^https?:/i.test(url)) shell.openExternal(url).catch(() => {})
+    // ABC-only: ABC links open as extra ABC tabs (with the scraper); anything
+    // else goes to the default browser instead of becoming a tool tab.
+    if (IS_ABC_ONLY) {
+      if (url.includes('abcfinancial.com') || url.includes('abcfitness.com')) {
+        tabManager.createTab(url, 'ABC Financial', { preload: path.join(__dirname, 'abc-scraper.js') })
+      } else if (/^https?:/i.test(url)) {
+        shell.openExternal(url).catch(() => {})
+      }
       return
     }
     if (url.includes('abcfinancial.com') || url.includes('kiosk.html')) {
