@@ -216,6 +216,13 @@ function readRecord(doc, id) {
   return ''
 }
 
+// WCS club name -> ABC club number (mirrors auth/src/config/clubMap.js).
+// 5-digit numbers first so '7655' (Eugene) can't shadow a longer prefix.
+const CLUB_NUMBERS = {
+  Salem: '30935', Keizer: '31599', Springfield: '31598', Clackamas: '31600',
+  Milwaukie: '31601', Medford: '32073', Eugene: '7655',
+}
+
 // ABC shows names in caps ("JANE  DOE"); title-case them for the booking form.
 function tidyName(s) {
   return s === s.toUpperCase() ? s.toLowerCase().replace(/(^|[\s'-])\S/g, c => c.toUpperCase()) : s
@@ -242,6 +249,15 @@ function scrapeRecord(doc, out) {
   if (!out.phone) out.phone = out.cellPhone || out.primaryPhone || ''
   if (!out.barcode) out.barcode = readRecord(doc, 'barcode')
   if (!out.birthday) out.birthday = readRecord(doc, 'birthday')   // "Date of Birth"
+  // Agreement numbers start with the home club number (3093503785 -> 30935 Salem).
+  if (!out.agreementNumber) {
+    const a = (readRecord(doc, 'agreementNumber') || findByLabel(doc, /^agreement\s*(#|number)$/i) || '').replace(/\D/g, '')
+    if (a.length >= 8) {
+      out.agreementNumber = a
+      const hit = Object.entries(CLUB_NUMBERS).find(([, num]) => a.startsWith(num))
+      if (hit) out.homeClub = hit[0]
+    }
+  }
   // The Dashboard's Personal card has no automation ids: <dt>BIRTHDAY</dt><dd>…</dd>
   if (!out.birthday) {
     const b = findByLabel(doc, /^(birthday|date of birth)$/i)
@@ -295,6 +311,11 @@ const TOOLBAR_ACTIONS = [
     id: 'vip', icon: '⭐', label: 'VIPs',
     title: "Open this club's staff VIP referral form with this member as the referrer",
     run(data) { ipcRenderer.send('abc-open-vip', data) },
+  },
+  {
+    id: 'cancel', icon: '📝', label: 'Cancel Tool',
+    title: "Open the Cancel Tool with this member's barcode, email and home club filled in",
+    run(data) { ipcRenderer.send('abc-open-cancel-tool', data) },
   },
 ]
 
