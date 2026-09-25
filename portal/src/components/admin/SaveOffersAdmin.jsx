@@ -3,6 +3,7 @@ import { saveAdmin } from '../../lib/api'
 import { Card } from './save/shared'
 import OffersTab from './save/OffersTab'
 import ReasonsTab from './save/ReasonsTab'
+import RulesTab from './save/RulesTab'
 import SettingsTab from './save/SettingsTab'
 import ActivityTab from './save/ActivityTab'
 
@@ -13,6 +14,7 @@ import ActivityTab from './save/ActivityTab'
 const TABS = [
   { key: 'offers', label: 'Offers' },
   { key: 'reasons', label: 'Reasons' },
+  { key: 'rules', label: 'Cancel Rules' },
   { key: 'settings', label: 'Settings' },
   { key: 'activity', label: 'Activity' },
 ]
@@ -41,7 +43,7 @@ export default function SaveOffersAdmin() {
       <Card>
         <p className="text-sm text-text-muted">
           What members see when they cancel online: the reasons they pick from, the offers that try to keep
-          them, and the wording on each screen. Changes are live for members as soon as you save.
+          them, what they owe to cancel, and the wording on each screen. Changes are live for members as soon as you save.
         </p>
         <div className="mt-4 flex flex-wrap gap-2" role="tablist">
           {TABS.map(t => (
@@ -70,6 +72,7 @@ export default function SaveOffersAdmin() {
 
       {tab === 'offers' && <OffersTab reasons={reasons} />}
       {tab === 'reasons' && <ReasonsTab reasons={reasons} onChange={loadReasons} />}
+      {tab === 'rules' && <RulesTab />}
       {tab === 'settings' && <SettingsTab />}
       {tab === 'activity' && <ActivityTab />}
     </div>

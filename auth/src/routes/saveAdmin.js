@@ -17,6 +17,8 @@
  * POST /offers                add one
  * PUT  /offers/:id            edit one (merged with the stored row, then validated)
  * DELETE /offers/:id          remove one
+ * GET  /rules                 cancel rules per plan kind (migration 213)
+ * PUT  /rules/:planKind       edit notice_days / early_cancel_fee / send_to_staff
  * GET  /requests              ?outcome=&club=&limit=&needs_action=1 newest first
  * GET  /requests/:id          one request incl. abc_actions
  * PUT  /requests/:id/resolve  { note } mark a needs-action request handled
@@ -39,6 +41,9 @@ const {
   validateSettings,
   validateReason,
   validateOffer,
+  isPlanKind,
+  validateCancelRule,
+  sortCancelRules,
   parseLimit,
   parseDays,
   computeStats,
@@ -70,9 +75,11 @@ function badRequest(res, result) {
 function serverError(res, label, err) {
   console.error(`[save-admin] ${label}:`, err?.message || err)
   // Most likely cause before merge-day: migration 211 not applied yet.
-  const missing = /relation .* does not exist|Could not find the table/i.test(err?.message || '')
+  const msg = err?.message || ''
+  const missing = /relation .* does not exist|Could not find the table/i.test(msg)
+  const migration = /save_cancel_rules/.test(msg) ? '213' : '211'
   return res.status(500).json({
-    error: missing ? 'Save tables not found. Apply migration 211.' : `Failed to ${label}`,
+    error: missing ? `Save tables not found. Apply migration ${migration}.` : `Failed to ${label}`,
   })
 }
 
@@ -269,6 +276,40 @@ router.delete('/offers/:id', async (req, res) => {
     res.json({ ok: true })
   } catch (err) {
     serverError(res, 'delete offer', err)
+  }
+})
+
+// ---------------------------------------------------------------- cancel rules
+// One row per plan kind, seeded by migration 213. The Worker uses them to work
+// out what a member owes to cancel. Rows are never added or removed here.
+
+router.get('/rules', async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin.from('save_cancel_rules').select('*')
+    if (error) throw error
+    res.json({ rules: sortCancelRules(data) })
+  } catch (err) {
+    serverError(res, 'load cancel rules', err)
+  }
+})
+
+router.put('/rules/:planKind', async (req, res) => {
+  const planKind = req.params.planKind
+  if (!isPlanKind(planKind)) return res.status(404).json({ error: 'Cancel rule not found' })
+  const result = validateCancelRule(req.body)
+  if (!result.ok) return badRequest(res, result)
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('save_cancel_rules')
+      .update({ ...result.patch, updated_at: new Date().toISOString(), updated_by: staffId(req) })
+      .eq('plan_kind', planKind)
+      .select('*')
+      .maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Cancel rule not found. Apply migration 213.' })
+    res.json({ rule: data })
+  } catch (err) {
+    serverError(res, 'save cancel rule', err)
   }
 })
 

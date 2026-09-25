@@ -3,8 +3,9 @@
  *
  * The member-facing wcs-save Worker reads these rows straight from Supabase and
  * trusts them, so everything that reaches save_settings / save_reasons /
- * save_offers goes through here first. Shapes follow migration 211; the config
- * per offer_type is the contract the Worker applies to ABC.
+ * save_offers / save_cancel_rules goes through here first. Shapes follow
+ * migrations 211 and 213; the config per offer_type is the contract the Worker
+ * applies to ABC.
  *
  * No I/O in this file so it can be unit tested (saveOffersSchema.test.js).
  */
@@ -17,6 +18,10 @@ const OFFER_TYPES = ['dues_discount', 'freeze', 'perk']
 // Stripe provider. Until that ships, the admin cannot pick it.
 const OWED_BALANCE_MODES = ['staff', 'block']
 const OUTCOMES = ['in_progress', 'saved', 'cancelled', 'needs_staff', 'abandoned', 'failed']
+// save_cancel_rules.plan_kind (migration 213), in display order. From the ABC
+// agreement term: Open = month_to_month, Installment = contract,
+// Cash / Cash Open = prepaid.
+const PLAN_KINDS = ['month_to_month', 'contract', 'prepaid']
 
 const SETTINGS_TEXT_FIELDS = [
   'intro_heading', 'intro_body',
@@ -298,6 +303,54 @@ function validateOffer(body, { knownReasonIds = new Set() } = {}) {
   return { ok: true, row }
 }
 
+// ---------------------------------------------------------------- cancel rules
+
+function isPlanKind(v) {
+  return typeof v === 'string' && PLAN_KINDS.includes(v)
+}
+
+/**
+ * PUT /rules/:planKind body. Only notice_days, early_cancel_fee and
+ * send_to_staff are editable; label and plan_kind are fixed by the migration
+ * and anything else is ignored. Returns { ok, patch } or { ok: false, error, fields }.
+ */
+function validateCancelRule(body) {
+  const b = body && typeof body === 'object' ? body : {}
+  const patch = {}
+  const fields = {}
+
+  if ('notice_days' in b) {
+    const n = toNumber(b.notice_days)
+    if (!isIntIn(n, 0, 90)) fields.notice_days = 'Notice period must be a whole number of days from 0 to 90'
+    else patch.notice_days = n
+  }
+
+  if ('early_cancel_fee' in b) {
+    const n = toNumber(b.early_cancel_fee)
+    if (!(n >= 0)) fields.early_cancel_fee = 'Early cancellation fee must be 0 or more'
+    else if (n > 10000) fields.early_cancel_fee = 'Early cancellation fee must be $10,000 or less'
+    else patch.early_cancel_fee = Math.round(n * 100) / 100
+  }
+
+  if ('send_to_staff' in b) {
+    if (typeof b.send_to_staff !== 'boolean') fields.send_to_staff = 'send_to_staff must be true or false'
+    else patch.send_to_staff = b.send_to_staff
+  }
+
+  if (Object.keys(fields).length) return fail(fields)
+  if (!Object.keys(patch).length) return { ok: false, error: 'Nothing to update', fields: {} }
+  return { ok: true, patch }
+}
+
+/** Sort rows into PLAN_KINDS order (unknown kinds last). */
+function sortCancelRules(rows) {
+  const rank = k => {
+    const i = PLAN_KINDS.indexOf(k)
+    return i === -1 ? PLAN_KINDS.length : i
+  }
+  return [...(rows || [])].sort((a, b) => rank(a.plan_kind) - rank(b.plan_kind))
+}
+
 // ---------------------------------------------------------------- requests / stats
 
 function parseLimit(v, { def = 100, max = 500 } = {}) {
@@ -364,6 +417,7 @@ module.exports = {
   OFFER_TYPES,
   OWED_BALANCE_MODES,
   OUTCOMES,
+  PLAN_KINDS,
   SETTINGS_EDITABLE,
   HEADLINE_MAX,
   isUuid,
@@ -373,6 +427,9 @@ module.exports = {
   validateReason,
   normalizeOfferConfig,
   validateOffer,
+  isPlanKind,
+  validateCancelRule,
+  sortCancelRules,
   parseLimit,
   parseDays,
   computeStats,

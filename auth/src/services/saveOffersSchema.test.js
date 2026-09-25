@@ -10,6 +10,10 @@ const {
   parseDays,
   computeStats,
   needsAction,
+  PLAN_KINDS,
+  isPlanKind,
+  validateCancelRule,
+  sortCancelRules,
 } = require('./saveOffersSchema')
 
 const R1 = '11111111-1111-4111-8111-111111111111'
@@ -237,4 +241,58 @@ test('needsAction: needs_staff or staff_reason, and not resolved', () => {
   assert.strictEqual(needsAction({ outcome: 'saved' }), false)
   assert.strictEqual(needsAction({ outcome: 'needs_staff', resolved_at: '2026-09-25T00:00:00Z' }), false)
   assert.strictEqual(needsAction({ outcome: 'saved', staff_reason: 'x', resolved_at: '2026-09-25T00:00:00Z' }), false)
+})
+
+// ---------------------------------------------------------------- cancel rules
+
+test('plan kinds are the three the Worker maps ABC terms to', () => {
+  assert.deepStrictEqual(PLAN_KINDS, ['month_to_month', 'contract', 'prepaid'])
+  assert.strictEqual(isPlanKind('contract'), true)
+  assert.strictEqual(isPlanKind('annual'), false)
+  assert.strictEqual(isPlanKind(undefined), false)
+})
+
+test('validateCancelRule accepts the editable fields and rounds the fee to cents', () => {
+  const r = validateCancelRule({ notice_days: '15', early_cancel_fee: '99.999', send_to_staff: false })
+  assert.strictEqual(r.ok, true)
+  assert.deepStrictEqual(r.patch, { notice_days: 15, early_cancel_fee: 100, send_to_staff: false })
+  const r2 = validateCancelRule({ early_cancel_fee: 49.504 })
+  assert.deepStrictEqual(r2.patch, { early_cancel_fee: 49.5 })
+})
+
+test('validateCancelRule allows zero and the 90 day edge', () => {
+  assert.deepStrictEqual(validateCancelRule({ notice_days: 0, early_cancel_fee: 0 }).patch, { notice_days: 0, early_cancel_fee: 0 })
+  assert.strictEqual(validateCancelRule({ notice_days: 90 }).ok, true)
+})
+
+test('validateCancelRule rejects bad values', () => {
+  for (const notice_days of [-1, 91, 1.5, '', 'abc', null]) {
+    const r = validateCancelRule({ notice_days })
+    assert.strictEqual(r.ok, false, `notice_days ${notice_days}`)
+    assert.ok(r.fields.notice_days)
+  }
+  for (const early_cancel_fee of [-0.01, '', 'free', null, 10000.01]) {
+    const r = validateCancelRule({ early_cancel_fee })
+    assert.strictEqual(r.ok, false, `early_cancel_fee ${early_cancel_fee}`)
+    assert.ok(r.fields.early_cancel_fee)
+  }
+  const r = validateCancelRule({ send_to_staff: 'yes' })
+  assert.strictEqual(r.ok, false)
+  assert.ok(r.fields.send_to_staff)
+})
+
+test('validateCancelRule ignores label and plan_kind, and needs something to update', () => {
+  const r = validateCancelRule({ label: 'Hacked', plan_kind: 'contract', notice_days: 10 })
+  assert.deepStrictEqual(r.patch, { notice_days: 10 })
+  const empty = validateCancelRule({ label: 'Hacked' })
+  assert.strictEqual(empty.ok, false)
+  assert.strictEqual(empty.error, 'Nothing to update')
+  assert.strictEqual(validateCancelRule(null).ok, false)
+})
+
+test('sortCancelRules orders month to month, contract, prepaid', () => {
+  const sorted = sortCancelRules([
+    { plan_kind: 'prepaid' }, { plan_kind: 'mystery' }, { plan_kind: 'month_to_month' }, { plan_kind: 'contract' },
+  ])
+  assert.deepStrictEqual(sorted.map(r => r.plan_kind), ['month_to_month', 'contract', 'prepaid', 'mystery'])
 })
