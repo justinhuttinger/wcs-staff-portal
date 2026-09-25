@@ -16,11 +16,17 @@ async function loadOutcomeRules() {
   const { supabaseAdmin } = require('../services/supabase')
   const { data, error } = await supabaseAdmin
     .from('tour_outcomes')
-    .select('outcome, sort_order, counts_as_tour, location_slugs')
+    .select('outcome, sort_order, counts_as_tour, location_slugs, grants_pass, default_pass_days')
     .order('sort_order', { ascending: true })
   if (error) throw new Error(error.message)
   cache = { at: Date.now(), rules: data || [] }
   return cache.rules
+}
+
+// The admin editor writes the table, so it drops the cache rather than leaving
+// the iPads on the old list for up to a minute.
+function clearOutcomeRulesCache() {
+  cache = null
 }
 
 // For the reports: an unreadable table means every row counts, as it did before
@@ -43,6 +49,22 @@ function outcomesForLocation(rules, location) {
 }
 
 /**
+ * The same list with what each outcome hands out, for the check-in app.
+ * pass_days is the fixed length, or null with grants_pass true when staff pick
+ * the length on the tour (Custom Pass).
+ */
+function outcomeRulesForLocation(rules, location) {
+  const slug = String(location || '').trim().toLowerCase()
+  return rules
+    .filter(r => !r.location_slugs || r.location_slugs.includes(slug))
+    .map(r => ({
+      outcome: r.outcome,
+      grants_pass: !!r.grants_pass,
+      pass_days: r.default_pass_days == null ? null : Number(r.default_pass_days),
+    }))
+}
+
+/**
  * Rows whose outcome counts as a tour. A row with no outcome is kept: that is a
  * tour nobody picked a result for, not one of the excluded kinds.
  */
@@ -51,4 +73,7 @@ function onlyTours(rows, rules) {
   return rows.filter(r => !skip.has(r.outcome))
 }
 
-module.exports = { loadOutcomeRules, loadOutcomeRulesOrNone, outcomesForLocation, onlyTours }
+module.exports = {
+  loadOutcomeRules, loadOutcomeRulesOrNone, clearOutcomeRulesCache,
+  outcomesForLocation, outcomeRulesForLocation, onlyTours,
+}

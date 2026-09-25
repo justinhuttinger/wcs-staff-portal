@@ -1300,6 +1300,18 @@ export const tourAdmin = {
     api('/admin/tour-locations/referrer-search?q=' + encodeURIComponent(q)),
 }
 
+// Tour check-in outcomes (Admin -> Tour Check-In -> Outcomes): which clubs see
+// each one and how long a pass it hands out.
+export const tourOutcomesAdmin = {
+  list: () => api('/admin/tour-outcomes'),
+  create: (body) => api('/admin/tour-outcomes', { method: 'POST', body: JSON.stringify(body) }),
+  update: (outcome, body) =>
+    api('/admin/tour-outcomes/' + encodeURIComponent(outcome), { method: 'PUT', body: JSON.stringify(body) }),
+  remove: (outcome) => api('/admin/tour-outcomes/' + encodeURIComponent(outcome), { method: 'DELETE' }),
+  reorder: (outcomes) =>
+    api('/admin/tour-outcomes/reorder', { method: 'PUT', body: JSON.stringify({ outcomes }) }),
+}
+
 // Per-club outbound webhook URLs (Admin -> Club Integrations). Consumed by the
 // prospects---documents service; see auth/migrations/075_club_integrations.sql.
 export const clubIntegrationsAdmin = {

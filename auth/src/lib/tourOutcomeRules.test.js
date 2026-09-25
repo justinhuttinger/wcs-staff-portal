@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { outcomesForLocation, onlyTours } = require('./tourOutcomeRules')
+const { outcomesForLocation, outcomeRulesForLocation, onlyTours } = require('./tourOutcomeRules')
 
 // Mirrors the rows migrations 200 and 210 leave in tour_outcomes.
 const RULES = [
@@ -45,4 +45,17 @@ test('Day Pass, NLPT, Swim and Guest are not tours', () => {
 test('no rules means every row still counts', () => {
   const rows = [{ outcome: 'Day Pass' }, { outcome: 'Only Tour' }]
   assert.strictEqual(onlyTours(rows, []).length, 2)
+})
+
+test('outcome rules carry each club\'s pass lengths', () => {
+  const rules = [
+    { outcome: 'Started Trial', location_slugs: null, grants_pass: true, default_pass_days: 7 },
+    { outcome: 'Custom Pass', location_slugs: null, grants_pass: true, default_pass_days: null },
+    { outcome: 'Guest', location_slugs: ['clackamas'], grants_pass: false, default_pass_days: null },
+  ]
+  assert.deepStrictEqual(outcomeRulesForLocation(rules, 'Salem'), [
+    { outcome: 'Started Trial', grants_pass: true, pass_days: 7 },
+    { outcome: 'Custom Pass', grants_pass: true, pass_days: null },
+  ])
+  assert.strictEqual(outcomeRulesForLocation(rules, 'Clackamas').length, 3)
 })
