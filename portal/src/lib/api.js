@@ -1320,7 +1320,7 @@ export const clubIntegrationsAdmin = {
     api('/admin/club-integrations/' + clubNumber, { method: 'PUT', body: JSON.stringify(body) }),
 }
 
-// WCS Save (member cancel flow) admin. Migration 211, routes/saveAdmin.js.
+// WCS Save (member cancel flow) admin. Migrations 211 + 213, routes/saveAdmin.js.
 export const saveAdmin = {
   getSettings: () => api('/admin/save/settings'),
   updateSettings: (body) => api('/admin/save/settings', { method: 'PUT', body: JSON.stringify(body) }),
@@ -1332,6 +1332,8 @@ export const saveAdmin = {
   createOffer: (body) => api('/admin/save/offers', { method: 'POST', body: JSON.stringify(body) }),
   updateOffer: (id, body) => api('/admin/save/offers/' + id, { method: 'PUT', body: JSON.stringify(body) }),
   deleteOffer: (id) => api('/admin/save/offers/' + id, { method: 'DELETE' }),
+  listRules: () => api('/admin/save/rules'),
+  updateRule: (planKind, body) => api('/admin/save/rules/' + planKind, { method: 'PUT', body: JSON.stringify(body) }),
   listRequests: ({ outcome = '', club = '', limit = 100, needs_action = false } = {}) => {
     const qs = new URLSearchParams()
     if (outcome) qs.set('outcome', outcome)
