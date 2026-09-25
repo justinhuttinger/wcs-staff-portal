@@ -19,3 +19,11 @@ test('normalizeSettings keeps the form-only keys', () => {
   assert.deepEqual(normalizeSettings({ success_message: ' hi ', allow_resubmit: 1, x: 2 }).settings,
     { success_message: 'hi', allow_resubmit: true })
 })
+
+test('auditKindScope: forms exclude quiz ids (deleted forms stay visible); quizzes include them', () => {
+  const { auditKindScope } = require('./formsHandlers')
+  assert.deepEqual(auditKindScope('form', ['q1', 'q2']), { mode: 'exclude', ids: ['q1', 'q2'] })
+  assert.deepEqual(auditKindScope('form', []), { mode: 'all', ids: [] })
+  assert.deepEqual(auditKindScope('quiz', ['q1']), { mode: 'include', ids: ['q1'] })
+  assert.deepEqual(auditKindScope('quiz', []), { mode: 'none', ids: [] })
+})

@@ -42,6 +42,13 @@ function kindMatches(form, kind) {
   return !!form && (form.kind || 'form') === kind
 }
 
+// How /audit/all narrows form_audit_log to one kind, given every quiz id.
+function auditKindScope(kind, quizIds) {
+  const ids = quizIds || []
+  if (kind === 'quiz') return { mode: ids.length ? 'include' : 'none', ids }
+  return { mode: ids.length ? 'exclude' : 'all', ids }
+}
+
 // Load a form + its shares and resolve the caller's access in one place. A row
 // of the other kind reads as not found, so neither mount can touch the other's.
 async function loadFormAccess(req, formId, kind) {
@@ -163,10 +170,13 @@ function buildFormsRouter({ kind, gate }) {
       if (req.query.staff_id) q = q.eq('actor_id', req.query.staff_id)
       if (req.query.form_id) q = q.eq('form_id', req.query.form_id)
       // Scope to this mount's kind so the Forms and Quiz audit views stay separate.
-      const { data: kindRows } = await supabaseAdmin.from('forms').select('id').eq('kind', kind)
-      const kindIds = (kindRows || []).map(r => r.id)
-      if (!kindIds.length) return res.json({ events: [] })
-      q = q.in('form_id', kindIds)
+      // Forms exclude quiz ids rather than including form ids, so events for
+      // hard-deleted drafts (no FK on form_id, by design) still show.
+      const { data: quizRows } = await supabaseAdmin.from('forms').select('id').eq('kind', 'quiz')
+      const scope = auditKindScope(kind, (quizRows || []).map(r => r.id))
+      if (scope.mode === 'none') return res.json({ events: [] })
+      if (scope.mode === 'include') q = q.in('form_id', scope.ids)
+      if (scope.mode === 'exclude') q = q.not('form_id', 'in', `(${scope.ids.join(',')})`)
       const { data, error } = await q
       if (error) throw error
       res.json({ events: await enrichAuditEvents(data || []) })
@@ -494,4 +504,4 @@ function buildFormsRouter({ kind, gate }) {
   return router
 }
 
-module.exports = { buildFormsRouter, loadFormAccess, kindMatches, normalizeSettings }
+module.exports = { buildFormsRouter, loadFormAccess, kindMatches, normalizeSettings, auditKindScope }
