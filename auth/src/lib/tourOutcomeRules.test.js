@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const { outcomesForLocation, onlyTours } = require('./tourOutcomeRules')
 
-// Mirrors the rows migration 200 leaves in tour_outcomes.
+// Mirrors the rows migrations 200 and 210 leave in tour_outcomes.
 const RULES = [
   { outcome: 'Membership Sale', counts_as_tour: true, location_slugs: null },
   { outcome: 'Started Trial', counts_as_tour: true, location_slugs: null },
@@ -11,6 +11,7 @@ const RULES = [
   { outcome: 'Only Tour', counts_as_tour: true, location_slugs: null },
   { outcome: 'NLPT', counts_as_tour: false, location_slugs: ['milwaukie', 'clackamas'] },
   { outcome: 'Swim', counts_as_tour: false, location_slugs: ['milwaukie', 'clackamas'] },
+  { outcome: 'Guest', counts_as_tour: false, location_slugs: ['clackamas'] },
   { outcome: 'Custom Pass', counts_as_tour: true, location_slugs: null },
 ]
 
@@ -22,14 +23,21 @@ test('NLPT and Swim are offered at Milwaukie and Clackamas', () => {
   }
 })
 
+test('Guest is offered at Clackamas and nowhere else', () => {
+  assert.ok(outcomesForLocation(RULES, 'Clackamas').includes('Guest'))
+  for (const club of ['Milwaukie', 'Salem']) {
+    assert.ok(!outcomesForLocation(RULES, club).includes('Guest'), club)
+  }
+})
+
 test('the other clubs keep the list they had', () => {
   assert.deepStrictEqual(outcomesForLocation(RULES, 'Salem'), [
     'Membership Sale', 'Started Trial', 'Started VIP Pass', 'Day Pass', 'Only Tour', 'Custom Pass',
   ])
 })
 
-test('Day Pass, NLPT and Swim are not tours', () => {
-  const rows = ['Started Trial', 'Day Pass', 'NLPT', 'Swim', 'Only Tour', null]
+test('Day Pass, NLPT, Swim and Guest are not tours', () => {
+  const rows = ['Started Trial', 'Day Pass', 'NLPT', 'Swim', 'Guest', 'Only Tour', null]
     .map((outcome, id) => ({ id, outcome }))
   assert.deepStrictEqual(onlyTours(rows, RULES).map(r => r.outcome), ['Started Trial', 'Only Tour', null])
 })
