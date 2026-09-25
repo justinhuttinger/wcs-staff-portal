@@ -1320,6 +1320,32 @@ export const clubIntegrationsAdmin = {
     api('/admin/club-integrations/' + clubNumber, { method: 'PUT', body: JSON.stringify(body) }),
 }
 
+// WCS Save (member cancel flow) admin. Migration 211, routes/saveAdmin.js.
+export const saveAdmin = {
+  getSettings: () => api('/admin/save/settings'),
+  updateSettings: (body) => api('/admin/save/settings', { method: 'PUT', body: JSON.stringify(body) }),
+  listReasons: () => api('/admin/save/reasons'),
+  createReason: (body) => api('/admin/save/reasons', { method: 'POST', body: JSON.stringify(body) }),
+  updateReason: (id, body) => api('/admin/save/reasons/' + id, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteReason: (id) => api('/admin/save/reasons/' + id, { method: 'DELETE' }),
+  listOffers: () => api('/admin/save/offers'),
+  createOffer: (body) => api('/admin/save/offers', { method: 'POST', body: JSON.stringify(body) }),
+  updateOffer: (id, body) => api('/admin/save/offers/' + id, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteOffer: (id) => api('/admin/save/offers/' + id, { method: 'DELETE' }),
+  listRequests: ({ outcome = '', club = '', limit = 100, needs_action = false } = {}) => {
+    const qs = new URLSearchParams()
+    if (outcome) qs.set('outcome', outcome)
+    if (needs_action) qs.set('needs_action', '1')
+    if (club) qs.set('club', club)
+    if (limit) qs.set('limit', String(limit))
+    return api('/admin/save/requests?' + qs.toString())
+  },
+  getRequest: (id) => api('/admin/save/requests/' + id),
+  resolveRequest: (id, note) =>
+    api('/admin/save/requests/' + id + '/resolve', { method: 'PUT', body: JSON.stringify({ note }) }),
+  stats: (days = 30) => api('/admin/save/stats?days=' + days),
+}
+
 // Form Builder
 export const forms = {
   list: () => api('/forms'),
