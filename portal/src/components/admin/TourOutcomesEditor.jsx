@@ -7,7 +7,7 @@ import { tourOutcomesAdmin } from '../../lib/api'
 
 const EMPTY = {
   outcome: '', pass_mode: 'none', pass_days: '', location_slugs: null,
-  counts_as_tour: true, is_sale: false,
+  counts_as_tour: true,
 }
 
 function passSummary(o) {
@@ -106,7 +106,6 @@ export default function TourOutcomesEditor() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-text-primary">{o.outcome}</span>
                     <Badge>{passSummary(o)}</Badge>
-                    {o.is_sale && <Badge>Sale</Badge>}
                     {!o.counts_as_tour && <Badge>Not a tour</Badge>}
                   </div>
                   <p className="text-xs text-text-muted truncate">{clubSummary(o, clubs)}</p>
@@ -150,7 +149,6 @@ function OutcomeForm({ initial, clubs, isNew, onCancel, onSaved }) {
       pass_days: f.pass_mode === 'fixed' ? Number(f.pass_days) : null,
       location_slugs: f.location_slugs,
       counts_as_tour: f.counts_as_tour,
-      is_sale: f.is_sale,
     }
     try {
       if (isNew) await tourOutcomesAdmin.create(body)
@@ -241,10 +239,6 @@ function OutcomeForm({ initial, clubs, isNew, onCancel, onSaved }) {
         <label className="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
           <input type="checkbox" checked={f.counts_as_tour} onChange={e => set({ counts_as_tour: e.target.checked })} />
           Counts as a tour <span className="text-text-muted text-xs">(Tours Given and Tour Conversion)</span>
-        </label>
-        <label className="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
-          <input type="checkbox" checked={f.is_sale} onChange={e => set({ is_sale: e.target.checked })} />
-          Counts as a sale
         </label>
       </div>
 
