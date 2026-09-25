@@ -1326,6 +1326,31 @@ export const forms = {
   staffDirectory: () => api('/forms/staff-directory'),
 }
 
+// Quiz Funnels share the Forms handlers on the backend (mounted at /quizzes),
+// plus per-club webhook/tracking endpoints. Literal paths on purpose so
+// apiPaths.test.mjs can check each one against the router.
+export const quizzes = {
+  list: () => api('/quizzes'),
+  get: (id) => api(`/quizzes/${id}`),
+  create: (body) => api('/quizzes', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) => api(`/quizzes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  publish: (id) => api(`/quizzes/${id}/publish`, { method: 'POST' }),
+  archive: (id) => api(`/quizzes/${id}/archive`, { method: 'POST' }),
+  remove: (id) => api(`/quizzes/${id}`, { method: 'DELETE' }),
+  addShare: (id, body) => api(`/quizzes/${id}/shares`, { method: 'POST', body: JSON.stringify(body) }),
+  removeShare: (id, staffId) => api(`/quizzes/${id}/shares/${staffId}`, { method: 'DELETE' }),
+  audit: (id) => api(`/quizzes/${id}/audit`),
+  auditAll: (params = {}) => api(`/quizzes/audit/all?` + new URLSearchParams(params)),
+  submissions: (id, offset = 0, locationId = '') =>
+    api(`/quizzes/${id}/submissions?offset=${offset}${locationId ? `&location_id=${encodeURIComponent(locationId)}` : ''}`),
+  retrySync: (id) => api(`/quizzes/${id}/retry-sync`, { method: 'POST' }),
+  staffDirectory: () => api('/quizzes/staff-directory'),
+  clubs: (id) => api(`/quizzes/${id}/clubs`),
+  saveClubs: (id, clubs) => api(`/quizzes/${id}/clubs`, { method: 'PUT', body: JSON.stringify({ clubs }) }),
+  testWebhook: (id, locationId) => api(`/quizzes/${id}/clubs/${locationId}/test-webhook`, { method: 'POST' }),
+  retryWebhook: (id, subId) => api(`/quizzes/${id}/submissions/${subId}/retry-webhook`, { method: 'POST' }),
+}
+
 // NPS report — scores, metrics, response rates and the comment feed
 export async function npsReport({ startDate, endDate, locationSlug, combine }, options = {}) {
   const params = new URLSearchParams({ start: startDate, end: endDate })

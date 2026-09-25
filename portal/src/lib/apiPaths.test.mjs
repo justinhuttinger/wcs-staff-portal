@@ -41,7 +41,12 @@ function mounts() {
 
 /** The route paths a router file declares, as matchers. */
 function routesIn(file) {
-  const src = fs.readFileSync(file, 'utf8')
+  let src = fs.readFileSync(file, 'utf8')
+  // /forms and /quizzes are both built by buildFormsRouter() in
+  // formsHandlers.js; follow the factory so its routes count for each mount.
+  if (/\bbuildFormsRouter\(/.test(src)) {
+    src += '\n' + fs.readFileSync(path.join(path.dirname(file), 'formsHandlers.js'), 'utf8')
+  }
   const paths = [...src.matchAll(/\brouter\.(?:get|post|put|patch|delete|use|all)\(\s*'([^']*)'/g)]
     .map(m => m[1])
     .filter(p => p.startsWith('/'))
