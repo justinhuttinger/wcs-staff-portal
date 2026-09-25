@@ -29,7 +29,7 @@ const rateLimit = require('express-rate-limit')
 const { LOCATIONS, getLocationBySlug } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 const {
-  cached, bookableDays, mapLimit, slotsFor, clearSlotsCache,
+  cached, swr, bookableDays, mapLimit, slotsFor, clearSlotsCache,
   getDayOneCalendar, getUsersById, trainerRoster, clearRosterCache,
   extraTrainerRoster, getExtraDayOneCalendars,
   resolveBookingCalendar, clearExtraCalendarCache, trainerKey,
@@ -121,16 +121,26 @@ function getFieldsByKey(loc) {
 // below expires on the same clock as the responses it is built from.
 const SLOTS_TTL = 45 * 1000
 
-// Every trainer's open instants across the booking window, as Sets keyed by
-// userId. Fetched once per window and cached, which turns "who can take this
-// slot?" into an in-memory lookup instead of an availability call per pick.
-const trainerSlotsCache = {} // key -> { promise, at }
+// How long a slightly old answer may still be SHOWN while a fresh one loads in
+// the background. The booking itself re-checks its trainer against GHL (see
+// confirmPick), so a stale preview can never produce a bad booking.
+const STALE_MAX = 10 * 60 * 1000
 
-function getTrainerSlots(loc, calendar, timezone, days) {
+// Every trainer's open instants across the booking window, as Sets keyed by
+// userId. Fetched once and cached, which turns "who can take this slot?" into
+// an in-memory lookup instead of an availability call per pick.
+//
+// The key used to include the current minute, so a pick made after the clock
+// rolled over (the page loads, the visitor spends a minute choosing) found an
+// empty cache and refetched every trainer from GHL: 1.5-3s of "Assigning a
+// trainer". The window start is not part of the key now; stored instants stay
+// valid, and stale-while-revalidate keeps the answer instant.
+const trainerSlotsCache = {} // key -> swr entry
+
+function loadTrainerSlots(loc, calendar, timezone, days) {
   const startDate = Date.now()
   const endDate = startDate + days * 86400000
-  const key = [loc.slug, calendar.id, timezone, days, Math.floor(startDate / 60000)].join('|')
-  return cached(trainerSlotsCache, key, SLOTS_TTL, async () => {
+  return (async () => {
     const roster = await trainerRoster(loc)
     const byUser = {}
     await mapLimit(roster, 2, async t => {
@@ -152,7 +162,27 @@ function getTrainerSlots(loc, calendar, timezone, days) {
       }
     })
     return byUser
+  })()
+}
+
+function getTrainerSlots(loc, calendar, timezone, days) {
+  const key = [loc.slug, calendar.id, timezone, days].join('|')
+  return swr(trainerSlotsCache, key, { ttl: SLOTS_TTL, maxStale: STALE_MAX },
+    () => loadTrainerSlots(loc, calendar, timezone, days))
+}
+
+// Is this one trainer free at this instant, per GHL right now? One narrow call,
+// used at booking time so a stale cache can never assign someone who is busy.
+async function trainerFreeAt(loc, calendar, userId, target, timezone) {
+  const startDate = Math.max(Date.now(), target - 12 * 3600000)
+  const data = await slotsFor(loc, calendar, {
+    startDate, endDate: target + 12 * 3600000, timezone, userId,
   })
+  for (const [k, v] of Object.entries(data || {})) {
+    if (k === 'traceId' || !Array.isArray(v?.slots)) continue
+    if (v.slots.some(s => new Date(s).getTime() === target)) return true
+  }
+  return false
 }
 
 // Extra calendars are an addition to the picker. If one cannot be read (renamed
@@ -351,13 +381,17 @@ function orderCandidates(roster, counts) {
 
 
 // Upcoming Day One count per trainer, for load balancing. Short TTL: it changes
-// with every booking, and a stale count would skew the rotation.
-const loadCache = {} // slug -> { counts, at }
+// with every booking. Served stale-while-revalidate like the slots, so the
+// balancing lookup never makes a visitor wait.
+const loadCache = {} // slug -> swr entry
 const LOAD_TTL = 60 * 1000
 
-async function upcomingCounts(loc, calendar) {
-  const hit = loadCache[loc.slug]
-  if (hit && (Date.now() - hit.at) < LOAD_TTL) return hit.counts
+function upcomingCounts(loc, calendar) {
+  return swr(loadCache, loc.slug, { ttl: LOAD_TTL, maxStale: STALE_MAX },
+    () => loadUpcomingCounts(loc, calendar))
+}
+
+async function loadUpcomingCounts(loc, calendar) {
   const counts = {}
   try {
     const data = await ghlFetch('/calendars/events', loc.apiKey, {
@@ -374,7 +408,6 @@ async function upcomingCounts(loc, calendar) {
     // Balancing is an optimization; an empty map just falls back to name order.
     console.warn('[DayOneWidget] upcoming counts failed, balancing skipped:', e.message)
   }
-  loadCache[loc.slug] = { counts, at: Date.now() }
   return counts
 }
 
@@ -386,17 +419,35 @@ async function upcomingCounts(loc, calendar) {
 // in-memory scan. Checking candidates one at a time against GHL instead meant
 // up to six sequential calls per slot, which repeatedly tripped the rate limit
 // and its 5s backoff — a warm pick measured 11.6s.
-async function resolveAssignment(loc, startTime, timezone) {
+//
+// The preview answers from cache (instant). With `confirm` (the booking), the
+// chosen trainer is re-checked against GHL with one narrow call, walking down
+// the same order until one is confirmed free. If the cache has nobody, a fresh
+// full load decides, so someone who only just opened up is still found.
+async function resolveAssignment(loc, startTime, timezone, { confirm = false } = {}) {
   const tz = timezone || 'America/Los_Angeles'
   const calendar = await getDayOneCalendar(loc)
+  const days = bookableDays(calendar)
   const [roster, counts, byUser] = await Promise.all([
     trainerRoster(loc),
     upcomingCounts(loc, calendar),
-    getTrainerSlots(loc, calendar, tz, bookableDays(calendar)),
+    getTrainerSlots(loc, calendar, tz, days),
   ])
   const target = new Date(startTime).getTime()
-  const pick = orderCandidates(roster, counts)
-    .find(t => byUser[t.userId] && byUser[t.userId].has(target)) || null
+  const ordered = orderCandidates(roster, counts)
+  const cachedFree = ordered.filter(t => byUser[t.userId] && byUser[t.userId].has(target))
+  if (!confirm) return { calendar, pick: cachedFree[0] || null, counts }
+
+  for (const t of cachedFree) {
+    try {
+      if (await trainerFreeAt(loc, calendar, t.userId, target, tz)) return { calendar, pick: t, counts }
+    } catch (e) {
+      console.warn(`[DayOneWidget] could not confirm ${t.name}:`, e.message)
+    }
+  }
+  const fresh = await loadTrainerSlots(loc, calendar, tz, days)
+  trainerSlotsCache[[loc.slug, calendar.id, tz, days].join('|')] = { value: fresh, hasValue: true, at: Date.now() }
+  const pick = ordered.find(t => fresh[t.userId] && fresh[t.userId].has(target)) || null
   return { calendar, pick, counts }
 }
 
@@ -462,7 +513,7 @@ router.post('/api/book', bookLimiter, async (req, res) => {
     let autoAssigned = false
     let reassignedFrom = null
     if (!assignTo) {
-      const { pick } = await resolveAssignment(loc, startTime, req.body.timezone)
+      const { pick } = await resolveAssignment(loc, startTime, req.body.timezone, { confirm: true })
       if (!pick) {
         return res.status(409).json({
           error: 'No trainer is available at that time. Please pick another slot.',
