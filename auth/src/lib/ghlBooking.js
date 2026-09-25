@@ -20,6 +20,36 @@ function cached(store, key, ttl, produce) {
   return promise
 }
 
+// Stale-while-revalidate. Within `ttl` the cached value is served as is.
+// Between `ttl` and `maxStale` it is still served immediately, and ONE
+// background refresh replaces it. Past `maxStale` (or with nothing cached) the
+// caller waits for a fresh value. A failed refresh keeps the last good value;
+// a failed cold load is not cached. `now` is injectable for tests.
+function swr(store, key, opts, produce) {
+  const { ttl, maxStale, now = Date.now } = opts
+  const hit = store[key]
+  const t = now()
+  if (hit && hit.hasValue) {
+    const age = t - hit.at
+    if (age < ttl) return Promise.resolve(hit.value)
+    if (age < maxStale) {
+      if (!hit.refreshing) {
+        hit.refreshing = true
+        produce()
+          .then(value => { store[key] = { value, hasValue: true, at: now() } })
+          .catch(() => { hit.refreshing = false })
+      }
+      return Promise.resolve(hit.value)
+    }
+  }
+  if (hit && hit.pending) return hit.pending
+  const pending = produce()
+    .then(value => { store[key] = { value, hasValue: true, at: now() }; return value })
+    .catch(err => { if (store[key] && store[key].pending === pending) delete store[key]; throw err })
+  store[key] = { ...(hit || {}), pending }
+  return pending
+}
+
 // How far ahead a calendar will actually accept a booking, in days. free-slots
 // simply stops returning slots past this, so asking wider is wasted latency.
 // Calendars with no cap set fall back to a month.
@@ -257,7 +287,7 @@ function clearExtraCalendarCache(slug) {
 }
 
 module.exports = {
-  CAL_VERSION, cached, bookableDays, mapLimit, slotsFor, slotsByDate, clearSlotsCache,
+  CAL_VERSION, cached, swr, bookableDays, mapLimit, slotsFor, slotsByDate, clearSlotsCache,
   MAX_SLOT_WINDOW_DAYS, clampSlotWindow,
   ROSTER_TTL, CALENDAR_NAME, clearRosterCache,
   getDayOneCalendar, getUsersById, toRoster, trainerRoster,
