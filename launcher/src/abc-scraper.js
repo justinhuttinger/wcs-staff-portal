@@ -165,11 +165,18 @@ function isValid(key, v) {
   return v.length > 1 && v.length < 60 && !/:$/.test(v)
 }
 
+// The ABC shell's member search box reuses id="firstName"/"lastName"
+// (name="memberSearchFirstName"), so search inputs never count as profile data.
+function isSearchInput(el) {
+  return !!el && ((el.name || '').indexOf('memberSearch') === 0 ||
+    (el.classList && el.classList.contains('search-input')))
+}
+
 function readField(el) {
-  if (!el) return ''
+  if (!el || isSearchInput(el)) return ''
   if ('value' in el && typeof el.value === 'string' && el.tagName !== 'BUTTON') return el.value.trim()
   const input = el.querySelector && el.querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea')
-  if (input) return (input.value || '').trim()
+  if (input) return isSearchInput(input) ? '' : (input.value || '').trim()
   return (el.textContent || '').replace(/\s+/g, ' ').trim()
 }
 
@@ -204,8 +211,11 @@ function scrapeProfile() {
       if (out[key]) continue
       for (const sel of fieldSelectors[key]) {
         try {
-          const v = readField(doc.querySelector(sel))
-          if (isValid(key, v)) { out[key] = v; break }
+          for (const el of doc.querySelectorAll(sel)) {
+            const v = readField(el)
+            if (isValid(key, v)) { out[key] = v; break }
+          }
+          if (out[key]) break
         } catch (e) {}
       }
     }
@@ -254,7 +264,9 @@ function ensureDayOneButton() {
 function updateDayOneButton() {
   if (!document.body) return
   const host = ensureDayOneButton()
-  const onLogin = !!document.querySelector('input[type="password"]')
+  // Only a VISIBLE password field means the login screen: the ABC shell keeps
+  // a hidden password-type input (employeeClockInBarcode) on every page.
+  const onLogin = Array.from(document.querySelectorAll('input[type="password"]')).some(el => el.offsetParent)
   const d = onLogin ? {} : scrapeProfile()
   const show = !!(d.firstName && d.lastName && (d.email || d.phone))
   host.style.display = show ? 'block' : 'none'
