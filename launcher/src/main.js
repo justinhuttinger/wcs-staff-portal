@@ -178,6 +178,10 @@ function applyLocationConfig({ location, abc_url } = {}) {
   }
 }
 
+// abc-scraper asks which app it's in (check-in cues + ABC mute are WCS ABC
+// only). Registered before any window exists so the sync call always answers.
+ipcMain.on('wcs-app-mode', (e) => { e.returnValue = APP_MODE })
+
 app.on('ready', async () => {
   // First-launch flow: prompt for location before showing the main
   // window. Windows kiosks already have config.json written by the
@@ -233,6 +237,8 @@ app.on('ready', async () => {
   mainWindow.maximize()
   if (IS_ABC_ONLY) createTray(mainWindow, 'abc-tray-icon.png')
   else createTray(mainWindow)
+  // WCS ABC: check-in alert sounds play from a hidden window (the ABC tab is muted).
+  if (IS_ABC_ONLY) require('./alert-sound').setup(log, mainWindow)
 
   // Don't open at sign-in. Older builds registered a login item, so actively
   // turn it off: this removes that entry (HKCU Run key on Windows, Login

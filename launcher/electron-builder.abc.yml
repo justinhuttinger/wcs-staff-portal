@@ -15,7 +15,7 @@ directories:
 # version: bump it here for each ABC release.
 extraMetadata:
   wcsAppMode: abc
-  version: 0.0.1
+  version: 0.0.2
 
 # Update feed: private downloads host (see #1014), GitHub as fallback.
 # `channel: abc` makes this app read abc.yml, so it can never pick up
