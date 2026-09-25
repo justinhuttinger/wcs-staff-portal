@@ -7,6 +7,7 @@ const {
 } = require('../services/quizSchema')
 const { postJson, deliverWebhook } = require('../services/quizWebhook')
 const formsAudit = require('../services/formsAudit')
+const { getAllClubTracking } = require('../services/clubTracking')
 
 // Quiz Funnels management API: the shared forms handlers (kind='quiz') plus
 // the per-club webhook/tracking endpoints.
@@ -26,11 +27,12 @@ async function clubLocations() {
 }
 
 async function clubsResponse(form) {
-  const [locs, { data: rows }] = await Promise.all([
+  const [locs, { data: rows }, defaults] = await Promise.all([
     clubLocations(),
     supabaseAdmin.from('quiz_clubs').select('*').eq('form_id', form.id),
+    getAllClubTracking(),
   ])
-  return clubRowsView(locs, rows || [], form)
+  return clubRowsView(locs, rows || [], form, defaults)
 }
 
 router.get('/:id/clubs', async (req, res) => {

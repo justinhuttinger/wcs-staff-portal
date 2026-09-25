@@ -6,6 +6,7 @@ const { CLUB_SLUGS, publicQuizView, validateContact, quizSettingsWithDefaults } 
 const formsSheets = require('../services/formsSheets')
 const formsAudit = require('../services/formsAudit')
 const { deliverWebhook } = require('../services/quizWebhook')
+const { getClubTracking } = require('../services/clubTracking')
 
 // Public quiz renderer endpoints (no auth). A quiz is reachable only when it
 // is published AND the club in the URL is active for it.
@@ -35,7 +36,8 @@ router.get('/:club/:slug', async (req, res) => {
   try {
     const ctx = await loadQuiz(req.params.club, req.params.slug)
     if (!ctx) return res.status(404).json({ error: 'This quiz is not available' })
-    res.json({ quiz: publicQuizView(ctx.form, ctx.location, ctx.club) })
+    const clubDefault = await getClubTracking(ctx.location.name)
+    res.json({ quiz: publicQuizView(ctx.form, ctx.location, ctx.club, clubDefault) })
   } catch (err) {
     console.error('[publicQuizzes] fetch failed:', err.message)
     res.status(500).json({ error: 'Something went wrong. Try again.' })

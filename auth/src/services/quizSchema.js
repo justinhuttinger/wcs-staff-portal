@@ -187,11 +187,19 @@ function sampleSubmission(form) {
   return { id: null, data, utm: { utm_source: 'test' }, submitted_at: new Date().toISOString() }
 }
 
+// A quiz's own snippet (quiz_clubs) overrides the club-wide one set in
+// Admin -> Club Integrations; either row needs both src and id to count.
+function resolveGhlTracking(override, clubDefault) {
+  for (const r of [override, clubDefault]) {
+    if (r && r.ghl_tracking_src && r.ghl_tracking_id) return { src: r.ghl_tracking_src, tracking_id: r.ghl_tracking_id }
+  }
+  return null
+}
+
 // What the public renderer may see. Deliberately rebuilt field-by-field so the
 // club's webhook URL can never leak.
-function publicQuizView(form, location, club) {
+function publicQuizView(form, location, club, clubDefault = null) {
   const s = quizSettingsWithDefaults(form.settings)
-  const hasGhl = !!(club && club.ghl_tracking_src && club.ghl_tracking_id)
   return {
     slug: form.slug,
     title: form.title,
@@ -202,7 +210,7 @@ function publicQuizView(form, location, club) {
     contact_step: s.contact_step,
     thank_you: s.thank_you,
     tracking: {
-      ghl: hasGhl ? { src: club.ghl_tracking_src, tracking_id: club.ghl_tracking_id } : null,
+      ghl: resolveGhlTracking(club, clubDefault),
       meta_pixel_id: s.tracking.meta_pixel_id || '',
       gtm_id: s.tracking.gtm_id || '',
     },
@@ -210,7 +218,8 @@ function publicQuizView(form, location, club) {
 }
 
 // Every club, with its saved row (or blanks), for the portal Clubs tab.
-function clubRowsView(locations, rows, form) {
+// clubDefaults: { [club_slug]: club_integrations row } for the fallback id.
+function clubRowsView(locations, rows, form, clubDefaults = {}) {
   const byLoc = Object.fromEntries((rows || []).map(r => [r.location_id, r]))
   return (locations || []).map(l => {
     const r = byLoc[l.id] || {}
@@ -223,6 +232,7 @@ function clubRowsView(locations, rows, form) {
       ghl_webhook_url: r.ghl_webhook_url || '',
       ghl_tracking_id: r.ghl_tracking_id || '',
       ghl_tracking_src: r.ghl_tracking_src || '',
+      default_tracking_id: clubDefaults[clubSlug]?.ghl_tracking_id || '',
       url: quizPublicUrl(clubSlug, form.slug),
     }
   })
@@ -260,5 +270,5 @@ module.exports = {
   CLUB_SLUGS, DEFAULT_QUIZ_SETTINGS, PIXEL_RE, GTM_RE, TRACKING_ID_RE,
   quizSettingsWithDefaults, normalizeQuizSettings, parseGhlTrackingSnippet, validateWebhookUrl,
   validateContact, questionFields, buildWebhookPayload, sampleSubmission, publicQuizView,
-  quizPublicUrl, clubRowsView, planClubUpserts,
+  quizPublicUrl, clubRowsView, planClubUpserts, resolveGhlTracking,
 }

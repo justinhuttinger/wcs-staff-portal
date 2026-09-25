@@ -133,3 +133,24 @@ test('planClubUpserts validates and keeps tracking unless a snippet is sent', ()
   assert.match(q.planClubUpserts('F', [{ location_id: 'L1', ghl_webhook_url: 'http://h' }], [], locs).error, /^Salem: /)
   assert.equal(q.planClubUpserts('F', [{ location_id: 'NOPE' }], [], locs).ok, false)
 })
+
+test('resolveGhlTracking: quiz override wins, else club default, else null', () => {
+  const override = { ghl_tracking_src: 'https://a/js/external-tracking.js', ghl_tracking_id: 'tk_override1' }
+  const def = { ghl_tracking_src: 'https://b/js/external-tracking.js', ghl_tracking_id: 'tk_default1' }
+  assert.deepEqual(q.resolveGhlTracking(override, def), { src: override.ghl_tracking_src, tracking_id: 'tk_override1' })
+  assert.deepEqual(q.resolveGhlTracking({}, def), { src: def.ghl_tracking_src, tracking_id: 'tk_default1' })
+  assert.equal(q.resolveGhlTracking({}, null), null)
+  assert.equal(q.resolveGhlTracking(null, { ghl_tracking_id: 'tk_x' }), null)
+})
+
+test('clubRowsView shows the club default tracking id', () => {
+  const rows = q.clubRowsView([{ id: 'L1', name: 'Salem' }], [], { slug: 's' }, { salem: { ghl_tracking_id: 'tk_def' } })
+  assert.equal(rows[0].default_tracking_id, 'tk_def')
+  assert.equal(q.clubRowsView([{ id: 'L1', name: 'Salem' }], [], { slug: 's' })[0].default_tracking_id, '')
+})
+
+test('publicQuizView uses the club default when the quiz has no override', () => {
+  const v = q.publicQuizView({ slug: 's', title: 'T', schema: [] }, { id: 'L1', name: 'Salem' }, {},
+    { ghl_tracking_src: 'https://link.msgsndr.com/js/external-tracking.js', ghl_tracking_id: 'tk_def12345' })
+  assert.deepEqual(v.tracking.ghl, { src: 'https://link.msgsndr.com/js/external-tracking.js', tracking_id: 'tk_def12345' })
+})

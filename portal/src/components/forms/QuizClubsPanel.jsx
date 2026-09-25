@@ -105,12 +105,18 @@ export default function QuizClubsPanel({ form, api, canEdit }) {
                     placeholder="https://services.leadconnectorhq.com/hooks/..." disabled={!canEdit} className={inputClass} />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-muted mb-1">GHL External Tracking snippet</label>
+                  <label className="block text-xs font-semibold text-text-muted mb-1">GHL External Tracking override (optional)</label>
                   <textarea rows={2} disabled={!canEdit} className={`${inputClass} font-mono text-xs`}
                     value={snippets[c.location_id] ?? ''}
                     onChange={e => { setSnippets(s => ({ ...s, [c.location_id]: e.target.value })); setDirty(true); setNotice('') }}
-                    placeholder={c.ghl_tracking_id ? `Saved: ${c.ghl_tracking_id} (paste a new snippet to replace)` : '<script src="https://.../js/external-tracking.js" data-tracking-id="tk_..."></script>'} />
-                  <p className="text-[11px] text-text-muted mt-1">From GHL: Settings, External Tracking, Copy Script. {c.ghl_tracking_id ? `Current id: ${c.ghl_tracking_id}.` : 'Not set.'}</p>
+                    placeholder={c.ghl_tracking_id ? `Override: ${c.ghl_tracking_id} (paste a new snippet to replace, or clear to use the club default)` : 'Leave blank to use the club default'} />
+                  <p className="text-[11px] text-text-muted mt-1">
+                    {c.ghl_tracking_id
+                      ? `Using this quiz's override: ${c.ghl_tracking_id}.`
+                      : c.default_tracking_id
+                        ? `Using the club default: ${c.default_tracking_id}.`
+                        : 'No club default set. Add it once in Admin > Club Integrations.'}
+                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {canEdit && (
