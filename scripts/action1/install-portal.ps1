@@ -128,7 +128,7 @@ function Protect-StableDir {
   & icacls.exe $StableDir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' /Q | Out-Null
   & icacls.exe $StableDir /setowner '*S-1-5-32-544' /T /C /Q | Out-Null
   # Children: drop any explicit ACEs and inherit the locked-down parent.
-  & icacls.exe "$StableDir\*" /reset /T /C /Q 2>&1 | Out-Null
+  Invoke-Quiet icacls.exe @("$StableDir\*", '/reset', '/T', '/C', '/Q')
 }
 
 function Install-Tasks($f) {
@@ -198,19 +198,33 @@ function Remove-Tasks($f) {
   }
 }
 
+# Run a native tool, ignoring its stderr/exit code. Windows PowerShell 5.1
+# (what Action1 runs) turns native stderr into a terminating error under
+# $ErrorActionPreference = 'Stop', so e.g. the expected "could not be
+# terminated" from a graceful taskkill in session 0 would abort the script
+# before the forced fallback.
+function Invoke-Quiet {
+  param([string] $Exe, [string[]] $Arguments)
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { & $Exe @Arguments 2>&1 | Out-Null } catch {} finally { $ErrorActionPreference = $prev }
+}
+
 function Stop-App($f) {
   $name = [IO.Path]::GetFileNameWithoutExtension($f.Exe)
   if (-not (Get-Process -Name $name -ErrorAction SilentlyContinue)) { return $false }
   Log "closing $($f.Exe)"
   # Graceful first (WM_CLOSE). From session 0 this often can't reach the
   # user's desktop, hence the forced fallback.
-  & taskkill.exe /IM $f.Exe 2>&1 | Out-Null
+  Invoke-Quiet taskkill.exe @('/IM', $f.Exe)
   $deadline = (Get-Date).AddSeconds($CloseTimeoutSec)
   while ((Get-Process -Name $name -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
   if (Get-Process -Name $name -ErrorAction SilentlyContinue) {
     Log 'still running after timeout - forcing'
-    & taskkill.exe /F /T /IM $f.Exe 2>&1 | Out-Null
+    Invoke-Quiet taskkill.exe @('/F', '/T', '/IM', $f.Exe)
+    Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 3
+    if (Get-Process -Name $name -ErrorAction SilentlyContinue) { throw "could not close $($f.Exe)" }
   }
   return $true
 }
