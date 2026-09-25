@@ -213,9 +213,13 @@ app.on('ready', async () => {
   //   - macOS: keep native traffic lights (hiddenInset overlays them on
   //     the tab bar). Going frameless on macOS hides the traffic lights
   //     entirely, which violates Mac UX expectations.
-  const chrome = process.platform === 'darwin'
-    ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 } }
-    : { frame: false, titleBarStyle: 'hidden' }
+  //   - WCS ABC: no tab bar at all, so it keeps the native title bar and
+  //     window controls, with ABC filling the rest.
+  const chrome = IS_ABC_ONLY
+    ? {}
+    : process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 16, y: 18 } }
+      : { frame: false, titleBarStyle: 'hidden' }
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -238,9 +242,16 @@ app.on('ready', async () => {
   if (process.platform === 'win32') loginItem.path = app.getPath('exe')
   app.setLoginItemSettings(loginItem)
 
-  tabManager = new TabManager(mainWindow, TAB_BAR_HEIGHT)
+  // WCS ABC: one full-window ABC view, no tab bar (height 0, never created).
+  // TabManager still hosts the view for its UA, context menu, link routing
+  // and DevTools shortcuts.
+  if (IS_ABC_ONLY) {
+    mainWindow.setMenu(null)
+    mainWindow.on('page-title-updated', (e) => e.preventDefault())
+  }
+  tabManager = new TabManager(mainWindow, IS_ABC_ONLY ? 0 : TAB_BAR_HEIGHT)
   tabManager.setLogger(log)
-  tabManager.initTabBar()
+  if (!IS_ABC_ONLY) tabManager.initTabBar()
 
   // Silent background updates (no dialogs) - see silent-updater.js
   silentUpdater.start(log)
@@ -262,10 +273,27 @@ app.on('ready', async () => {
   const portalUrl = `${PORTAL_URL}?location=${location}` + (abcUrl ? `&abc_url=${encodeURIComponent(abcUrl)}` : '')
 
   if (IS_ABC_ONLY) {
-    // No sign-in: straight to ABC. Pinned (not closable) like the Portal tab.
+    // No sign-in: straight to ABC, filling the window.
     abcTabId = tabManager.createTab(abcTabUrl(), 'ABC Financial', {
       closable: false,
       preload: path.join(__dirname, 'abc-scraper.js'),
+    })
+    // Browser keys without chrome: F5 / Ctrl+R reload, Alt+Left/Right
+    // back/forward. (F12 / Ctrl+Shift+I DevTools come from TabManager.)
+    const abcWc = tabManager.tabs.get(abcTabId).view.webContents
+    abcWc.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return
+      const key = input.key
+      if (key === 'F5' || (input.control && !input.shift && (key === 'r' || key === 'R'))) {
+        event.preventDefault()
+        abcWc.reload()
+      } else if (input.alt && key === 'ArrowLeft') {
+        event.preventDefault()
+        if (abcWc.canGoBack()) abcWc.goBack()
+      } else if (input.alt && key === 'ArrowRight') {
+        event.preventDefault()
+        if (abcWc.canGoForward()) abcWc.goForward()
+      }
     })
   } else {
     tabManager.createTab(portalUrl, 'Portal', {
@@ -586,11 +614,13 @@ app.on('ready', async () => {
 
   tabManager.onNewWindow = (url) => {
     const abcUrl = getAbcUrl()
-    // ABC-only: ABC links open as extra ABC tabs (with the scraper); anything
-    // else goes to the default browser instead of becoming a tool tab.
+    // ABC-only: there are no tabs. Cross-host ABC links (abcfinancial <->
+    // abcfitness) navigate the one ABC view (same-host ones already do, in
+    // TabManager); anything else goes to the default browser.
     if (IS_ABC_ONLY) {
       if (url.includes('abcfinancial.com') || url.includes('abcfitness.com')) {
-        tabManager.createTab(url, 'ABC Financial', { preload: path.join(__dirname, 'abc-scraper.js') })
+        const abcTab = tabManager.tabs.get(abcTabId)
+        if (abcTab && !abcTab.view.webContents.isDestroyed()) abcTab.view.webContents.loadURL(url)
       } else if (/^https?:/i.test(url)) {
         shell.openExternal(url).catch(() => {})
       }
