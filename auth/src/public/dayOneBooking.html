@@ -860,6 +860,15 @@
     $(id).addEventListener('input', syncBook)
   })
 
+  // Prefill from the link (the launcher's post-signup popup passes the new
+  // member): ?firstName=&lastName=&email=&phone= (GHL-style first_name etc.
+  // also accepted). Only fills empty fields, so nothing typed is overwritten.
+  ;[['firstName', 'first_name'], ['lastName', 'last_name'], ['email', 'email'], ['phone', 'phone']].forEach(function (k) {
+    var v = qp.get(k[0]) || qp.get(k[1])
+    if (v && !$(k[0]).value) $(k[0]).value = v.trim()
+  })
+  syncBook()
+
   $('book').addEventListener('click', function () {
     fail($('book-err'), '')
     $('book').disabled = true
