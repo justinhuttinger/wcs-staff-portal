@@ -1,12 +1,16 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
 const path = require('path')
 const silentUpdater = require('./silent-updater')
 const { appendLog: log } = require('./paths')
+const { APP_MODE, IS_ABC_ONLY, APP_DISPLAY_NAME } = require('./app-mode')
 
-app.setName('Portal')
+app.setName(APP_DISPLAY_NAME)
+// The ABC-only app keeps its own cookies/session and single-instance lock so
+// it can run next to Portal on the same machine.
+if (IS_ABC_ONLY) app.setPath('userData', path.join(app.getPath('appData'), APP_DISPLAY_NAME))
 // Windows notification grouping — no-op on macOS / Linux.
-if (process.platform === 'win32') app.setAppUserModelId('Portal')
-log('=== APP STARTING === platform=' + process.platform + ' version=' + app.getVersion())
+if (process.platform === 'win32') app.setAppUserModelId(APP_DISPLAY_NAME)
+log('=== APP STARTING === platform=' + process.platform + ' version=' + app.getVersion() + ' mode=' + APP_MODE)
 const { PORTAL_URL, getAbcUrl, getLocation, readConfig, writeConfig } = require('./config')
 const { LOCATIONS } = require('./locations')
 const TabManager = require('./tabs')
@@ -21,7 +25,10 @@ const deepLink = require('./deep-link')
 
 // Register wcsportal:// so a clicked one-time link launches/focuses us with the
 // token. In dev (`electron .`) the script path must be passed through.
-if (process.defaultApp) {
+// The ABC-only app never claims the scheme; deep links belong to Portal.
+if (IS_ABC_ONLY) {
+  // no protocol registration
+} else if (process.defaultApp) {
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient(deepLink.SCHEME, process.execPath, [path.resolve(process.argv[1])])
   }
@@ -95,6 +102,7 @@ if (!gotLock) {
       mainWindow.show()
       mainWindow.focus()
     }
+    if (IS_ABC_ONLY) return
     const link = deepLink.findDeepLink(argv)
     if (link) deepLink.redeemAndApply(link, applyLocationConfig)
   })
@@ -102,6 +110,7 @@ if (!gotLock) {
 
 app.on('open-url', (event, url) => {
   event.preventDefault()
+  if (IS_ABC_ONLY) return
   if (tabManager) deepLink.redeemAndApply(url, applyLocationConfig)
   else pendingDeepLink = url
 })
@@ -109,6 +118,40 @@ app.on('open-url', (event, url) => {
 const TAB_BAR_HEIGHT = 52
 let mainWindow = null
 let tabManager = null
+
+// ---- ABC-only flavor ----
+// Staff sign in on the portal's own login page, loaded in loginWindow with the
+// portal preload so the existing auth bridge (portal-auth-login / logout /
+// token-refreshed / trigger-signout) works unchanged. After sign-in it is
+// hidden but kept alive: it keeps the token refreshed and performs sign-out,
+// exactly as the Portal tab does in the full app.
+let loginWindow = null
+let abcTabId = null
+let abcSignedIn = false
+
+function abcTabUrl() {
+  return getAbcUrl() || 'https://prod02.abcfinancial.com'
+}
+
+function openAbcTab() {
+  if (abcTabId && tabManager.tabs.get(abcTabId)) {
+    tabManager.switchTo(abcTabId)
+    return
+  }
+  abcTabId = tabManager.createTab(abcTabUrl(), 'ABC Financial', {
+    closable: false,
+    preload: path.join(__dirname, 'abc-scraper.js'),
+  })
+}
+
+function closeAbcTab() {
+  const tab = abcTabId && tabManager.tabs.get(abcTabId)
+  if (tab) {
+    tab.closable = true
+    tabManager.closeTab(abcTabId)
+  }
+  abcTabId = null
+}
 
 // Persist a new location/abc_url to config.json (preserving install_id and any
 // other fields) and reload the portal tab with the fresh params. Shared by the
@@ -121,6 +164,14 @@ function applyLocationConfig({ location, abc_url } = {}) {
     if (abc_url) next.abc_url = abc_url
     writeConfig(next)
     log('[config] applied location=' + next.location)
+    if (IS_ABC_ONLY) {
+      const abcTab = tabManager && abcTabId && tabManager.tabs.get(abcTabId)
+      if (abcTab && !abcTab.view.webContents.isDestroyed()) {
+        abcTab.view.webContents.loadURL(abcTabUrl())
+        log('[config] reloaded ABC tab')
+      }
+      return { success: true }
+    }
     const portalTab = tabManager && tabManager.tabs.get(1)
     if (portalTab && !portalTab.view.webContents.isDestroyed()) {
       const url = `${PORTAL_URL}?location=${next.location}` +
@@ -177,13 +228,15 @@ app.on('ready', async () => {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'Portal',
+    title: APP_DISPLAY_NAME,
     icon: winIcon,
     autoHideMenuBar: true,
+    // ABC-only: stays hidden until staff sign in through the login window.
+    show: !IS_ABC_ONLY,
     ...chrome,
   })
 
-  mainWindow.maximize()
+  if (!IS_ABC_ONLY) mainWindow.maximize()
   createTray(mainWindow)
 
   // openAtLogin works on both Windows and macOS. The `path` option is
@@ -202,9 +255,12 @@ app.on('ready', async () => {
   silentUpdater.start(log)
 
   // Force-update polling — relaunches the kiosk if its version drops below
-  // the min_launcher_version pinned via the admin panel.
-  versionCheck.setLogger(log)
-  versionCheck.start()
+  // the min_launcher_version pinned via the admin panel. That pin is a Portal
+  // version number, so the ABC-only app (own version line) skips it.
+  if (!IS_ABC_ONLY) {
+    versionCheck.setLogger(log)
+    versionCheck.start()
+  }
 
   // Auth module logs through the same C:\WCS\app.log
   auth.setLogger(log)
@@ -214,33 +270,80 @@ app.on('ready', async () => {
   const abcUrl = getAbcUrl()
   const portalUrl = `${PORTAL_URL}?location=${location}` + (abcUrl ? `&abc_url=${encodeURIComponent(abcUrl)}` : '')
 
-  tabManager.createTab(portalUrl, 'Portal', {
-    closable: false,
-    preload: path.join(__dirname, 'portal-preload.js'),
-  })
+  if (IS_ABC_ONLY) {
+    loginWindow = new BrowserWindow({
+      width: 1000,
+      height: 820,
+      title: APP_DISPLAY_NAME + ' - Sign in',
+      icon: winIcon,
+      center: true,
+      autoHideMenuBar: true,
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, 'portal-preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        partition: 'persist:wcs-portal',
+        // Hidden after sign-in but must keep refreshing the token.
+        backgroundThrottling: false,
+      },
+    })
+    loginWindow.on('page-title-updated', (e) => e.preventDefault())
+    // A saved session signs in on load; only show the window if it didn't.
+    loginWindow.webContents.once('did-finish-load', () => {
+      setTimeout(() => {
+        if (!abcSignedIn && loginWindow && !loginWindow.isDestroyed()) loginWindow.show()
+      }, 1500)
+    })
+    // Closing either window quits (the hidden one would keep the app alive).
+    loginWindow.on('closed', () => { loginWindow = null; app.quit() })
+    mainWindow.on('closed', () => app.quit())
+    loginWindow.loadURL(portalUrl)
+  } else {
+    tabManager.createTab(portalUrl, 'Portal', {
+      closable: false,
+      preload: path.join(__dirname, 'portal-preload.js'),
+    })
+  }
 
-  // Install registry heartbeat — reports this machine and applies any target
-  // location an admin set from the Kiosk Installs panel.
-  heartbeat.setLogger(log)
-  deepLink.setLogger(log)
-  heartbeat.start(applyLocationConfig)
+  // Install heartbeat, receipt printing and deep links are Portal-only: the
+  // ABC app shares this machine's C:\WCS\config.json install_id, so it must
+  // not report or print a second time.
+  if (!IS_ABC_ONLY) {
+    // Install registry heartbeat — reports this machine and applies any target
+    // location an admin set from the Kiosk Installs panel.
+    heartbeat.setLogger(log)
+    deepLink.setLogger(log)
+    heartbeat.start(applyLocationConfig)
 
-  // Till-close receipt printing — poll for print jobs and silent-print them to
-  // the admin-selected local printer. See Admin Panel > Print Devices.
-  printPoller.start({ getWindow: () => mainWindow, logger: log })
+    // Till-close receipt printing — poll for print jobs and silent-print them to
+    // the admin-selected local printer. See Admin Panel > Print Devices.
+    printPoller.start({ getWindow: () => mainWindow, logger: log })
 
-  // Deep link that cold-started the app: Windows passes it in argv; macOS may
-  // have stashed it from an early open-url.
-  const coldLink = deepLink.findDeepLink(process.argv) || pendingDeepLink
-  if (coldLink) {
-    pendingDeepLink = null
-    deepLink.redeemAndApply(coldLink, applyLocationConfig)
+    // Deep link that cold-started the app: Windows passes it in argv; macOS may
+    // have stashed it from an early open-url.
+    const coldLink = deepLink.findDeepLink(process.argv) || pendingDeepLink
+    if (coldLink) {
+      pendingDeepLink = null
+      deepLink.redeemAndApply(coldLink, applyLocationConfig)
+    }
   }
 
   // Auth state bridge — portal notifies us when user logs in/out
   ipcMain.on('portal-auth-login', (e, token, userName) => {
     log('Portal auth: user logged in')
+    if (IS_ABC_ONLY) {
+      abcSignedIn = true
+      if (loginWindow && !loginWindow.isDestroyed()) loginWindow.hide()
+      if (!mainWindow.isVisible()) {
+        mainWindow.maximize()
+        mainWindow.show()
+      }
+      openAbcTab()
+    }
     auth.setToken(token).then(() => {
+      // Tour notifications open the Portal calendar, which the ABC app lacks.
+      if (IS_ABC_ONLY) return
       log('Staff profile loaded, starting tour notifier')
       try {
         const tourNotifier = require('./tour-notifier')
@@ -301,6 +404,17 @@ app.on('ready', async () => {
     // Close all tabs except Portal
     tabManager.closeAllExceptPortal()
 
+    // ABC-only: drop the ABC tab, hide the app, bring back the sign-in window.
+    if (IS_ABC_ONLY) {
+      abcSignedIn = false
+      closeAbcTab()
+      if (!mainWindow.isDestroyed()) mainWindow.hide()
+      if (loginWindow && !loginWindow.isDestroyed()) {
+        loginWindow.show()
+        loginWindow.focus()
+      }
+    }
+
     // Clear all session cookies/storage so GHL etc. sessions don't persist
     const ses = require('electron').session.fromPartition('persist:wcs-portal')
     ses.clearStorageData().catch(() => {})
@@ -315,6 +429,10 @@ app.on('ready', async () => {
 
   // Tab bar sign-out button — tell the portal to trigger its own logout
   ipcMain.on('tabbar-signout', () => {
+    if (IS_ABC_ONLY) {
+      if (loginWindow && !loginWindow.isDestroyed()) loginWindow.webContents.send('trigger-signout')
+      return
+    }
     const portalTab = tabManager.tabs.get(1)
     if (portalTab) {
       portalTab.view.webContents.send('trigger-signout')
@@ -520,6 +638,12 @@ app.on('ready', async () => {
 
   tabManager.onNewWindow = (url) => {
     const abcUrl = getAbcUrl()
+    // ABC-only: ABC links still open as ABC tabs; anything else goes to the
+    // default browser instead of becoming a tool tab.
+    if (IS_ABC_ONLY && !url.includes('abcfinancial.com') && !url.includes('abcfitness.com')) {
+      if (/^https?:/i.test(url)) shell.openExternal(url).catch(() => {})
+      return
+    }
     if (url.includes('abcfinancial.com') || url.includes('kiosk.html')) {
       const abcDirect = abcUrl || 'https://prod02.abcfinancial.com'
       tabManager.createTab(abcDirect, 'ABC Financial', {

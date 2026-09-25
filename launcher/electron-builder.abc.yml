@@ -1,0 +1,65 @@
+# "WCS ABC" — the ABC-only flavor of the launcher (same codebase as Portal).
+# Build:  npm run dist:abc
+#
+# The app opens only the ABC Financial tab (Actions toolbar, Book Day One,
+# VIPs, Cancel Tool, post-signup Day One overlay). Staff sign in through the
+# portal login page in a separate window. See src/app-mode.js.
+appId: com.westcoaststrength.abc
+productName: WCS ABC
+directories:
+  output: dist
+  buildResources: build
+
+# Bakes the flavor into the packaged package.json (read by src/app-mode.js).
+extraMetadata:
+  wcsAppMode: abc
+
+# Update feed. Kept identical to electron-builder.yml so it's swapped in one
+# place when hosting moves; `channel: abc` makes this app read abc.yml, so it
+# can never pick up Portal's latest.yml / installer from the same feed.
+publish:
+  provider: github
+  owner: justinhuttinger
+  repo: wcs-staff-portal
+  channel: abc
+
+# No `protocols`: wcsportal:// deep links belong to the Portal app.
+
+# ---- Windows ----
+win:
+  target: nsis
+  icon: assets/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: always
+  installerIcon: assets/icon.ico
+  # Same kiosk location page -> shared C:\WCS\config.json (skipped if present).
+  include: installer.nsh
+  artifactName: WCS-ABC-Setup-${version}.${ext}
+
+# ---- macOS ----
+mac:
+  category: public.app-category.business
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize:
+    teamId: GVZRM9Z5SM
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+
+dmg:
+  sign: false
+  title: WCS ABC
