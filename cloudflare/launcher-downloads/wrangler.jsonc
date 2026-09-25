@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wcs-launcher-downloads",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  // Public download + auto-update host for the launcher builds, since the
+  // GitHub repos (and so GitHub Releases) are private. See README.md.
+  "r2_buckets": [
+    { "binding": "BUCKET", "bucket_name": "wcs-launcher-downloads" }
+  ],
+  // Uncomment once the bucket exists and you're ready to go live, or add the
+  // domain in the dashboard under Worker -> Settings -> Domains & Routes.
+  // "routes": [
+  //   { "pattern": "downloads.westcoaststrength.com", "custom_domain": true }
+  // ],
+  "workers_dev": true
+}

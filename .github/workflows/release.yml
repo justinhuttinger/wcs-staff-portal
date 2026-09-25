@@ -2,14 +2,26 @@
 #
 # Triggered by pushing a tag of the form `launcher-v1.4.16` (the prefix
 # keeps it distinct from any future portal/auth tags). On tag push we
-# build for Windows AND macOS in parallel, then publish both to a
-# single GitHub Release that the in-app electron-updater reads from.
+# build for Windows AND macOS in parallel and upload the artifacts to the
+# Cloudflare R2 bucket behind downloads.westcoaststrength.com/portal, which
+# the in-app updater (generic provider) and download.html read from. The
+# repo is private, so GitHub Releases can't serve updates any more.
+#
+# BRIDGE: `--publish always` also still uploads to a *draft* GitHub Release
+# (the github entry in electron-builder.yml). That exists only so installs
+# on the old GitHub feed (<= 1.7.2) can take one last update. Promote it with
+#   gh release edit v<version> --draft=false
+# while the repo is temporarily public. Once every kiosk is on the bridge
+# version, delete the github publish entry and switch both build steps to
+# `--publish never` (GH_TOKEN can go too). See cloudflare/launcher-downloads/README.md.
 #
 # Required GitHub repository secrets (configure in Settings -> Secrets):
 #   APPLE_ID                    - your Apple Developer email
 #   APPLE_APP_SPECIFIC_PASSWORD - app-specific password from appleid.apple.com
 #   CSC_LINK                    - base64 of your Developer ID Application .p12
 #   CSC_KEY_PASSWORD            - the password protecting that .p12
+#   CLOUDFLARE_API_TOKEN        - API token with "Workers R2 Storage: Edit"
+#   CLOUDFLARE_ACCOUNT_ID       - the Cloudflare account that owns the bucket
 #
 # Team ID (GVZRM9Z5SM) is baked into electron-builder.yml — it's a public
 # identifier, not a secret.
@@ -99,3 +111,24 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: npx electron-builder --mac --publish always
+
+      # ---- Upload to R2 (downloads.westcoaststrength.com/portal) ----
+      # Installers/blockmaps/zips first, latest*.yml LAST: the feed must never
+      # point at a file that isn't uploaded yet. --remote is required (wrangler
+      # 4 otherwise writes to a local simulated bucket).
+      - name: Upload build to R2
+        working-directory: launcher/dist
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_PREFIX: wcs-launcher-downloads/portal
+        run: |
+          set -euo pipefail
+          put() {
+            echo "-> $R2_PREFIX/$1"
+            npx --yes wrangler@4 r2 object put "$R2_PREFIX/$1" --file "$1" --content-type "$2" --remote
+          }
+          shopt -s nullglob
+          for f in *.exe *.dmg *.zip *.blockmap; do put "$f" application/octet-stream; done
+          for f in latest*.yml; do put "$f" 'text/yaml; charset=utf-8'; done

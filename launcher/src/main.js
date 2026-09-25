@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
-const { autoUpdater } = require('electron-updater')
+const silentUpdater = require('./silent-updater')
 const { appendLog: log } = require('./paths')
 
 app.setName('Portal')
@@ -83,33 +83,6 @@ function pickLocationIfNeeded() {
     })
   })
 }
-
-// --- Auto-updater setup ---
-autoUpdater.autoDownload = true
-autoUpdater.autoInstallOnAppQuit = true
-autoUpdater.logger = { info: log, warn: log, error: log }
-
-autoUpdater.on('checking-for-update', () => log('[Updater] Checking for updates...'))
-autoUpdater.on('update-available', (info) => log('[Updater] Update available: v' + info.version))
-autoUpdater.on('update-not-available', () => log('[Updater] App is up to date'))
-autoUpdater.on('download-progress', (p) => log('[Updater] Downloading: ' + Math.round(p.percent) + '%'))
-autoUpdater.on('error', (err) => log('[Updater] Error: ' + err.message))
-
-autoUpdater.on('update-downloaded', (info) => {
-  log('[Updater] Update downloaded: v' + info.version)
-  dialog.showMessageBox({
-    type: 'info',
-    title: 'Update Ready',
-    message: 'A new version of Portal (v' + info.version + ') has been downloaded.',
-    detail: 'The app will restart to apply the update.',
-    buttons: ['Restart Now', 'Later'],
-    defaultId: 0,
-  }).then(({ response }) => {
-    if (response === 0) {
-      autoUpdater.quitAndInstall()
-    }
-  })
-})
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
@@ -225,10 +198,8 @@ app.on('ready', async () => {
   tabManager.setLogger(log)
   tabManager.initTabBar()
 
-  // Check for updates after launch (silent background check)
-  setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(err => log('[Updater] Check failed: ' + err.message))
-  }, 5000)
+  // Silent background updates (no dialogs) - see silent-updater.js
+  silentUpdater.start(log)
 
   // Force-update polling — relaunches the kiosk if its version drops below
   // the min_launcher_version pinned via the admin panel.
