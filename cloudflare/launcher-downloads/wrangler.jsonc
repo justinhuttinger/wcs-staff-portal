@@ -8,10 +8,8 @@
   "r2_buckets": [
     { "binding": "BUCKET", "bucket_name": "wcs-launcher-downloads" }
   ],
-  // Uncomment once the bucket exists and you're ready to go live, or add the
-  // domain in the dashboard under Worker -> Settings -> Domains & Routes.
-  // "routes": [
-  //   { "pattern": "downloads.westcoaststrength.com", "custom_domain": true }
-  // ],
+  "routes": [
+    { "pattern": "downloads.westcoaststrength.com", "custom_domain": true }
+  ],
   "workers_dev": true
 }

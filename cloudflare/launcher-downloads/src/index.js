@@ -12,10 +12,13 @@
 //   /portal/Portal-mac-x64.dmg        stable "latest Mac (Intel)" link
 //   /abc/WCS-ABC-Setup.exe (+ WCS-ABC-mac-arm64.dmg / -x64.dmg)  same for WCS ABC
 //   /{channel}/releases/latest        JSON summary for portal/public/download.html
+//   /                                 download page (Portal + WCS ABC), see landing.js
 //
 // Channels: "portal" (the WCS Portal launcher) and "abc" (the ABC-only launcher,
 // whose installer is named differently; the stable links resolve per channel).
 // "kiosk" is reserved for Action1 kiosk scripts if they move off raw GitHub.
+
+import { APPS, renderLanding } from './landing.js'
 
 const CHANNELS = new Set(['portal', 'abc', 'kiosk'])
 
@@ -59,7 +62,7 @@ export default {
 
     const url = new URL(request.url)
     const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
-    if (parts.length === 0) return text('WCS launcher downloads', 200)
+    if (parts.length === 0) return landing(env, request)
 
     const [channel, ...rest] = parts
     if (!CHANNELS.has(channel) || rest.length === 0) return text('Not found', 404)
@@ -85,6 +88,22 @@ export default {
 
     return serveObject(request, env, `${channel}/${name}`, name)
   },
+}
+
+// "/" : download page for every app, built from the live feeds.
+async function landing(env, request) {
+  const feeds = {}
+  await Promise.all(APPS.map(async app => {
+    const [win, mac] = await Promise.all([
+      readFeed(env, app.channel, FEEDS[app.channel].win),
+      readFeed(env, app.channel, FEEDS[app.channel].mac),
+    ])
+    feeds[app.channel] = { win, mac }
+  }))
+  const html = renderLanding(feeds)
+  return new Response(request.method === 'HEAD' ? null : html, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' },
+  })
 }
 
 async function serveObject(request, env, key, name) {
