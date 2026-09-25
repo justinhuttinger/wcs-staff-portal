@@ -38,6 +38,7 @@ import PayrollCommissionsAdmin from './admin/PayrollCommissionsAdmin'
 import VendorPriceListAdmin from './admin/VendorPriceListAdmin'
 import Trends12moExportTab from './admin/Trends12moExportTab'
 import ReferralRewardsAdmin from './admin/ReferralRewardsAdmin'
+import SaveOffersAdmin from './admin/SaveOffersAdmin'
 import KpiGoalsAdmin from './admin/KpiGoalsAdmin'
 import AuditTogglesAdmin from './admin/AuditTogglesAdmin'
 import ReportVisibilityAdmin from './admin/ReportVisibilityAdmin'
@@ -106,6 +107,7 @@ const TECHNICAL_TILES = [
   { key: 'revenue-backfill', label: 'Revenue Backfill', desc: 'ABC CSV Upload', icon: 'M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3' },
   { key: 'payroll-commissions', label: 'Payroll Commissions', desc: 'Monthly POS CSV Upload', icon: 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z' },
   { key: 'referral-rewards', label: 'Referral Rewards', desc: 'Free-Month Credits', icon: 'M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z' },
+  { key: 'save-offers', label: 'Save Offers', desc: 'Cancel Flow & Retention Offers', icon: 'M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z' },
   { key: 'speed-to-lead-audit', label: 'Speed to Lead Audit', desc: 'Vet Lead Response Times', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
   { key: 'business-hours-stl', label: 'Business-Hours STL', desc: 'Speed to Lead, Workable Hours', icon: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
   { key: 'blog', label: 'Blog Automation', desc: 'AI Posts', icon: 'M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 0 1-2.25 2.25M16.5 7.5V18a2.25 2.25 0 0 0 2.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 0 0 2.25 2.25h13.5M6 7.5h3v3H6v-3Z' },
@@ -134,7 +136,7 @@ const CATEGORIES = [
   { title: 'Staff & HR', keys: ['staff', 'import', 'employee-roster', 'roles-v2', 'paychex'] },
   { title: 'Portal Setup', keys: ['tiles', 'appearance', 'layouts', 'config', 'drive-folders', 'forms', 'ticketing', 'action-links', 'references', 'portal-refresh'] },
   { title: 'Reports & KPIs', keys: ['kpi-goals', 'report-visibility', 'trends-12mo', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
-  { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'membership-categories', 'referral-rewards', 'audit-toggles', 'vendor-price-list', 'till-settings', 'lapsed-checkins', 'member-app', 'member-notifications'] },
+  { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'membership-categories', 'referral-rewards', 'save-offers', 'audit-toggles', 'vendor-price-list', 'till-settings', 'lapsed-checkins', 'member-app', 'member-notifications'] },
   { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'club-integrations', 'club-info', 'custom-fields', 'google-connections', 'shared-credentials'] },
   { title: 'Logs & Messaging', keys: ['webhooks', 'sms', 'audit-log'] },
   { title: 'Kiosk & Devices', keys: ['kiosk-installs', 'launcher-version', 'print-devices', 'print-automations'] },
@@ -204,6 +206,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'layouts' && <LayoutExplorer />}
         {activeSection === 'abc-sync' && <ABCSyncAdmin />}
         {activeSection === 'referral-rewards' && <ReferralRewardsAdmin />}
+        {activeSection === 'save-offers' && <SaveOffersAdmin />}
         {activeSection === 'custom-fields' && <CustomFieldsAdmin />}
         {activeSection === 'action-links' && <ActionLinksAdmin />}
         {activeSection === 'day-one-programs' && <DayOneProgramsAdmin />}
