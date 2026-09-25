@@ -11,6 +11,7 @@ const { PORTAL_URL, getAbcUrl, getLocation, readConfig, writeConfig } = require(
 const { LOCATIONS } = require('./locations')
 const TabManager = require('./tabs')
 const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./overlay')
+const { openToolPopup } = require('./tool-popup')
 const { createTray } = require('./tray')
 const auth = require('./auth')
 const versionCheck = require('./version-check')
@@ -466,7 +467,20 @@ app.on('ready', async () => {
     if (d.phone) url.searchParams.set('phone', d.phone)
     if (staffName) url.searchParams.set('employee', staffName)
     log('ABC toolbar VIPs - opening ' + url.origin + url.pathname)
-    tabManager.createTab(url.toString(), 'VIPs', { preload: path.join(__dirname, 'credential-capture.js') })
+    openToolPopup('vip', url.toString(), 'VIP Referrals', mainWindow)
+  })
+
+  // ABC toolbar "Cancel Tool": external memberservices app in a popup, with
+  // the member's barcode + email typed into its form by popup-prefill.js.
+  ipcMain.on('abc-open-cancel-tool', (e, data) => {
+    const d = data || {}
+    log('ABC toolbar Cancel Tool - opening memberservices')
+    openToolPopup('cancel', 'https://memberservices.westcoaststrength.com/', 'Cancel Tool', mainWindow, {
+      barcode: d.barcode || '', email: d.email || '', phone: d.phone || '',
+      firstName: d.firstName || '', lastName: d.lastName || '',
+      // Home club from the ABC agreement number; fall back to this kiosk's club.
+      club: d.homeClub || getLocation() || '',
+    })
   })
 
   // Credential IPC — preload scripts request creds for auto-fill.
