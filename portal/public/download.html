@@ -286,7 +286,9 @@
   </div>
 
   <script>
-    const REPO = 'justinhuttinger/wcs-staff-portal'
+    // Builds are served from R2 via cloudflare/launcher-downloads (the repo is
+    // private, so the GitHub Releases API 404s).
+    const RELEASES_URL = 'https://downloads.westcoaststrength.com/portal/releases/latest'
 
     // Pattern-match electron-builder asset names so URLs stay correct
     // across version bumps without redeploying this page.
@@ -325,7 +327,7 @@
     async function init() {
       let release
       try {
-        const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
+        const res = await fetch(RELEASES_URL, { cache: 'no-store' })
         if (!res.ok) throw new Error('HTTP ' + res.status)
         release = await res.json()
       } catch {
@@ -340,11 +342,11 @@
       }
 
       const v = document.getElementById('version')
-      v.textContent = release.tag_name + ' · ' + new Date(release.published_at).toLocaleDateString()
+      v.textContent = 'v' + release.version + (release.releaseDate ? ' · ' + new Date(release.releaseDate).toLocaleDateString() : '')
       v.classList.remove('skeleton')
 
       for (const [target, pattern] of Object.entries(PATTERNS)) {
-        const asset = release.assets.find((a) => pattern.test(a.name))
+        const asset = release.files.find((f) => pattern.test(f.name))
         const btn = document.getElementById('dl-' + target)
         const sz = document.getElementById('sz-' + target)
         if (!asset) {
@@ -352,7 +354,7 @@
           btn.textContent = 'Unavailable'
           continue
         }
-        btn.href = asset.browser_download_url
+        btn.href = asset.url
         sz.textContent = fmtSize(asset.size)
       }
 

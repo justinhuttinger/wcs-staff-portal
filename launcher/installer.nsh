@@ -88,3 +88,20 @@ Function WcsConfigPageLeave
 FunctionEnd
 
 !endif ; BUILD_UNINSTALLER
+
+; ---------------------------------------------------------------------------
+; Silent updates for per-machine installs.
+;
+; Program Files isn't writable by the app, so an in-app update would raise a
+; UAC prompt. Instead install the SYSTEM "WCS <app> Updater" scheduled task
+; (overnight + at boot + on demand) that installs new builds with /S, plus a
+; "WCS <app> Launch" task that relaunches the app in the logged-in session.
+; Same script Action1 runs: scripts/action1/install-portal.ps1 (the flavor,
+; portal or abc, is read from resources\app-update.yml). On uninstall the
+; tasks remove themselves the next time they run.
+; ---------------------------------------------------------------------------
+
+!macro customInstall
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\updater\install-portal.ps1" -RegisterOnly -InstallDir "$INSTDIR"'
+  Pop $0
+!macroend

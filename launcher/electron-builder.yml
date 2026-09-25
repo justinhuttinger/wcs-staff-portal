@@ -4,10 +4,22 @@ directories:
   output: dist
   buildResources: build
 
+# Update + download host. The repos are private, so builds are served from
+# Cloudflare R2 via cloudflare/launcher-downloads (see its README).
+#
+# ORDER MATTERS: electron-builder bakes the FIRST provider into the app's
+# resources/app-update.yml, so every build from here on polls R2.
+#
+# BRIDGE (temporary): the github entry keeps `--publish always` uploading the
+# build to GitHub Releases too, so installs still on the old GitHub feed
+# (<= 1.7.2) can find one last release, update to it, and switch to R2.
+# Delete the github entry once every kiosk reports >= the bridge version.
 publish:
-  provider: github
-  owner: justinhuttinger
-  repo: wcs-staff-portal
+  - provider: generic
+    url: https://downloads.westcoaststrength.com/portal
+  - provider: github
+    owner: justinhuttinger
+    repo: wcs-staff-portal
 
 # wcsportal:// one-time location deep links. electron-builder registers the
 # scheme in the Windows NSIS installer (registry) and the macOS Info.plist.
@@ -20,8 +32,16 @@ protocols:
 win:
   target: nsis
   icon: assets/icon.ico
+  # SYSTEM silent updater (same script Action1 runs), registered by
+  # installer.nsh customInstall.
+  extraResources:
+    - from: ../scripts/action1/install-portal.ps1
+      to: updater/install-portal.ps1
 
 nsis:
+  # No spaces: identical name on GitHub (which would dash them) and on R2,
+  # so latest.yml resolves on both feeds during the bridge release.
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   perMachine: true
   allowToChangeInstallationDirectory: false
