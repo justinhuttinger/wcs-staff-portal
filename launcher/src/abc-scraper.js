@@ -299,7 +299,7 @@ function scrapeProfile() {
   return out
 }
 
-// WCS toolbar: a collapsed "WCS" tab that expands into a list of member
+// Actions toolbar: a collapsed "Actions" tab that expands into a list of member
 // actions. Add future actions to TOOLBAR_ACTIONS.
 const TOOLBAR_ACTIONS = [
   {
@@ -328,15 +328,15 @@ function ensureToolbar() {
   const root = toolbarHost.attachShadow({ mode: 'closed' })
   root.innerHTML = `
     <style>
-      :host{font:600 14px 'Inter',-apple-system,'Segoe UI',sans-serif}
-      .bar{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-      .actions{display:none;flex-direction:column;gap:6px;padding:8px;border-radius:14px;
+      :host{font:600 17px 'Inter',-apple-system,'Segoe UI',sans-serif}
+      .bar{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+      .actions{display:none;flex-direction:column;gap:8px;padding:10px;border-radius:16px;
         background:#1f2937;box-shadow:0 8px 24px rgba(0,0,0,.3)}
       .bar.open .actions{display:flex}
-      .action{display:flex;align-items:center;gap:8px;padding:10px 14px;border:0;border-radius:10px;
+      .action{display:flex;align-items:center;gap:10px;padding:14px 20px;border:0;border-radius:12px;min-width:200px;
         background:#e53e3e;color:#fff;font:inherit;cursor:pointer;white-space:nowrap;text-align:left}
       .action:hover{background:#c53030}
-      .toggle{display:flex;align-items:center;gap:6px;padding:10px 16px;border:0;border-radius:999px;
+      .toggle{display:flex;align-items:center;gap:8px;padding:14px 24px;border:0;border-radius:999px;
         background:#e53e3e;color:#fff;font:inherit;letter-spacing:.04em;cursor:pointer;
         box-shadow:0 6px 20px rgba(0,0,0,.25)}
       .toggle:hover{background:#c53030}
@@ -345,7 +345,7 @@ function ensureToolbar() {
     </style>
     <div class="bar">
       <div class="actions"></div>
-      <button type="button" class="toggle" title="WCS tools"><span>WCS</span><span class="chev">▲</span></button>
+      <button type="button" class="toggle" title="Member actions"><span>Actions</span><span class="chev">▲</span></button>
     </div>`
   const bar = root.querySelector('.bar')
   const actions = root.querySelector('.actions')
