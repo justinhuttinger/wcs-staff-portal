@@ -11,8 +11,11 @@ directories:
   buildResources: build
 
 # Bakes the flavor into the packaged package.json (read by src/app-mode.js).
+# WCS ABC has its own version line, separate from Portal's package.json
+# version: bump it here for each ABC release.
 extraMetadata:
   wcsAppMode: abc
+  version: 0.0.1
 
 # Update feed: private downloads host (see #1014), GitHub as fallback.
 # `channel: abc` makes this app read abc.yml, so it can never pick up
