@@ -23,7 +23,7 @@ function passModeOf(row) {
 }
 
 /**
- * @param body        { outcome?, pass_mode, pass_days?, location_slugs, counts_as_tour, is_sale, sort_order? }
+ * @param body        { outcome?, pass_mode, pass_days?, location_slugs, counts_as_tour, sort_order? }
  * @param validSlugs  lowercase club names that exist
  * @param isNew       true on create, when the name is required
  * @returns { errors: string[], row }
@@ -75,7 +75,8 @@ function validateOutcome(body, validSlugs, isNew) {
   }
 
   row.counts_as_tour = b.counts_as_tour !== false
-  row.is_sale = b.is_sale === true
+  // is_sale is left alone: nothing reads it. Sales in every report come from
+  // ABC signups matched to the tour, never from the outcome picked at the desk.
 
   if (b.sort_order !== undefined) {
     const n = Number(b.sort_order)

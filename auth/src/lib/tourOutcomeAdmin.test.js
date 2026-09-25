@@ -49,8 +49,8 @@ test('a new outcome needs a name; an edit never touches it', () => {
   assert.ok(!('outcome' in validateOutcome({ outcome: 'Renamed', pass_mode: 'none', location_slugs: null }, CLUBS, false).row))
 })
 
-test('flags default to a tour that is not a sale', () => {
-  const { row } = validateOutcome({ outcome: 'X', pass_mode: 'none', location_slugs: null }, CLUBS, true)
+test('counts as a tour by default, and never touches is_sale', () => {
+  const { row } = validateOutcome({ outcome: 'X', pass_mode: 'none', location_slugs: null, is_sale: true }, CLUBS, true)
   assert.strictEqual(row.counts_as_tour, true)
-  assert.strictEqual(row.is_sale, false)
+  assert.ok(!('is_sale' in row))
 })
