@@ -1,0 +1,12 @@
+{
+  "_comment": "THE list of WCS clubs. Edit this file only, then run `node scripts/sync-clubs.js` to copy it into auth/, ghl-sync/ and portal/ (each service builds from its own folder on Render, so each needs its own copy). A test fails if a copy drifts.",
+  "clubs": [
+    { "slug": "salem",       "name": "Salem",       "clubNumber": "30935", "envKey": "SALEM",       "timezone": "America/Los_Angeles", "active": true },
+    { "slug": "keizer",      "name": "Keizer",      "clubNumber": "31599", "envKey": "KEIZER",      "timezone": "America/Los_Angeles", "active": true },
+    { "slug": "eugene",      "name": "Eugene",      "clubNumber": "7655",  "envKey": "EUGENE",      "timezone": "America/Los_Angeles", "active": true },
+    { "slug": "springfield", "name": "Springfield", "clubNumber": "31598", "envKey": "SPRINGFIELD", "timezone": "America/Los_Angeles", "active": true },
+    { "slug": "clackamas",   "name": "Clackamas",   "clubNumber": "31600", "envKey": "CLACKAMAS",   "timezone": "America/Los_Angeles", "active": true },
+    { "slug": "milwaukie",   "name": "Milwaukie",   "clubNumber": "31601", "envKey": "MILWAUKIE",   "timezone": "America/Los_Angeles", "active": true, "tradingName": "East Side Athletic Club" },
+    { "slug": "medford",     "name": "Medford",     "clubNumber": "32073", "envKey": "MEDFORD",     "timezone": "America/Los_Angeles", "active": true }
+  ]
+}

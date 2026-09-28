@@ -1,13 +1,22 @@
 require('dotenv').config();
 
-const LOCATIONS = [
-  { id: process.env.GHL_LOCATION_SALEM,       apiKey: process.env.GHL_API_KEY_SALEM,       name: 'Salem',       slug: 'salem',       clubNumber: '30935' },
-  { id: process.env.GHL_LOCATION_KEIZER,      apiKey: process.env.GHL_API_KEY_KEIZER,      name: 'Keizer',      slug: 'keizer',      clubNumber: '31599' },
-  { id: process.env.GHL_LOCATION_EUGENE,      apiKey: process.env.GHL_API_KEY_EUGENE,      name: 'Eugene',      slug: 'eugene',      clubNumber: '7655' },
-  { id: process.env.GHL_LOCATION_SPRINGFIELD, apiKey: process.env.GHL_API_KEY_SPRINGFIELD, name: 'Springfield', slug: 'springfield', clubNumber: '31598' },
-  { id: process.env.GHL_LOCATION_CLACKAMAS,   apiKey: process.env.GHL_API_KEY_CLACKAMAS,   name: 'Clackamas',   slug: 'clackamas',   clubNumber: '31600' },
-  { id: process.env.GHL_LOCATION_MILWAUKIE,   apiKey: process.env.GHL_API_KEY_MILWAUKIE,   name: 'Milwaukie',   slug: 'milwaukie',   clubNumber: '31601' },
-  { id: process.env.GHL_LOCATION_MEDFORD,     apiKey: process.env.GHL_API_KEY_MEDFORD,     name: 'Medford',     slug: 'medford',     clubNumber: '32073' },
-].filter(loc => loc.id && loc.apiKey); // Skip locations without configured IDs or API keys
+// The club list is clubs.json, a copy of config/clubs.json at the repo root
+// (edit the root file, then run `node scripts/sync-clubs.js`).
+const { clubs } = require('./clubs.json');
+
+const ACTIVE = clubs.filter(c => c.active);
+
+const LOCATIONS = ACTIVE.map(c => ({
+  id: process.env[`GHL_LOCATION_${c.envKey}`],
+  apiKey: process.env[`GHL_API_KEY_${c.envKey}`],
+  name: c.name,
+  slug: c.slug,
+  clubNumber: c.clubNumber,
+})).filter(loc => loc.id && loc.apiKey); // Skip locations without configured IDs or API keys
+
+const skipped = ACTIVE.filter(c => !LOCATIONS.some(l => l.slug === c.slug));
+if (skipped.length && process.env.NODE_ENV !== 'test') {
+  console.warn(`[clubs] GHL sync: skipping ${skipped.map(c => c.name).join(', ')} (missing GHL_LOCATION_<CLUB> / GHL_API_KEY_<CLUB>)`);
+}
 
 module.exports = LOCATIONS;

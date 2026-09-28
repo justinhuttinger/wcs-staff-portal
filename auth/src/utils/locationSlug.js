@@ -13,17 +13,11 @@
 //
 // Selecting all 7 is treated as `all` so cache keys collapse.
 
-const ALL_SLUGS = ['salem', 'keizer', 'eugene', 'springfield', 'clackamas', 'milwaukie', 'medford']
+const { CLUBS } = require('../config/clubs')
 
-const SLUG_CLUB_MAP = {
-  salem: '30935',
-  keizer: '31599',
-  eugene: '7655',
-  springfield: '31598',
-  clackamas: '31600',
-  milwaukie: '31601',
-  medford: '32073',
-}
+const ALL_SLUGS = CLUBS.map(c => c.slug)
+
+const SLUG_CLUB_MAP = Object.fromEntries(CLUBS.map(c => [c.slug, c.clubNumber]))
 
 /**
  * @param {string|undefined|null} raw value of req.query.location_slug
