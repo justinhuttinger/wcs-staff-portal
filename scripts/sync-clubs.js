@@ -7,6 +7,8 @@
 //
 // Usage: node scripts/sync-clubs.js           (write the copies)
 //        node scripts/sync-clubs.js --check   (exit 1 if any copy is stale)
+//        node scripts/sync-clubs.js --sql     (print the upsert that brings the
+//                                              public.clubs table in line)
 const fs = require('fs')
 const path = require('path')
 
@@ -20,7 +22,19 @@ const TARGETS = [
 ]
 
 const source = fs.readFileSync(SOURCE, 'utf8')
-JSON.parse(source) // refuse to copy a broken file
+const { clubs } = JSON.parse(source) // refuse to copy a broken file
+
+if (process.argv.includes('--sql')) {
+  const q = s => `'${String(s).replace(/'/g, "''")}'`
+  const rows = clubs.map((c, i) =>
+    `  (${q(c.clubNumber)}, ${q(c.slug)}, ${q(c.name)}, ${i + 1}, ${c.active ? 'true' : 'false'})`)
+  console.log(`insert into public.clubs (club_number, slug, name, sort_order, active) values
+${rows.join(',\n')}
+on conflict (club_number) do update
+  set slug = excluded.slug, name = excluded.name,
+      sort_order = excluded.sort_order, active = excluded.active;`)
+  process.exit(0)
+}
 
 const check = process.argv.includes('--check')
 let stale = 0
