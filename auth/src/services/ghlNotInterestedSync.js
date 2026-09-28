@@ -24,14 +24,15 @@ const BASE_URL = process.env.GHL_BASE_URL || 'https://services.leadconnectorhq.c
 // and trimmed, because a rename to sentence case should not silently break this.
 const WORKFLOW_NAME = /^not interested categorization$/i
 
-const CLUBS = require('../config/clubs').CLUBS.map(c => ({ slug: c.slug, env: c.envKey }))
+const { CLUBS: REGISTRY, envFor } = require('../config/clubs')
+const CLUBS = REGISTRY.map(c => ({ slug: c.slug, env: c.envKey, club: c }))
 
 const PAGE_LIMIT = 100
 
 function credsFor(club) {
   return {
-    key: process.env[`GHL_API_KEY_${club.env}`],
-    locationId: process.env[`GHL_LOCATION_${club.env}`],
+    key: envFor(club.club, 'GHL_API_KEY_'),
+    locationId: envFor(club.club, 'GHL_LOCATION_'),
   }
 }
 
