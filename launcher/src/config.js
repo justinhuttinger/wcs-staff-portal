@@ -25,6 +25,9 @@ function getAbcUrl() {
       return fs.readFileSync(ABC_URL_FILE, 'utf8').trim()
     }
   } catch (e) {}
+  // config.json may carry only the location (set-wcs-club.ps1, or a club
+  // added in Admin -> Clubs): take that club's ABC link from the club list.
+  if (config.location) return require('./locations').getAbcUrlFor(config.location)
   return ''
 }
 
