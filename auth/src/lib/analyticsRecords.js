@@ -919,9 +919,13 @@ async function skipList(exclude) {
  */
 async function excludedAsOf(asOf, exclude) {
   if (exclude === 'include') return new Set()
-  const { data, error } = await lazySupabase()
+  // PAGED. The set runs to thousands (3,577 on 2026-09-27) and PostgREST cuts
+  // an unpaged reply at 1,000 without saying so, which let most excluded
+  // members back into every list built on it. Ordered so pages are stable.
+  const data = await fetchAllRows(lazySupabase()
     .rpc('analytics_members_excluded_as_of', { p_asof: asOf })
-  if (error) throw new Error(error.message)
+    .order('club_number', { ascending: true })
+    .order('member_id', { ascending: true }))
   return new Set((data || []).map(r => `${r.club_number}|${r.member_id}`))
 }
 
