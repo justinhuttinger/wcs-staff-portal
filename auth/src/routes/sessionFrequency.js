@@ -14,24 +14,9 @@ const router = Router()
 router.use(authenticate)
 router.use(requireReportAccess('lead', ['session-frequency']))
 
-const SLUG_CLUB_MAP = {
-  salem: '30935',
-  keizer: '31599',
-  eugene: '7655',
-  springfield: '31598',
-  clackamas: '31600',
-  milwaukie: '31601',
-  medford: '32073',
-}
-const CLUB_NAMES = {
-  '30935': 'Salem',
-  '31599': 'Keizer',
-  '7655': 'Eugene',
-  '31598': 'Springfield',
-  '31600': 'Clackamas',
-  '31601': 'Milwaukie',
-  '32073': 'Medford',
-}
+const { CLUBS } = require('../config/clubs')
+const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
+const CLUB_NAMES = Object.fromEntries(CLUBS.map(c => [c.clubNumber, c.name]))
 const PACIFIC_TZ = 'America/Los_Angeles'
 
 function pacificDayBoundsToUtc(dateStr, endOfDay = false) {

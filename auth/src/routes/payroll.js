@@ -65,15 +65,7 @@ function resolveCommissionEmployee(row, empMap) {
   return { id: row.employee_id || null, name: row.employee_name || null }
 }
 
-const SLUG_CLUB_MAP = {
-  salem: '30935',
-  keizer: '31599',
-  eugene: '7655',
-  springfield: '31598',
-  clackamas: '31600',
-  milwaukie: '31601',
-  medford: '32073',
-}
+const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
 const CLUB_SLUG_MAP = Object.fromEntries(
   Object.entries(SLUG_CLUB_MAP).map(([slug, club]) => [club, slug])
 )

@@ -9,15 +9,7 @@ const { parseLocationSlugParam, intersectWithAllowed } = require('../utils/locat
 const { buildRevenueAnalysis } = require('../lib/revenueAnalysisReport')
 const { CLUBS } = require('../lib/salespersonPerformance')
 
-const LOCATION_LABELS = {
-  salem: 'Salem',
-  keizer: 'Keizer',
-  eugene: 'Eugene',
-  springfield: 'Springfield',
-  clackamas: 'Clackamas',
-  medford: 'Medford',
-  milwaukie: 'Milwaukie',
-}
+const LOCATION_LABELS = Object.fromEntries(require('../config/clubs').CLUBS.map(c => [c.slug, c.name]))
 
 const router = Router()
 

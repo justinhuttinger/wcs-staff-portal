@@ -13,10 +13,7 @@ function getDb() {
 
 const PAGE_SIZE = 1000;
 
-const CLUB_NAMES = {
-  30935: 'Salem', 31599: 'Keizer', 7655: 'Eugene', 31598: 'Springfield',
-  31600: 'Clackamas', 31601: 'Milwaukie', 32073: 'Medford',
-};
+const CLUB_NAMES = Object.fromEntries(require('../config/clubs').CLUBS.map(c => [c.clubNumber, c.name]));
 
 /**
  * One line per invite, newest first, with the outcome spelled out.

@@ -16,12 +16,10 @@
 //
 // exceljs is already a dependency (used by the roster + trends exports).
 
-const CLUB_SLUG_MAP = {
-  '30935': 'salem', '31599': 'keizer', '7655': 'eugene',
-  '31598': 'springfield', '31600': 'clackamas', '31601': 'milwaukie', '32073': 'medford',
-}
-// Display order matches the portal's location list, not club-number order.
-const CLUB_ORDER = ['salem', 'keizer', 'eugene', 'springfield', 'clackamas', 'milwaukie', 'medford']
+const { CLUBS } = require('../config/clubs')
+const CLUB_SLUG_MAP = Object.fromEntries(CLUBS.map(c => [c.clubNumber, c.slug]))
+// Display order matches the portal's location list (house order), not club-number order.
+const CLUB_ORDER = CLUBS.map(c => c.slug)
 
 const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC0102F' } }
 const HEADER_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 }

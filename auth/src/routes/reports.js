@@ -180,11 +180,8 @@ const countVipsByTeamMember = (opts) => _countVipsByTeamMember(supabaseAdmin, op
 
 // ---------------------------------------------------------------------------
 // Club number → location slug mapping
-const CLUB_SLUG_MAP = {
-  '30935': 'salem', '31599': 'keizer', '7655': 'eugene',
-  '31598': 'springfield', '31600': 'clackamas', '31601': 'milwaukie', '32073': 'medford',
-}
-const SLUG_CLUB_MAP = Object.fromEntries(Object.entries(CLUB_SLUG_MAP).map(([k, v]) => [v, k]))
+const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
+const CLUB_SLUG_MAP = Object.fromEntries(Object.entries(SLUG_CLUB_MAP).map(([k, v]) => [v, k]))
 
 // ---------------------------------------------------------------------------
 // GET /reports/salesperson-stats

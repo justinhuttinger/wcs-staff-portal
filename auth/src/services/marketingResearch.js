@@ -10,16 +10,8 @@ const apiKey = process.env.MASTERMIND_ANTHROPIC_API_KEY || process.env.ANTHROPIC
 const client = apiKey ? new Anthropic({ apiKey }) : null
 const MODEL = process.env.MARKETING_RESEARCH_MODEL || 'claude-sonnet-4-6'
 
-// All WCS clubs are in Oregon — give the model the city + state for grounding.
-const CITY_STATE = {
-  salem: 'Salem, Oregon',
-  keizer: 'Keizer, Oregon',
-  eugene: 'Eugene, Oregon',
-  springfield: 'Springfield, Oregon',
-  clackamas: 'Clackamas, Oregon',
-  milwaukie: 'Milwaukie, Oregon',
-  medford: 'Medford, Oregon',
-}
+// Give the model the city + state for grounding.
+const CITY_STATE = Object.fromEntries(require('../config/clubs').CLUBS.map(c => [c.slug, `${c.name}, ${c.state}`]))
 
 function pullJsonArray(text) {
   if (!text) return null

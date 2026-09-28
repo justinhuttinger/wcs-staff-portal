@@ -12,15 +12,7 @@
 // club-filtered revenue figure for Eugene matched nothing and read $0 — Club
 // Snapshot, Topline, revenue per member — while all-club totals stayed right
 // because they apply no club filter at all.
-const CLUB_MAP = {
-  '30935': 'salem',
-  '31599': 'keizer',
-  '7655': 'eugene',
-  '31598': 'springfield',
-  '31600': 'clackamas',
-  '32073': 'medford',
-  '31601': 'milwaukie',
-}
+const CLUB_MAP = Object.fromEntries(require('../config/clubs').CLUBS.map(c => [c.clubNumber, c.slug]))
 
 /**
  * Club numbers as the rest of the system writes them: no leading zeros.

@@ -22,7 +22,7 @@
 // (location, job_name, job_date) also has an overdue event is late.
 // ---------------------------------------------------------------------------
 
-const KNOWN_LOCATIONS = ['salem', 'keizer', 'eugene', 'springfield', 'clackamas', 'milwaukie', 'medford']
+const KNOWN_LOCATIONS = require('../config/clubs').CLUBS.map(c => c.slug)
 
 // Pacific calendar date (YYYY-MM-DD) for a Date / ISO string. Clubs operate on
 // Pacific local time, consistent with the rest of the app.

@@ -32,9 +32,7 @@ async function resolveAssignableRole(role) {
 // --- Per-staff permission fields (marketing add-on + custom role) ----------
 // Keep these allow-lists in sync with portal/src/config/portalTiles.js,
 // portal/src/config/locations.js and portal/src/config/marketingTypes.js.
-const MARKETING_LOCATION_SLUGS = new Set([
-  'salem', 'keizer', 'eugene', 'springfield', 'clackamas', 'milwaukie', 'medford',
-])
+const MARKETING_LOCATION_SLUGS = new Set(require('../config/clubs').CLUBS.map(c => c.slug))
 const MARKETING_TYPE_SLUGS = new Set([
   'meta_ad', 'social_post', 'flyer', 'facebook_event', 'event',
   'email', 'sms', 'app_blast', 'ad_tvs', 'website',

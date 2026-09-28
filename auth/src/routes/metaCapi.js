@@ -148,9 +148,7 @@ router.post('/meta-lead', verifyWebhookSecret, async (req, res) => {
 // optimizes for nothing, which is worse than a 400 here.
 const ALLOWED_EVENT_NAMES = ['Lead', 'Schedule', 'Contact', 'CompleteRegistration']
 
-const CANONICAL_LOCATIONS = [
-  'Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford',
-]
+const CANONICAL_LOCATIONS = require('../config/clubs').CLUBS.map(c => c.name)
 
 // Fail closed, like verifyWebhookSecret above. Constant-time compare so the
 // secret can't be recovered by timing the 401.

@@ -53,11 +53,8 @@ function monthBounds(monthStr) {
   }
 }
 
-// Club number → slug mapping
-const SLUG_CLUB_MAP = {
-  'salem': '30935', 'keizer': '31599', 'eugene': '7655',
-  'springfield': '31598', 'clackamas': '31600', 'milwaukie': '31601', 'medford': '32073',
-}
+// Slug → club number mapping
+const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
 // ---------------------------------------------------------------------------
 // Helper: aggregate leaderboard data for a single location_slug
 // ---------------------------------------------------------------------------

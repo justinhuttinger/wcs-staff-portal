@@ -3,7 +3,7 @@ const { INPUT_TYPES, EMAIL_RE, normalizePhone } = require('./formsSchema')
 // Pure helpers for Quiz Funnels (spec: docs/superpowers/specs/2026-09-25-quiz-funnels-design.md).
 // No Supabase here so every function is unit-testable.
 
-const CLUB_SLUGS = ['salem', 'keizer', 'eugene', 'springfield', 'clackamas', 'milwaukie', 'medford']
+const CLUB_SLUGS = require('../config/clubs').CLUBS.map(c => c.slug)
 const PUBLIC_BASE = 'https://forms.westcoaststrength.com'
 const GHL_HOST_SUFFIXES = ['msgsndr.com', 'leadconnectorhq.com', 'gohighlevel.com', 'westcoaststrength.com']
 const TRACKING_ID_RE = /^tk_[A-Za-z0-9]{8,64}$/

@@ -15,17 +15,9 @@ const { supabaseAdmin } = require('./supabase')
 const { getSkipList } = require('../utils/membershipSkipList')
 const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
 
-// Canonical ordering. Used for every per-location section so column order
-// is stable across sheets. (Mirrors LOCATION_NAMES in portal/src/config/locations.js.)
-const CLUBS = [
-  { slug: 'salem',       club_number: '30935', name: 'Salem' },
-  { slug: 'keizer',      club_number: '31599', name: 'Keizer' },
-  { slug: 'eugene',      club_number: '7655',  name: 'Eugene' },
-  { slug: 'springfield', club_number: '31598', name: 'Springfield' },
-  { slug: 'clackamas',   club_number: '31600', name: 'Clackamas' },
-  { slug: 'milwaukie',   club_number: '31601', name: 'Milwaukie' },
-  { slug: 'medford',     club_number: '32073', name: 'Medford' },
-]
+// Canonical ordering (house order from config/clubs). Used for every
+// per-location section so column order is stable across sheets.
+const CLUBS = require('../config/clubs').CLUBS.map(c => ({ slug: c.slug, club_number: c.clubNumber, name: c.name }))
 const CLUB_NAMES = Object.fromEntries(CLUBS.map(c => [c.club_number, c.name]))
 const CLUB_BY_NUMBER = Object.fromEntries(CLUBS.map(c => [c.club_number, c]))
 const CLUB_BY_SLUG = Object.fromEntries(CLUBS.map(c => [c.slug, c]))

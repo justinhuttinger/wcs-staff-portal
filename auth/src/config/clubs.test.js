@@ -19,13 +19,15 @@ test('each club has the fields the rest of the code relies on', () => {
     assert.ok(c.name, `${c.slug} name`)
     assert.match(c.clubNumber, /^[1-9]\d*$/, `${c.slug} clubNumber (no leading zero)`)
     assert.match(c.envKey, /^[A-Z_]+$/, `${c.slug} envKey`)
+    assert.match(c.ghlLocationId, /^[A-Za-z0-9]{20}$/, `${c.slug} ghlLocationId`)
+    assert.ok(c.state, `${c.slug} state`)
     assert.ok(c.timezone, `${c.slug} timezone`)
     assert.equal(typeof c.active, 'boolean', `${c.slug} active`)
   }
 })
 
 test('slugs, names, club numbers and env keys are unique', () => {
-  for (const key of ['slug', 'name', 'clubNumber', 'envKey']) {
+  for (const key of ['slug', 'name', 'clubNumber', 'envKey', 'ghlLocationId']) {
     const values = clubs.ALL_CLUBS.map(c => c[key].toLowerCase())
     assert.equal(new Set(values).size, values.length, `duplicate ${key}`)
   }
