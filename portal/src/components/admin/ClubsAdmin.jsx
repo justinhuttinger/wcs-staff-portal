@@ -14,7 +14,7 @@ const TIMEZONES = [
 const CREDENTIAL_LABEL = { saved: 'Saved', env: 'Set in Render', missing: 'Missing' }
 
 const BLANK = {
-  name: '', clubNumber: '', abcUrl: '', ghlLocationId: '', ghlApiKey: '', paychexCompanyId: '',
+  name: '', clubNumber: '', abcUrl: '', abcStationId: '', ghlLocationId: '', ghlApiKey: '', paychexCompanyId: '',
   timezone: 'America/Los_Angeles', state: 'Oregon', tradingName: '', active: true,
 }
 
@@ -26,6 +26,7 @@ function clientProblems(v, isNew) {
   }
   if (v.ghlLocationId.trim() && !/^[A-Za-z0-9]{20}$/.test(v.ghlLocationId.trim())) p.ghlLocationId = '20 characters, from GHL Settings > Business Profile.'
   if (v.abcUrl.trim() && !/^https:\/\//i.test(v.abcUrl.trim())) p.abcUrl = 'Must start with https://'
+  if (v.abcStationId.trim() && !/^[0-9A-Fa-f]{32}$/.test(v.abcStationId.trim())) p.abcStationId = '32 characters, letters A-F and digits.'
   if (v.ghlApiKey.trim() && !/^pit-/.test(v.ghlApiKey.trim())) p.ghlApiKey = 'Private integration tokens start with pit-'
   return p
 }
@@ -141,6 +142,7 @@ function ClubRow({ club, onEdit }) {
           <Badge tone={club.credentials.paychexCompany === 'missing' ? 'bad' : ''}>Paychex: {CREDENTIAL_LABEL[club.credentials.paychexCompany]}</Badge>
           {!club.ghlLocationId && <Badge tone="bad">No GHL location</Badge>}
           {!club.abcUrl && <Badge tone="bad">No ABC login URL</Badge>}
+          {!club.abcStationId && <Badge tone="bad">No ABC station ID</Badge>}
         </div>
       </div>
       <button onClick={onEdit} className="px-3 py-1.5 rounded-lg border border-border text-sm text-text-primary hover:bg-bg">
@@ -165,7 +167,7 @@ const INPUT = 'w-full px-2.5 py-1.5 bg-bg border border-border rounded-lg text-s
 function ClubForm({ club, isNew = false, onCancel, onSaved }) {
   const [v, setV] = useState(() => (isNew ? { ...BLANK } : {
     ...BLANK,
-    name: club.name, clubNumber: club.clubNumber, abcUrl: club.abcUrl || '',
+    name: club.name, clubNumber: club.clubNumber, abcUrl: club.abcUrl || '', abcStationId: club.abcStationId || '',
     ghlLocationId: club.ghlLocationId || '', timezone: club.timezone || BLANK.timezone,
     state: club.state || BLANK.state, tradingName: club.tradingName || '', active: club.active,
   }))
@@ -227,6 +229,9 @@ function ClubForm({ club, isNew = false, onCancel, onSaved }) {
         </Field>
         <Field label="ABC login URL" error={problems.abcUrl} help="The club's workstation login link the launcher opens.">
           <input className={INPUT} value={v.abcUrl} onChange={e => set('abcUrl', e.target.value)} placeholder="https://prod02.abcfitness.com/SystemLoginCommand.pml?..." />
+        </Field>
+        <Field label="ABC station ID" error={problems.abcStationId} help="Lets the kiosk waiver check members in at this club. From ABC.">
+          <input className={INPUT} value={v.abcStationId} onChange={e => set('abcStationId', e.target.value)} />
         </Field>
         <Field label="GHL location ID" error={problems.ghlLocationId} help="The club's GHL sub-account ID.">
           <input className={INPUT} value={v.ghlLocationId} onChange={e => set('ghlLocationId', e.target.value)} />

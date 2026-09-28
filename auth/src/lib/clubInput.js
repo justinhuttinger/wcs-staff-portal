@@ -68,6 +68,10 @@ function validateClubInput(input, existing, { current = null } = {}) {
   }
   const abcUrl = pick('abcUrl', current?.abcUrl || '')
   if (abcUrl && !httpsUrl(abcUrl)) errors.push('ABC login URL must start with https://.')
+  const abcStationId = pick('abcStationId', current?.abcStationId || '').toUpperCase()
+  if (abcStationId && !/^[0-9A-F]{32}$/.test(abcStationId)) {
+    errors.push('ABC station ID should be the 32-character ID from ABC (letters A-F and digits).')
+  }
   const background = pick('background', current?.background || '')
   if (background && !(httpsUrl(background) || /^\/[\w./-]+$/.test(background))) {
     errors.push('Background must be an https:// image URL or a path like /bg-medford.jpg.')
@@ -107,6 +111,7 @@ function validateClubInput(input, existing, { current = null } = {}) {
       state,
       timezone,
       abc_url: abcUrl || null,
+      abc_station_id: abcStationId || null,
       background: background || null,
       trading_name: tradingName || null,
       active,
