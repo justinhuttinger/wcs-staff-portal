@@ -146,19 +146,6 @@
     </div>
   </div>
 
-  <!-- Locations config -->
-  <script>
-    const WCS_LOCATIONS = {
-      Salem: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
-      Springfield: { booking: 'https://api.westcoaststrength.com/widget/booking/PEyaqnkjmBN5tLpo6I9F', vip: 'https://api.westcoaststrength.com/widget/survey/uM48yWzOBhXhUBsG1fhW' },
-      Eugene: { booking: 'https://api.westcoaststrength.com/widget/booking/0c9CNdZ65NainMcStWXo', vip: 'https://api.westcoaststrength.com/widget/survey/xKYTE6V7QXKVpkUfWTFi' },
-      Keizer: { booking: 'https://api.westcoaststrength.com/widget/booking/8qFo1GnePy0mCgV9avWW', vip: 'https://api.westcoaststrength.com/widget/survey/HXB00WKKe6srvgSmfwI7' },
-      Clackamas: { booking: 'https://api.westcoaststrength.com/widget/booking/yOvDLsZMAboTVjv9c2HC', vip: 'https://api.westcoaststrength.com/widget/survey/Z9zEHwjGfQaMIYy9OueF' },
-      Milwaukie: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
-      Medford: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
-    };
-  </script>
-
   <script>
     // ── State ──
     const params = new URLSearchParams(window.location.search);
@@ -227,8 +214,7 @@
         salesperson: document.getElementById('mf-salesperson').value.trim(),
       };
 
-      // Build welcome URL
-      const loc = WCS_LOCATIONS[locationName] || WCS_LOCATIONS['Salem'];
+      // Build welcome URL (welcome.html loads the club's Action Links itself)
       const welcomeParams = new URLSearchParams();
       if (member.firstName) welcomeParams.set('firstName', member.firstName);
       if (member.lastName) welcomeParams.set('lastName', member.lastName);
