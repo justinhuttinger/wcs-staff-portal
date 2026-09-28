@@ -1,5 +1,6 @@
 const {
   CLUBS, CLUB_BY_SLUG, personKey, displayName, ACH_PAYMENT_METHOD, isExcludedType,
+  buildMemberIndex, daysToSign,
 } = require('./salespersonPerformance')
 const { isChaseable } = require('./pastDueReport')
 const { isInsuranceType, tenureMonths } = require('./attritionAnalysis')
@@ -848,7 +849,11 @@ const SETS = {
     // Completed only: a row still at 'ready' is a check-in nobody closed out,
     // not a tour that happened. Day Pass, NLPT and Swim are left out too: the
     // same numbers Tours Given counts.
-    async load({ start, end, clubNumbers, person }) {
+    //
+    // filter 'same-day': only tours whose person joined in ABC on the tour
+    // day — the rows behind Same Day Sales on Club Snapshot and Club Health,
+    // matched exactly as buildReport and countToursGiven match them.
+    async load({ start, end, clubNumbers, person, filter }) {
       const q = lazySupabase()
         .from('tour_intakes')
         .select('contact_name, completed_at, given_by_name, outcome, club_number, status')
@@ -857,7 +862,17 @@ const SETS = {
         .lte('completed_at', `${end}T23:59:59.999Z`)
       if (clubNumbers) q.in('club_number', clubNumbers)
       const [rows, rules] = await Promise.all([fetchAllRows(q), loadOutcomeRulesOrNone('records/tours')])
-      return onlyTours(rows, rules)
+      let kept = onlyTours(rows, rules)
+      if (filter === 'same-day') {
+        // Straight from the loader the two cards use, so the list is their
+        // rows and not a re-derivation of them.
+        const { loadTourCompletions } = require('./salespersonData')
+        const { tours, joiners } = await loadTourCompletions(
+          clubNumbers || CLUBS.map(c => c.clubNumber), start, end)
+        const joinerIndex = buildMemberIndex(joiners || [])
+        kept = tours.filter(t => daysToSign(t, joinerIndex) === 0)
+      }
+      return kept
         .filter(r => matchesPerson(r.given_by_name, person))
         .map(r => ({
           member: r.contact_name || 'Unnamed prospect',

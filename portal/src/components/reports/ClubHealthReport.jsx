@@ -236,7 +236,7 @@ const DRILLS = {
   agreements:       { set: 'club-health-sales', title: 'Memberships sold' },
   members:          { set: 'club-health-sales', title: 'Memberships sold' },
   vips:             { set: 'club-health-vips', title: 'VIP referrals' },
-  sameDay:          { set: 'club-health-sales', filter: 'same-day', title: 'Same day sales' },
+  sameDay:          { set: 'tours', filter: 'same-day', title: 'Tours closed same day' },
   newDues:          { set: 'club-health-sales', title: 'Memberships sold' },
   ach:              { set: 'club-health-sales', filter: 'ach', title: 'Sold on ACH' },
   tours:            { set: 'tours', title: 'Tours given' },
@@ -308,7 +308,15 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug, can
           <DrillCell {...drillScope} drill="agreements" label="Agreements" value={totalAgreements} />
           <DrillCell {...drillScope} drill="members" label="Members" value={totalMemberships} />
           <DrillCell {...drillScope} drill="vips" label="Total VIPs" value={data.total_vips} />
-          <DrillCell {...drillScope} drill="sameDay" label="Same Day Sales" value={data.total_same_day_sales} />
+          {/* Kiosk tours whose person joined the same day, as Club Snapshot counts it. */}
+          <DrillCell
+            {...drillScope}
+            drill="sameDay"
+            available={!data.tours_unavailable}
+            label="Same Day Sales"
+            value={data.tours_unavailable ? 'N/A' : (data.total_same_day_sales ?? 0)}
+            sub={data.tours_unavailable ? 'Not recorded at these clubs' : undefined}
+          />
           {/* From the Analytics definitions, so this and Club Snapshot cannot
               disagree about the same month. New Dues is what was written, not
               what was collected. */}

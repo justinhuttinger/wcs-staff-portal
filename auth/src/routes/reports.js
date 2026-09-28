@@ -475,16 +475,23 @@ router.get('/salesperson-stats', (req, res) => {
 // unavailable so the report can withhold the figure instead of printing a zero
 // that reads as nobody working.
 async function countToursGiven(locationFilter, startDate, endDate) {
-  if (!startDate || !endDate) return { total: null, unavailable: true, byPerson: {} }
+  if (!startDate || !endDate) return { total: null, sameDay: null, unavailable: true, byPerson: {} }
   try {
     const { loadTourCompletions } = require('../lib/salespersonData')
-    const { displayName } = require('../lib/salespersonPerformance')
+    const { displayName, buildMemberIndex, daysToSign } = require('../lib/salespersonPerformance')
     const slugs = dayOneSlugsFor(locationFilter)
     const clubNumbers = slugs && slugs.length
       ? slugs.map(sl => SLUG_CLUB_MAP[sl]).filter(Boolean)
       : Object.values(SLUG_CLUB_MAP)
-    const { tours, configuredClubs } = await loadTourCompletions(clubNumbers, startDate, endDate)
+    const { tours, joiners, configuredClubs } = await loadTourCompletions(clubNumbers, startDate, endDate)
     const anyConfigured = clubNumbers.some(n => configuredClubs.has(n))
+
+    // Same Day Sales: kiosk tours whose person joined in ABC ON THE TOUR DAY.
+    // The exact rule Club Snapshot's Same Day Sales uses (buildReport's
+    // toursConverted), so the two reports cannot disagree. Replaces the GHL
+    // "Same Day Sale" contact field, which staff set by hand.
+    const joinerIndex = buildMemberIndex(joiners || [])
+    const sameDay = tours.filter(t => daysToSign(t, joinerIndex) === 0).length
 
     // Credited to whoever GAVE the tour, normalised through displayName so
     // "Katie  Castlio" and "Katie Castlio" are one person — the same key the
@@ -498,12 +505,13 @@ async function countToursGiven(locationFilter, startDate, endDate) {
 
     return {
       total: anyConfigured ? tours.length : null,
+      sameDay: anyConfigured ? sameDay : null,
       unavailable: !anyConfigured,
       byPerson: anyConfigured ? byPerson : {},
     }
   } catch (err) {
     console.warn('[reports] tours given unavailable:', err.message)
-    return { total: null, unavailable: true, byPerson: {} }
+    return { total: null, sameDay: null, unavailable: true, byPerson: {} }
   }
 }
 
@@ -777,11 +785,6 @@ router.get('/club-health', async (req, res) => {
       }
     }
 
-    let totalSameDaySales = 0
-    for (const m of filteredMembers) {
-      const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
-      if (ghl?.same_day_sale === 'Sale') totalSameDaySales++
-    }
 
     // --- VIPs in range, counted by `contact.vip_team_member` custom field ---
     const { total: totalVips, byPerson: vipsByPerson } = await countVipsByTeamMember({ startISO, endISO, locationFilter })
@@ -1097,7 +1100,9 @@ router.get('/club-health', async (req, res) => {
       total_agreements: joinedAgreements,
       filter_note: categoryFilter.note,
       total_vips: totalVips || 0,
-      total_same_day_sales: totalSameDaySales,
+      // Kiosk tours closed the same day — see countToursGiven. Null where no
+      // club in view records tours, like total_tours.
+      total_same_day_sales: clubTours.sameDay,
       total_day_ones_booked: totalDayOnesBooked,
       day_one_booked: dayOneBookedCounts,
       day_one_status: dayOneStatusCounts,
