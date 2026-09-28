@@ -5,6 +5,7 @@
 // hand each one to the ABC tab's preload (abc-scraper.js), which draws the
 // banner. The desk PC can't receive the webhook itself (no public address), so
 // polling is the delivery.
+const { ipcMain } = require('electron')
 const { API_URL, getLocation } = require('./config')
 const { CLUB_NUMBERS } = require('./locations')
 
@@ -23,8 +24,7 @@ async function pollOnce(getAbcWebContents, playSound) {
   const club = clubNumber()
   if (!club) return
   try {
-    const headers = {}
-    if (process.env.WCS_LAUNCHER_KEY) headers['x-launcher-key'] = process.env.WCS_LAUNCHER_KEY
+    const headers = launcherHeaders()
     const url = `${API_URL}/telephony/pending?club=${encodeURIComponent(club)}&after=${cursor || 0}`
     const res = await fetch(url, { headers })
     if (!res.ok) { log('[calls] poll non-OK ' + res.status); return }
@@ -51,9 +51,35 @@ async function pollOnce(getAbcWebContents, playSound) {
   }
 }
 
+function launcherHeaders() {
+  const headers = { 'Content-Type': 'application/json' }
+  if (process.env.WCS_LAUNCHER_KEY) headers['x-launcher-key'] = process.env.WCS_LAUNCHER_KEY
+  return headers
+}
+
+// Banner "Save" on a non-member call: name + email onto the caller's GHL
+// contact (the API tags it 'telephony enquiry').
+async function saveEnquiry(payload) {
+  const club = clubNumber()
+  if (!club) return { ok: false, error: 'This PC has no club set' }
+  try {
+    const res = await fetch(API_URL + '/telephony/enquiry', {
+      method: 'POST', headers: launcherHeaders(), body: JSON.stringify({ ...payload, club }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return { ok: false, error: data.error || ('Save failed (' + res.status + ')') }
+    log('[calls] enquiry saved for call #' + payload.callId)
+    return { ok: true, ...data }
+  } catch (err) {
+    log('[calls] enquiry save failed: ' + (err && err.message))
+    return { ok: false, error: 'Could not reach the server' }
+  }
+}
+
 function start({ getAbcWebContents, playSound, logger } = {}) {
   if (timer) return
   log = logger || log
+  ipcMain.handle('call-enquiry-save', (e, payload) => saveEnquiry(payload || {}))
   const tick = () => pollOnce(getAbcWebContents, playSound || (() => {}))
   tick()
   timer = setInterval(tick, POLL_MS)

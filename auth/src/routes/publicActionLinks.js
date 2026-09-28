@@ -1,12 +1,13 @@
 /**
- * /public/action-links — UNAUTHENTICATED read of one club's Day One + VIP
- * links, as set in Admin -> Action Links (app_config dayone_url_<slug> /
- * vip_url_<slug>).
+ * /public/action-links — UNAUTHENTICATED read of one club's Day One, VIP and
+ * Gym Tour links, as set in Admin -> Action Links (app_config
+ * dayone_url_<slug> / vip_url_<slug> / tour_url_<slug>).
  *
  * Read by portal/public/welcome.html, the post-signup popup the launcher opens
  * over ABC. The WCS ABC app has no portal sign-in, so the popup can't use the
  * authenticated /config/app-settings. Club slug is an allowlist and only
- * these two keys are exposed; both are links staff already open in a browser.
+ * these three keys are exposed; all are links staff already open in a browser.
+ * The tour link backs "Book tour" on the WCS ABC incoming-call banner.
  */
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
@@ -19,7 +20,7 @@ const cache = new Map() // slug -> { at, body }
 
 const httpsOrNull = v => (typeof v === 'string' && /^https:\/\//i.test(v.trim()) ? v.trim() : null)
 
-// GET /public/action-links/:club -> { dayone: url|null, vip: url|null }
+// GET /public/action-links/:club -> { dayone: url|null, vip: url|null, tour: url|null }
 router.get('/:club', async (req, res) => {
   const slug = String(req.params.club || '').toLowerCase()
   if (!CLUBS.has(slug)) return res.status(404).json({ error: 'Unknown club' })
@@ -31,12 +32,13 @@ router.get('/:club', async (req, res) => {
     const { data, error } = await supabaseAdmin
       .from('app_config')
       .select('key, value')
-      .in('key', [`dayone_url_${slug}`, `vip_url_${slug}`])
+      .in('key', [`dayone_url_${slug}`, `vip_url_${slug}`, `tour_url_${slug}`])
     if (error) throw error
     const byKey = Object.fromEntries((data || []).map(r => [r.key, r.value]))
     const body = {
       dayone: httpsOrNull(byKey[`dayone_url_${slug}`]),
       vip: httpsOrNull(byKey[`vip_url_${slug}`]),
+      tour: httpsOrNull(byKey[`tour_url_${slug}`]),
     }
     cache.set(slug, { at: Date.now(), body })
     res.set('Cache-Control', 'public, max-age=60')

@@ -70,7 +70,7 @@
     <div class="screen-header">
       <div class="screen-header-left">
         <div class="screen-badge" id="booking-badge">1 OF 2</div>
-        <div class="screen-title">BOOK DAY ONE</div>
+        <div class="screen-title" id="booking-title">BOOK DAY ONE</div>
         <div class="member-name-small" id="booking-name"></div>
       </div>
       <div class="screen-header-right">
@@ -154,8 +154,19 @@
     // through a public endpoint because WCS ABC has no portal sign-in. The
     // pattern-built `loc` above is only the fallback if that call fails.
     const API_BASE = 'https://api.wcstrength.com';
+    // mode=tour (WCS ABC call banner "Book tour"): the booking screen shows the
+    // club's Gym Tour widget instead. It has no pattern fallback, so without an
+    // Action Links tour URL the frame says so rather than booking a Day One.
+    const isTour = params.get('mode') === 'tour';
     function loadFrames(links) {
-      document.getElementById('booking-frame').src = buildUrl((links && links.dayone) || loc.booking);
+      const bookingFrame = document.getElementById('booking-frame');
+      if (isTour) {
+        bookingFrame.src = links && links.tour
+          ? buildUrl(links.tour)
+          : 'data:text/html;charset=utf-8,' + encodeURIComponent('<p style="font:16px sans-serif;padding:32px">No Gym Tour booking link is set for this club. Add one in Portal: Admin &rarr; Action Links.</p>');
+      } else {
+        bookingFrame.src = buildUrl((links && links.dayone) || loc.booking);
+      }
       document.getElementById('vip-frame').src = buildUrl((links && links.vip) || loc.vip);
     }
     const linksCtl = new AbortController();
@@ -201,7 +212,8 @@
 
     // mode=dayone: opened from the ABC member profile "Book Day One" button.
     // Skip the intro and VIP step; booking is the only screen.
-    if (params.get('mode') === 'dayone') {
+    if (params.get('mode') === 'dayone' || isTour) {
+      if (isTour) document.getElementById('booking-title').textContent = 'BOOK TOUR';
       goToBooking('only');
       document.getElementById('booking-badge').style.display = 'none';
       document.getElementById('btn-booking-back').style.display = 'none';

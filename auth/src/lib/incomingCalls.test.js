@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { last10, createCallQueue, summarizeMatches } = require('./incomingCalls')
+const { last10, createCallQueue, summarizeMatches, cleanEnquiry } = require('./incomingCalls')
 
 test('last10 normalizes GHL and ABC phone formats', () => {
   assert.strictEqual(last10('(425) 954-9854'), '4259549854')
@@ -44,12 +44,39 @@ test('summarizeMatches puts active, home-club members first and flags PT', () =>
   assert.strictEqual(out[2].active, false)
 })
 
-test('NON-MEMBER records rank below real memberships, even inactive ones', () => {
+test('active accounts always come first; among active, real memberships beat NON-MEMBER', () => {
   const members = [
-    { member_id: '1', club_number: '30935', first_name: 'Bot', member_status: 'Active', membership_type: 'NON-MEMBER' },
-    { member_id: '2', club_number: '30935', first_name: 'Real', member_status: 'Expired', membership_type: 'SINGLE' },
+    { member_id: '1', club_number: '30935', first_name: 'Old', member_status: 'Expired', membership_type: 'SINGLE' },
+    { member_id: '2', club_number: '30935', first_name: 'Bot', member_status: 'Active', membership_type: 'NON-MEMBER' },
+    { member_id: '3', club_number: '31599', first_name: 'Real', member_status: 'Active', membership_type: 'SINGLE' },
   ]
   const out = summarizeMatches(members, [], '30935')
-  assert.deepStrictEqual(out.map(m => m.name), ['Real', 'Bot'])
+  assert.deepStrictEqual(out.map(m => m.name), ['Real', 'Bot', 'Old'])
   assert.strictEqual(out[1].nonMember, true)
+
+  // No active membership: the active NON-MEMBER record outranks an expired one.
+  const out2 = summarizeMatches(members.slice(0, 2), [], '30935')
+  assert.deepStrictEqual(out2.map(m => m.name), ['Bot', 'Old'])
+})
+
+test('recentCall only returns a call this club got within the enquiry window', () => {
+  let t = 0
+  const q = createCallQueue({ now: () => t })
+  const c = q.push('30935', { ghlContactId: 'abc' })
+  assert.strictEqual(q.recentCall('30935', c.id).ghlContactId, 'abc')
+  assert.strictEqual(q.recentCall('31599', c.id), null)
+  assert.strictEqual(q.recentCall('30935', 999), null)
+  t += 30 * 60 * 1000
+  assert.ok(q.recentCall('30935', c.id), 'still inside the hour, though gone from the poll queue')
+  assert.deepStrictEqual(q.since('30935'), [])
+  t += 31 * 60 * 1000
+  assert.strictEqual(q.recentCall('30935', c.id), null)
+})
+
+test('cleanEnquiry trims, lowercases email, and rejects bad input', () => {
+  assert.deepStrictEqual(cleanEnquiry({ firstName: ' Ann ', lastName: 'Lee', email: 'A@B.com ' }).value,
+    { firstName: 'Ann', lastName: 'Lee', email: 'a@b.com' })
+  assert.ok(cleanEnquiry({ firstName: '', email: '' }).error)
+  assert.ok(cleanEnquiry({ firstName: 'Ann', email: 'nope' }).error)
+  assert.ok(cleanEnquiry({ firstName: 'Ann', email: '' }).value)
 })
