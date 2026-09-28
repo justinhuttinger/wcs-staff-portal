@@ -586,6 +586,50 @@ app.on('ready', async () => {
     })
   })
 
+  // WCS ABC Admin (Actions toolbar on ABC's Settings page, shown to admins
+  // only; see ADMIN_ABC_NAMES in abc-scraper.js): change this PC's club and
+  // ABC URL. Saving goes through applyLocationConfig, the same path as the
+  // Kiosk Installs panel, which reloads the ABC tab; the call banner reads the
+  // location on every poll, so it follows immediately.
+  if (IS_ABC_ONLY) {
+    let adminWin = null
+    ipcMain.on('abc-open-admin', () => {
+      if (adminWin && !adminWin.isDestroyed()) { adminWin.focus(); return }
+      adminWin = new BrowserWindow({
+        width: 520,
+        height: 440,
+        title: 'WCS ABC Admin',
+        parent: mainWindow,
+        modal: true,
+        autoHideMenuBar: true,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        fullscreenable: false,
+        webPreferences: {
+          preload: path.join(__dirname, 'abc-admin-preload.js'),
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      })
+      adminWin.loadFile(path.join(__dirname, '..', 'ui', 'abc-admin.html'))
+      adminWin.on('closed', () => { adminWin = null })
+      log('[abc-admin] opened')
+    })
+    ipcMain.handle('abc-admin:get', () => ({ config: readConfig() || {}, locations: LOCATIONS }))
+    ipcMain.handle('abc-admin:save', (e, cfg) => {
+      const loc = LOCATIONS.find(l => l.name === (cfg && cfg.location))
+      if (!loc) return { success: false, error: 'Pick a club' }
+      let url
+      try { url = new URL(String((cfg && cfg.abc_url) || '').trim()) } catch { url = null }
+      if (!url || url.protocol !== 'https:' || !/(^|\.)abc(financial|fitness)\.com$/i.test(url.hostname)) {
+        return { success: false, error: 'ABC URL must be an https://…abcfinancial.com or abcfitness.com link' }
+      }
+      log('[abc-admin] saved location=' + loc.name)
+      return applyLocationConfig({ location: loc.name, abc_url: url.toString() })
+    })
+  }
+
   // Credential IPC — preload scripts request creds for auto-fill.
   // Logs to C:\WCS\app.log for diagnostics — silent failures here have
   // historically hidden auth-token / shared-credential issues.
