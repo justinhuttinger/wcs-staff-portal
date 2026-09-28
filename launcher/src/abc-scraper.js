@@ -346,7 +346,33 @@ const TOOLBAR_ACTIONS = [
     title: "Open the Cancel Tool with this member's barcode, email and home club filled in",
     run(data) { ipcRenderer.send('abc-open-cancel-tool', data) },
   },
+  // WCS ABC admin: only on ABC's Settings page, only for ADMIN_ABC_NAMES.
+  {
+    id: 'admin', icon: '🔧', label: 'Admin', admin: true,
+    title: "Change this PC's club and ABC URL",
+    run() { ipcRenderer.send('abc-open-admin') },
+  },
 ]
+
+// ABC employees (as logged in to ABC, middle initials ignored) who get the
+// Admin action. Gated on the ABC login, since WCS ABC has no portal sign-in.
+const ADMIN_ABC_NAMES = ['justin huttinger']
+
+function isAdminStaff() {
+  const name = String(scrapeStaffName() || '').toLowerCase()
+    .split(/\s+/).filter(p => p.length > 1).join(' ')
+  return ADMIN_ABC_NAMES.includes(name)
+}
+
+function onSettingsPage() {
+  try {
+    const frame = document.querySelector('#main')
+    const href = frame && frame.contentWindow && frame.contentWindow.location.href
+    return /SettingsMenuCommand\.pml/i.test(href || '')
+  } catch (e) {
+    return false
+  }
+}
 
 let toolbarHost = null
 let toolbarOpen = false
@@ -378,10 +404,12 @@ function ensureToolbar() {
     </div>`
   const bar = root.querySelector('.bar')
   const actions = root.querySelector('.actions')
+  const buttons = []
   for (const a of TOOLBAR_ACTIONS) {
     const btn = document.createElement('button')
     btn.type = 'button'
     btn.className = 'action'
+    btn.dataset.admin = a.admin ? '1' : ''
     btn.title = a.title
     btn.innerHTML = `<span aria-hidden="true">${a.icon}</span>`
     btn.appendChild(document.createTextNode(' ' + a.label))
@@ -395,7 +423,10 @@ function ensureToolbar() {
       bar.classList.remove('open')
     })
     actions.appendChild(btn)
+    buttons.push(btn)
   }
+  toolbarHost._buttons = buttons
+  toolbarHost._mode = null
   root.querySelector('.toggle').addEventListener('click', () => {
     toolbarOpen = !toolbarOpen
     bar.classList.toggle('open', toolbarOpen)
@@ -425,9 +456,18 @@ function updateToolbar() {
   // a hidden password-type input (employeeClockInBarcode) on every page.
   const onLogin = Array.from(document.querySelectorAll('input[type="password"]')).some(el => el.offsetParent)
   const d = onLogin ? {} : scrapeProfile()
-  const show = !!(d.firstName && d.lastName && (d.email || d.phone))
+  const memberMode = !!(d.firstName && d.lastName && (d.email || d.phone))
+  // WCS ABC only: the Admin action on the Settings page for admins.
+  const adminMode = !onLogin && !memberMode && IS_ABC_APP && onSettingsPage() && isAdminStaff()
+  const show = memberMode || adminMode
   host.style.display = show ? 'block' : 'none'
-  if (show) positionToolbar(host)
+  if (!show) return
+  // Member pages show the member actions; the Settings page shows only Admin.
+  if (host._mode !== adminMode) {
+    host._mode = adminMode
+    host._buttons.forEach(b => { b.style.display = (b.dataset.admin === '1') === adminMode ? '' : 'none' })
+  }
+  positionToolbar(host)
 }
 
 // --- Check-in alert cues ----------------------------------------------------
