@@ -27,9 +27,10 @@ import { fileURLToPath } from 'node:url'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const API_JS = path.join(HERE, 'api.js')
 const AUTH_SRC = path.resolve(HERE, '../../../auth/src')
-const INDEX_JS = path.join(AUTH_SRC, 'index.js')
+// Routers are mounted in app.js (index.js only loads the club list, then app.js).
+const INDEX_JS = path.join(AUTH_SRC, 'app.js')
 
-/** [{ prefix, file }] for every router index.js mounts from ./routes. */
+/** [{ prefix, file }] for every router app.js mounts from ./routes. */
 function mounts() {
   const src = fs.readFileSync(INDEX_JS, 'utf8')
   const out = []
@@ -78,7 +79,7 @@ function resolveCall(called, mountList) {
   const mount = sorted.find(
     m => called === m.prefix || called.startsWith(m.prefix.endsWith('/') ? m.prefix : m.prefix + '/')
   )
-  if (!mount) return 'is not under any router mounted in auth/src/index.js'
+  if (!mount) return 'is not under any router mounted in auth/src/app.js'
 
   const rest = called.slice(mount.prefix.length) || '/'
   const { paths, nested } = routesIn(mount.file)
@@ -96,7 +97,7 @@ function resolveCall(called, mountList) {
 }
 
 test('the parsers actually found something', () => {
-  assert.ok(fs.existsSync(INDEX_JS), `auth/src/index.js not found at ${INDEX_JS}`)
+  assert.ok(fs.existsSync(INDEX_JS), `auth/src/app.js not found at ${INDEX_JS}`)
   assert.ok(mounts().length > 20, `only found ${mounts().length} mounted routers`)
   assert.ok(calledPaths().length > 50, `only found ${calledPaths().length} api() calls`)
 })

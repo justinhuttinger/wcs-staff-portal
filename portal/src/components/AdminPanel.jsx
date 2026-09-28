@@ -32,6 +32,7 @@ import OnlineJoinAdmin from './admin/OnlineJoinAdmin'
 import VipReferralsAdmin from './admin/VipReferralsAdmin'
 import TourCheckinLocations from './admin/TourCheckinLocations'
 import ClubIntegrations from './admin/ClubIntegrations'
+import ClubsAdmin from './admin/ClubsAdmin'
 import ClubInfo from './admin/ClubInfo'
 import RevenueBackfillTile from './admin/RevenueBackfillTile'
 import PayrollCommissionsAdmin from './admin/PayrollCommissionsAdmin'
@@ -97,6 +98,7 @@ const TECHNICAL_TILES = [
   { key: 'webhooks', label: 'Webhooks', desc: 'Webhook History', icon: 'M7.5 7.5h-.75A2.25 2.25 0 0 0 4.5 9.75v7.5a2.25 2.25 0 0 0 2.25 2.25h7.5a2.25 2.25 0 0 0 2.25-2.25v-7.5a2.25 2.25 0 0 0-2.25-2.25h-.75m-6 3.75 3 3m0 0 3-3m-3 3V1.5m6 9h.75a2.25 2.25 0 0 1 2.25 2.25v7.5a2.25 2.25 0 0 1-2.25 2.25h-7.5a2.25 2.25 0 0 1-2.25-2.25v-7.5a2.25 2.25 0 0 1 2.25-2.25H9' },
   { key: 'custom-fields', label: 'Custom Fields', desc: 'GHL Field Lookup', icon: 'M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z' },
   { key: 'google-connections', label: 'Google Connections', desc: 'OAuth Scopes & Reconnect', icon: 'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244' },
+  { key: 'clubs', label: 'Clubs', desc: 'Add & Edit Locations', icon: 'M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Z' },
   { key: 'club-integrations', label: 'Club Integrations', desc: 'Per-Club Webhook URLs', icon: 'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244' },
   { key: 'club-info', label: 'Club Info', desc: 'ABC Fallback Details', icon: 'M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z' },
   { key: 'shared-credentials', label: 'Shared Logins', desc: 'Master Account Credentials', icon: 'M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z' },
@@ -134,7 +136,7 @@ const TILE_BY_KEY = Object.fromEntries(ALL_TILES.map(t => [t.key, t]))
 // and its list of tools — no more one long scrolling list.
 const CATEGORIES = [
   { title: 'Staff & HR', keys: ['staff', 'import', 'employee-roster', 'roles-v2', 'paychex'] },
-  { title: 'Portal Setup', keys: ['tiles', 'appearance', 'layouts', 'config', 'drive-folders', 'forms', 'ticketing', 'action-links', 'references', 'portal-refresh'] },
+  { title: 'Portal Setup', keys: ['clubs', 'tiles', 'appearance', 'layouts', 'config', 'drive-folders', 'forms', 'ticketing', 'action-links', 'references', 'portal-refresh'] },
   { title: 'Reports & KPIs', keys: ['kpi-goals', 'report-visibility', 'trends-12mo', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
   { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'membership-categories', 'referral-rewards', 'save-offers', 'audit-toggles', 'vendor-price-list', 'till-settings', 'lapsed-checkins', 'member-app', 'member-notifications'] },
   { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'club-integrations', 'club-info', 'custom-fields', 'google-connections', 'shared-credentials'] },
@@ -226,6 +228,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'online-join' && <OnlineJoinAdmin />}
         {activeSection === 'vip-referrals' && <VipReferralsAdmin />}
         {activeSection === 'tour-checkin' && <TourCheckinLocations />}
+        {activeSection === 'clubs' && <ClubsAdmin />}
         {activeSection === 'club-integrations' && <ClubIntegrations />}
         {activeSection === 'club-info' && <ClubInfo />}
         {activeSection === 'kpi-goals' && <KpiGoalsAdmin />}

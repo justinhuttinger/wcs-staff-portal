@@ -1314,6 +1314,18 @@ export const tourOutcomesAdmin = {
 
 // Per-club outbound webhook URLs (Admin -> Club Integrations). Consumed by the
 // prospects---documents service; see auth/migrations/075_club_integrations.sql.
+// Admin -> Clubs: the club list itself (public.clubs). routes/clubsAdmin.js.
+export const clubsAdmin = {
+  list: () => api('/admin/clubs'),
+  create: (body) => api('/admin/clubs', { method: 'POST', body: JSON.stringify(body) }),
+  update: (clubNumber, body) =>
+    api('/admin/clubs/' + clubNumber, { method: 'PUT', body: JSON.stringify(body) }),
+  uploadPhoto: (clubNumber, file) => {
+    const fd = new FormData(); fd.append('file', file)
+    return api('/admin/clubs/' + clubNumber + '/photo', { method: 'POST', body: fd })
+  },
+}
+
 export const clubIntegrationsAdmin = {
   list: () => api('/admin/club-integrations'),
   update: (clubNumber, body) =>
