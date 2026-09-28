@@ -8,18 +8,11 @@
 
 const { matchesFilters, cannotUseAch } = require('./analyticsMemberFilters')
 const { UNASSIGNED_LABEL } = require('./analyticsSegments')
+const { CLUBS: REGISTRY } = require('../config/clubs')
 
-const CLUBS = [
-  { slug: 'salem', clubNumber: '30935', name: 'Salem' },
-  { slug: 'keizer', clubNumber: '31599', name: 'Keizer' },
-  { slug: 'eugene', clubNumber: '7655', name: 'Eugene' },
-  { slug: 'springfield', clubNumber: '31598', name: 'Springfield' },
-  { slug: 'clackamas', clubNumber: '31600', name: 'Clackamas' },
-  // Milwaukie trades as East Side Athletic Club; the source tool lists it under
-  // that name, so the report does too.
-  { slug: 'milwaukie', clubNumber: '31601', name: 'East Side Athletic Club' },
-  { slug: 'medford', clubNumber: '32073', name: 'Medford' },
-]
+// Milwaukie trades as East Side Athletic Club; the source tool lists it under
+// that name, so the report does too (tradingName in config/clubs.json).
+const CLUBS = REGISTRY.map(c => ({ slug: c.slug, clubNumber: c.clubNumber, name: c.tradingName || c.name }))
 const CLUB_BY_NUMBER = Object.fromEntries(CLUBS.map(c => [c.clubNumber, c]))
 const CLUB_BY_SLUG = Object.fromEntries(CLUBS.map(c => [c.slug, c]))
 

@@ -1,15 +1,9 @@
 // Lowercased WCS location name -> ABC club number. The locations table does not
-// carry the club number, so this is the canonical mapping for ABC-scoped queries
-// (e.g. abc_employees). Mirrors ghl-sync/src/config/locations.js.
-const NAME_TO_CLUB = {
-  salem: '30935',
-  keizer: '31599',
-  eugene: '7655',
-  springfield: '31598',
-  clackamas: '31600',
-  milwaukie: '31601',
-  medford: '32073',
-}
+// carry the club number, so ABC-scoped queries (e.g. abc_employees) map a
+// location name through here. Built from config/clubs.
+const { CLUBS } = require('./clubs')
+
+const NAME_TO_CLUB = Object.fromEntries(CLUBS.map(c => [c.name.toLowerCase(), c.clubNumber]))
 
 function clubNumberForLocationName(name) {
   if (!name) return null

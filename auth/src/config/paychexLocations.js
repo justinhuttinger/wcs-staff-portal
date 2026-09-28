@@ -1,14 +1,14 @@
 require('dotenv').config()
+const { CLUBS, envFor, warnMissingEnv } = require('./clubs')
 
-const PAYCHEX_LOCATIONS = [
-  { companyId: process.env.PAYCHEX_COMPANY_SALEM,       name: 'Salem',       slug: 'salem' },
-  { companyId: process.env.PAYCHEX_COMPANY_KEIZER,      name: 'Keizer',      slug: 'keizer' },
-  { companyId: process.env.PAYCHEX_COMPANY_EUGENE,      name: 'Eugene',      slug: 'eugene' },
-  { companyId: process.env.PAYCHEX_COMPANY_SPRINGFIELD, name: 'Springfield', slug: 'springfield' },
-  { companyId: process.env.PAYCHEX_COMPANY_CLACKAMAS,   name: 'Clackamas',   slug: 'clackamas' },
-  { companyId: process.env.PAYCHEX_COMPANY_MILWAUKIE,   name: 'Milwaukie',   slug: 'milwaukie' },
-  { companyId: process.env.PAYCHEX_COMPANY_MEDFORD,     name: 'Medford',     slug: 'medford' },
-].filter(loc => loc.companyId)
+// One entry per club with PAYCHEX_COMPANY_<CLUB> set; others are left out
+// (and logged at startup).
+const PAYCHEX_LOCATIONS = CLUBS.map(c => ({
+  companyId: envFor(c, 'PAYCHEX_COMPANY_'),
+  name: c.name,
+  slug: c.slug,
+})).filter(loc => loc.companyId)
+warnMissingEnv('Paychex companies', ['PAYCHEX_COMPANY_'])
 
 function getPaychexBySlug(slug) {
   return PAYCHEX_LOCATIONS.find(l => l.slug === slug) || null

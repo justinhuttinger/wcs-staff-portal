@@ -1,14 +1,16 @@
 require('dotenv').config()
+const { CLUBS, envFor, warnMissingEnv } = require('./clubs')
 
-const LOCATIONS = [
-  { id: process.env.GHL_LOCATION_SALEM,       apiKey: process.env.GHL_API_KEY_SALEM,       name: 'Salem',       slug: 'salem',       clubCode: '30935' },
-  { id: process.env.GHL_LOCATION_KEIZER,      apiKey: process.env.GHL_API_KEY_KEIZER,      name: 'Keizer',      slug: 'keizer',      clubCode: '31599' },
-  { id: process.env.GHL_LOCATION_EUGENE,      apiKey: process.env.GHL_API_KEY_EUGENE,      name: 'Eugene',      slug: 'eugene',      clubCode: '7655'  },
-  { id: process.env.GHL_LOCATION_SPRINGFIELD, apiKey: process.env.GHL_API_KEY_SPRINGFIELD, name: 'Springfield', slug: 'springfield', clubCode: '31598' },
-  { id: process.env.GHL_LOCATION_CLACKAMAS,   apiKey: process.env.GHL_API_KEY_CLACKAMAS,   name: 'Clackamas',   slug: 'clackamas',   clubCode: '31600' },
-  { id: process.env.GHL_LOCATION_MILWAUKIE,   apiKey: process.env.GHL_API_KEY_MILWAUKIE,   name: 'Milwaukie',   slug: 'milwaukie',   clubCode: '31601' },
-  { id: process.env.GHL_LOCATION_MEDFORD,     apiKey: process.env.GHL_API_KEY_MEDFORD,     name: 'Medford',     slug: 'medford',     clubCode: '32073' },
-].filter(loc => loc.id && loc.apiKey)
+// One entry per club with GHL_LOCATION_<CLUB> and GHL_API_KEY_<CLUB> set.
+// A club missing either is left out (and logged at startup).
+const LOCATIONS = CLUBS.map(c => ({
+  id: envFor(c, 'GHL_LOCATION_'),
+  apiKey: envFor(c, 'GHL_API_KEY_'),
+  name: c.name,
+  slug: c.slug,
+  clubCode: c.clubNumber,
+})).filter(loc => loc.id && loc.apiKey)
+warnMissingEnv('GHL locations', ['GHL_LOCATION_', 'GHL_API_KEY_'])
 
 // WCS University sub-account (not one of the 7 clubs). Its own location-level
 // private-integration token carries contacts.write + users.write so the portal
