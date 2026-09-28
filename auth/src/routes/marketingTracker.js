@@ -92,10 +92,8 @@ const TYPES = new Set([
 ])
 const STATUSES = new Set(['planned', 'approved', 'complete'])
 
-// Canonical location slugs (matches portal/src/config/locations.js)
-const LOCATION_SLUGS = new Set([
-  'salem', 'keizer', 'eugene', 'springfield', 'clackamas', 'milwaukie', 'medford',
-])
+// Canonical location slugs (config/clubs)
+const LOCATION_SLUGS = new Set(require('../config/clubs').CLUBS.map(c => c.slug))
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

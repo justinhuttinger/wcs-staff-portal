@@ -24,7 +24,7 @@ const WEBHOOK_SECRET = process.env.OPERANDIO_WEBHOOK_SECRET
 
 // WCS gym slugs we care about. Anything else is ignored so the parser
 // doesn't choke if Operandio adds a location later.
-const KNOWN_LOCATIONS = ['salem', 'keizer', 'eugene', 'springfield', 'clackamas', 'milwaukie', 'medford']
+const KNOWN_LOCATIONS = require('../config/clubs').CLUBS.map(c => c.slug)
 
 // ---------------------------------------------------------------------------
 // Parse helpers

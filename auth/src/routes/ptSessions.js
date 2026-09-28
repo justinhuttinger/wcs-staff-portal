@@ -13,15 +13,7 @@ const router = Router()
 router.use(authenticate)
 router.use(requireReportAccess('lead', ['pt-sessions']))
 
-const SLUG_CLUB_MAP = {
-  salem: '30935',
-  keizer: '31599',
-  eugene: '7655',
-  springfield: '31598',
-  clackamas: '31600',
-  milwaukie: '31601',
-  medford: '32073',
-}
+const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
 
 const DEFAULT_STATUSES = ['Completed', 'Canceled-Charge']
 const PACIFIC_TZ = 'America/Los_Angeles'

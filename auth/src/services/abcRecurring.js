@@ -6,15 +6,7 @@ const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/r
 const ABC_APP_ID = process.env.ABC_APP_ID
 const ABC_APP_KEY = process.env.ABC_APP_KEY
 
-const CLUBS = [
-  { slug: 'salem', clubNumber: '30935', name: 'Salem' },
-  { slug: 'keizer', clubNumber: '31599', name: 'Keizer' },
-  { slug: 'eugene', clubNumber: '7655', name: 'Eugene' },
-  { slug: 'springfield', clubNumber: '31598', name: 'Springfield' },
-  { slug: 'clackamas', clubNumber: '31600', name: 'Clackamas' },
-  { slug: 'milwaukie', clubNumber: '31601', name: 'Milwaukie' },
-  { slug: 'medford', clubNumber: '32073', name: 'Medford' },
-]
+const CLUBS = require('../config/clubs').CLUBS.map(c => ({ slug: c.slug, clubNumber: c.clubNumber, name: c.name }))
 
 function isPT(name) {
   const n = (name || '').toUpperCase()

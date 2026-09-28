@@ -16,7 +16,7 @@
 const STARTUP_GRACE_MS = 30 * 1000
 const CYCLE_INTERVAL_MS = 90 * 1000
 
-const LOCATIONS = ['all', 'salem', 'keizer', 'eugene', 'springfield', 'clackamas', 'milwaukie', 'medford']
+const LOCATIONS = ['all', ...require('../config/clubs').CLUBS.map(c => c.slug)]
 
 function fmtDate(d) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`

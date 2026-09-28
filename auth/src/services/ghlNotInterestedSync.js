@@ -24,15 +24,7 @@ const BASE_URL = process.env.GHL_BASE_URL || 'https://services.leadconnectorhq.c
 // and trimmed, because a rename to sentence case should not silently break this.
 const WORKFLOW_NAME = /^not interested categorization$/i
 
-const CLUBS = [
-  { slug: 'salem', env: 'SALEM' },
-  { slug: 'keizer', env: 'KEIZER' },
-  { slug: 'eugene', env: 'EUGENE' },
-  { slug: 'springfield', env: 'SPRINGFIELD' },
-  { slug: 'clackamas', env: 'CLACKAMAS' },
-  { slug: 'milwaukie', env: 'MILWAUKIE' },
-  { slug: 'medford', env: 'MEDFORD' },
-]
+const CLUBS = require('../config/clubs').CLUBS.map(c => ({ slug: c.slug, env: c.envKey }))
 
 const PAGE_LIMIT = 100
 

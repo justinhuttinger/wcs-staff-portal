@@ -13,15 +13,7 @@
 // `website_submissions.raw` JSONB column so dynamic "No Label field_*"
 // fields are never lost.
 
-const KNOWN_LOCATIONS = [
-  'Salem',
-  'Keizer',
-  'Eugene',
-  'Springfield',
-  'Clackamas',
-  'Milwaukie',
-  'Medford',
-]
+const KNOWN_LOCATIONS = require('../config/clubs').CLUBS.map(c => c.name)
 
 // Convention (per Justin 2026-05-14): all website form names start with the
 // location followed by " - " or whitespace. e.g. "Springfield - Swim Sign Up".

@@ -13,7 +13,7 @@ const { supabaseAdmin } = require('../services/supabase')
 
 const router = Router()
 
-const CLUBS = new Set(['salem', 'keizer', 'eugene', 'springfield', 'clackamas', 'milwaukie', 'medford'])
+const CLUBS = new Set(require('../config/clubs').CLUBS.map(c => c.slug))
 const TTL_MS = 60 * 1000
 const cache = new Map() // slug -> { at, body }
 

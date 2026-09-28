@@ -7,15 +7,11 @@ const router = Router()
 router.use(authenticate)
 router.use(requireRole('admin'))
 
-const LOCATIONS = [
-  { name: 'Salem',       locationId: 'uflpfHNpByAnaBLkQzu3', apiKeyEnv: 'GHL_API_KEY_SALEM' },
-  { name: 'Keizer',      locationId: 'g75BBgiSvlCRbvxYRMAb', apiKeyEnv: 'GHL_API_KEY_KEIZER' },
-  { name: 'Eugene',      locationId: 'NNTZT21fPm3SxpLg8s04', apiKeyEnv: 'GHL_API_KEY_EUGENE' },
-  { name: 'Springfield', locationId: 'xXV3CXt5DkgfGnTt8CG1', apiKeyEnv: 'GHL_API_KEY_SPRINGFIELD' },
-  { name: 'Clackamas',   locationId: 'aqSDfuZLimMXuPz6Zx3p', apiKeyEnv: 'GHL_API_KEY_CLACKAMAS' },
-  { name: 'Milwaukie',   locationId: 'BQfUepBFzqVan4ruCQ6R', apiKeyEnv: 'GHL_API_KEY_MILWAUKIE' },
-  { name: 'Medford',     locationId: 'ZxcRZBvwIO7vd4D3bjJO', apiKeyEnv: 'GHL_API_KEY_MEDFORD' },
-]
+const LOCATIONS = require('../config/clubs').CLUBS.map(c => ({
+  name: c.name,
+  locationId: c.ghlLocationId,
+  apiKeyEnv: `GHL_API_KEY_${c.envKey}`,
+}))
 
 const GHL_BASE = 'https://services.leadconnectorhq.com'
 
