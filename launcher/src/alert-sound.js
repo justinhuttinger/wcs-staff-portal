@@ -7,6 +7,7 @@
 // level: 'red' = harsh BEEP BEEP BEEP, 'blue' = two-note chime,
 // 'blue-double' = the chime twice.
 const { BrowserWindow, ipcMain } = require('electron')
+const volumeGuard = require('./volume-guard')
 
 const PAGE = `<!doctype html><meta charset="utf-8"><script>
 let ctx = null
@@ -69,6 +70,9 @@ function setup(log = () => {}, mainWindow = null) {
   if (mainWindow) mainWindow.on('closed', () => { if (win && !win.isDestroyed()) win.destroy() })
   logFn = log
   ipcMain.on('abc-alert-sound', (e, level) => play(level))
+  // Keep the PC audible between alerts too; stops with the main window.
+  volumeGuard.start(log)
+  if (mainWindow) mainWindow.on('closed', () => volumeGuard.stop())
 }
 
 // Also called directly from the main process (incoming-call banner).
@@ -76,8 +80,13 @@ function play(level) {
   const lvl = ['red', 'blue', 'blue-double'].includes(level) ? level : 'blue'
   const w = ensureWindow()
   const run = () => w.webContents.executeJavaScript(`playCue(${JSON.stringify(lvl)})`).catch(err => logFn('[alert-sound] ' + err.message))
-  if (w.webContents.isLoading()) w.webContents.once('did-finish-load', run)
-  else run()
+  // Unmute / raise to the floor first (volume-guard.js); it answers in
+  // milliseconds and never holds the cue back more than a moment.
+  volumeGuard.ensure().finally(() => {
+    if (w.isDestroyed()) return
+    if (w.webContents.isLoading()) w.webContents.once('did-finish-load', run)
+    else run()
+  })
 }
 
 module.exports = { setup, play }
