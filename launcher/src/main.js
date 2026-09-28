@@ -322,6 +322,19 @@ app.on('ready', async () => {
     })
   }
 
+  // WCS ABC: incoming-call banner. Polls the API for calls to this club and
+  // hands them to the ABC tab's preload, which draws the banner.
+  if (IS_ABC_ONLY) {
+    require('./call-poller').start({
+      getAbcWebContents: () => {
+        const t = tabManager && abcTabId && tabManager.tabs.get(abcTabId)
+        return t ? t.view.webContents : null
+      },
+      playSound: (level) => require('./alert-sound').play(level),
+      logger: log,
+    })
+  }
+
   // Install heartbeat, receipt printing and deep links are Portal-only: the
   // ABC app shares this machine's C:\WCS\config.json install_id, so it must
   // not report or print a second time.

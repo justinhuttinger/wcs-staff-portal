@@ -585,6 +585,103 @@ function hideAlertCue() {
   if (cueHost) cueHost.style.display = 'none'
 }
 
+// --- Incoming-call banner (WCS ABC only) -----------------------------------
+// main (call-poller.js) sends 'incoming-call' for each call GHL reports to this
+// club. Member / PT client: who they are. Anyone else: "Not a member" with the
+// GHL contact, ready for the telephony enquiry form (not built yet). Banners
+// stack, newest on top, and stay until staff close them.
+let callHost = null
+let callStack = null
+function ensureCallHost() {
+  if (callHost) return
+  callHost = document.createElement('div')
+  callHost.id = 'wcs-call-banner'
+  callHost.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;pointer-events:none;'
+  const root = callHost.attachShadow({ mode: 'closed' })
+  root.innerHTML = '<style>' +
+    ".stack{display:flex;flex-direction:column;gap:8px;padding:10px 16px;font:500 15px/1.35 'Inter',-apple-system,'Segoe UI',sans-serif;}" +
+    '.card{pointer-events:auto;position:relative;display:flex;gap:16px;align-items:center;border-radius:14px;padding:16px 56px 16px 20px;' +
+    'color:#fff;box-shadow:0 14px 44px rgba(0,0,0,.35);animation:drop .25s ease-out;}' +
+    '@keyframes drop{from{transform:translateY(-20px);opacity:0}to{transform:none;opacity:1}}' +
+    '.card.member{background:linear-gradient(135deg,#1f6f43,#2f855a);}' +
+    '.card.warn{background:linear-gradient(135deg,#9b2c2c,#c53030);}' +
+    '.card.unknown{background:linear-gradient(135deg,#1a365d,#2b6cb0);}' +
+    '.icon{font-size:34px;line-height:1;}' +
+    '.body{flex:1;min-width:0;}' +
+    '.kicker{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.85;}' +
+    '.name{font-size:24px;font-weight:800;margin:2px 0 6px;}' +
+    '.tags{display:flex;flex-wrap:wrap;gap:6px;}' +
+    '.tag{background:rgba(255,255,255,.2);border-radius:6px;padding:2px 9px;font-size:14px;font-weight:600;}' +
+    '.tag.hot{background:#fff;color:#9b2c2c;}' +
+    '.sub{font-size:13px;opacity:.85;margin-top:6px;}' +
+    '.act{pointer-events:auto;border:0;border-radius:10px;padding:10px 16px;font-weight:700;font-size:14px;font-family:inherit;background:#fff;color:#1a365d;cursor:not-allowed;opacity:.7;}' +
+    '.x{position:absolute;top:10px;right:12px;width:32px;height:32px;border:0;border-radius:50%;background:rgba(255,255,255,.2);' +
+    'color:#fff;font-size:18px;cursor:pointer;}.x:hover{background:rgba(255,255,255,.35);}' +
+    '</style><div class="stack"></div>'
+  callStack = root.querySelector('.stack')
+  document.documentElement.appendChild(callHost)
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag)
+  if (cls) e.className = cls
+  if (text != null) e.textContent = text
+  return e
+}
+
+function showIncomingCall(call) {
+  ensureCallHost()
+  const matches = Array.isArray(call.matches) ? call.matches : []
+  // A NON-MEMBER ABC record (prospect / guest) is still an enquiry.
+  const m = matches[0] && !matches[0].nonMember ? matches[0] : null
+  const nonMemberRec = !m && matches[0] ? matches[0] : null
+  const warn = m && (!m.active || m.pastDue)
+  const card = el('div', 'card ' + (m ? (warn ? 'warn' : 'member') : 'unknown'))
+  card.appendChild(el('div', 'icon', '📞'))
+  const body = el('div', 'body')
+  const when = new Date(call.at || Date.now()).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  body.appendChild(el('div', 'kicker', `Incoming call · ${call.clubName || ''} · ${when}`))
+  const tags = el('div', 'tags')
+  if (m) {
+    body.appendChild(el('div', 'name', m.name || call.name || call.phone || 'Member'))
+    tags.appendChild(el('span', 'tag' + (m.active ? '' : ' hot'), m.active ? 'Member · Active' : `Member · ${m.status || 'Inactive'}`))
+    if (m.pastDue) tags.appendChild(el('span', 'tag hot', 'Past due'))
+    if (m.membershipType) tags.appendChild(el('span', 'tag', m.membershipType))
+    if (m.clubName && m.clubName !== call.clubName) tags.appendChild(el('span', 'tag', `Home club: ${m.clubName}`))
+    if (m.ptClient) tags.appendChild(el('span', 'tag', m.ptTrainer ? `PT client · ${m.ptTrainer}` : 'PT client'))
+    body.appendChild(tags)
+    const others = matches.slice(1).filter(o => !o.nonMember).map(o => o.name).filter(Boolean)
+    const sub = [call.phone, m.barcode ? `Barcode ${m.barcode}` : '', others.length ? `Also on this number: ${others.join(', ')}` : '']
+    body.appendChild(el('div', 'sub', sub.filter(Boolean).join(' · ')))
+  } else {
+    body.appendChild(el('div', 'name', call.name || (nonMemberRec && nonMemberRec.name) || call.phone || 'Unknown caller'))
+    tags.appendChild(el('span', 'tag hot', 'Not a member'))
+    if (nonMemberRec) tags.appendChild(el('span', 'tag', `ABC non-member record · ${nonMemberRec.clubName || ''}`))
+    body.appendChild(tags)
+    const sub = [call.phone, call.email, call.lookupError ? 'Member lookup failed' : '']
+    body.appendChild(el('div', 'sub', sub.filter(Boolean).join(' · ')))
+  }
+  card.appendChild(body)
+  if (!m) {
+    const act = el('button', 'act', 'Log enquiry (coming soon)')
+    act.disabled = true
+    card.appendChild(act)
+  }
+  const x = el('button', 'x', '✕')
+  x.title = 'Dismiss'
+  x.addEventListener('click', () => card.remove())
+  card.appendChild(x)
+  callStack.prepend(card)
+  // Keep it to a few; the oldest go first.
+  while (callStack.children.length > 3) callStack.lastElementChild.remove()
+}
+
+if (IS_ABC_APP && window.top === window) {
+  ipcRenderer.on('incoming-call', (e, call) => {
+    try { showIncomingCall(call || {}) } catch (err) { console.error('[WCS Scraper] call banner failed', err) }
+  })
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   tryAutoFill()
 
