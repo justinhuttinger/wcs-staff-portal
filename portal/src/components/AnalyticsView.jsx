@@ -44,6 +44,7 @@ import AverageDues from './analytics/AverageDues'
 import ClubSnapshot from './analytics/ClubSnapshot'
 import KpiReport from './analytics/KpiReport'
 import PtSnapshot from './analytics/PtSnapshot'
+import WebJoins from './analytics/WebJoins'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 import ReportRecords from './analytics/ReportRecords'
 import MemberFilters, { MemberFilterNote, MEMBER_CATEGORY_OPTIONS } from './analytics/MemberFilters'
@@ -161,6 +162,14 @@ export const ANALYTICS_REPORTS = [
     Component: MembershipTrends,
     // A fixed 25-month trailing window, like Club Activity Trends.
     dates: false,
+  },
+  {
+    key: 'web-joins',
+    filters: ['category', 'basis'],
+    records: ['new-members'],
+    label: 'Web Joins',
+    desc: 'Web Share of New Members',
+    Component: WebJoins,
   },
   {
     key: 'net-membership',
@@ -416,8 +425,8 @@ export const ANALYTICS_REPORTS = [
 // alphabetically by label — so a new report can be appended to whichever list
 // it belongs in. The order of the groups themselves is still this order.
 export const REPORT_GROUPS = [
-  { key: 'marketing', label: 'Marketing',     reports: ['lead-sources'] },
-  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-analysis', 'attrition-trends', 'member-journey', 'checkins', 'nps', 'vip-analysis', 'average-dues'] },
+  { key: 'marketing', label: 'Marketing',     reports: ['lead-sources', 'web-joins'] },
+  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'web-joins', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-analysis', 'attrition-trends', 'member-journey', 'checkins', 'nps', 'vip-analysis', 'average-dues'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales', 'revenue', 'average-dues'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot', 'pt-roster', 'session-frequency'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till', 'payroll'] },
