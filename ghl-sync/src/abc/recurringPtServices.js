@@ -23,9 +23,8 @@ const PAGE_SIZE = 200;
 
 // ABC club list (clubNumber drives the API; GHL keys are irrelevant here, so we
 // do NOT use config/locations which filters on GHL credentials). Straight from
-// the club registry instead.
-const CLUBS = require('../config/clubs.json').clubs
-  .filter(c => c.active)
+// the club registry instead (public.clubs, loaded at boot).
+const CLUBS = require('../config/clubs').activeClubs()
   .map(c => ({ slug: c.slug, clubNumber: c.clubNumber, name: c.name }));
 
 function fmtDate(d) {
