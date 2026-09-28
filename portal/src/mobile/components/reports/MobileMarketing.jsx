@@ -8,6 +8,7 @@ import {
 import MobileLoading from '../MobileLoading'
 import { useCancellableFetch } from '../../../hooks/useCancellableFetch'
 import WcsLoadingMark from '../../../components/WcsLoadingMark'
+import { LOCATION_NAMES, LOCATIONS_WITH_ALL } from '../../../config/locations'
 
 /* ── helpers ────────────────────────────────────────── */
 
@@ -25,7 +26,7 @@ function classifyCampaign(name) {
   return 'Other'
 }
 function detectLocation(name) {
-  const LOCS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
+  const LOCS = [...LOCATION_NAMES]
   const n = (name || '').toLowerCase()
   for (const loc of LOCS) { if (n.includes(loc.toLowerCase())) return loc }
   return null
@@ -68,7 +69,7 @@ function getPresetRange(preset) {
   }
 }
 
-const LOCATIONS = ['All', 'Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
+const LOCATIONS = [...LOCATIONS_WITH_ALL]
 const TYPES = ['All', 'Lead', 'Traffic', 'Retargeting', 'Other']
 const DATE_PRESETS = [
   { key: '7d', label: '7 Days' },

@@ -2,17 +2,9 @@ import React, { useState, useMemo } from 'react'
 import LocationMultiSelect from '../../../components/LocationMultiSelect'
 import { usePullToRefresh } from '../usePullToRefresh'
 import WcsLoadingMark from '../../../components/WcsLoadingMark'
+import { CLUBS } from '../../../config/locations'
 
-const LOCATIONS = [
-  { slug: 'all', label: 'All' },
-  { slug: 'salem', label: 'Salem' },
-  { slug: 'keizer', label: 'Keizer' },
-  { slug: 'eugene', label: 'Eugene' },
-  { slug: 'springfield', label: 'Springfield' },
-  { slug: 'clackamas', label: 'Clackamas' },
-  { slug: 'milwaukie', label: 'Milwaukie' },
-  { slug: 'medford', label: 'Medford' },
-]
+const LOCATIONS = [{ slug: 'all', label: 'All' }, ...CLUBS.map(c => ({ slug: c.slug, label: c.name }))]
 
 const QUICK_RANGES = [
   { key: 'this_month', label: 'This Month' },

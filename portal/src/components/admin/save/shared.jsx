@@ -1,16 +1,10 @@
 // Shared bits for Admin -> Save Offers (WCS Save cancel flow).
 
-// ABC club number -> display name. Mirrors auth/src/config/clubMap.js; the
-// server rejects any club number not in that map.
-export const CLUBS = [
-  { number: '30935', name: 'Salem' },
-  { number: '31599', name: 'Keizer' },
-  { number: '7655', name: 'Eugene' },
-  { number: '31598', name: 'Springfield' },
-  { number: '31600', name: 'Clackamas' },
-  { number: '31601', name: 'Milwaukie' },
-  { number: '32073', name: 'Medford' },
-]
+import { CLUBS as REGISTRY_CLUBS } from '../../../config/locations'
+
+// ABC club number -> display name, from config/clubs (the same list the
+// server's clubMap uses to reject unknown club numbers).
+export const CLUBS = REGISTRY_CLUBS.map(c => ({ number: c.clubNumber, name: c.name }))
 export const CLUB_NAME = Object.fromEntries(CLUBS.map(c => [c.number, c.name]))
 
 export const OFFER_TYPES = [

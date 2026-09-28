@@ -4,17 +4,10 @@ import {
   DAY_START_HOUR, DAY_END_HOUR, PX_PER_MINUTE, GRID_HEIGHT_PX, WEEKDAY_LABELS, MONTH_LABELS,
   startOfWeek, addDays, toISODate, fmtHour, fmtTime12, parseLocalTimestamp, layoutLanes,
 } from '../../lib/weekGrid'
+import { CLUBS } from '../../config/locations'
 
 
-const CLUB_NUMBERS = [
-  { slug: 'salem', name: 'Salem', clubNumber: '30935' },
-  { slug: 'keizer', name: 'Keizer', clubNumber: '31599' },
-  { slug: 'eugene', name: 'Eugene', clubNumber: '7655' },
-  { slug: 'springfield', name: 'Springfield', clubNumber: '31598' },
-  { slug: 'clackamas', name: 'Clackamas', clubNumber: '31600' },
-  { slug: 'milwaukie', name: 'Milwaukie', clubNumber: '31601' },
-  { slug: 'medford', name: 'Medford', clubNumber: '32073' },
-]
+const CLUB_NUMBERS = CLUBS.map(c => ({ slug: c.slug, name: c.name, clubNumber: c.clubNumber }))
 
 // The four ABC event statuses this tool writes. These are the exact strings
 // ABC's PUT .../events/{id}/status accepts — do not localise them.

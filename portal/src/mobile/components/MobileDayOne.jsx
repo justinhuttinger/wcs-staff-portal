@@ -2,16 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { getDayOneTrackerAppointments } from '../../lib/api'
 import MobileDayOneOutcomeModal, { isCancelled, isCompleted } from './MobileDayOneOutcomeModal'
 import MobileLoading from './MobileLoading'
+import { CLUBS } from '../../config/locations'
 
-const LOCATIONS = [
-  { slug: 'salem', label: 'Salem' },
-  { slug: 'keizer', label: 'Keizer' },
-  { slug: 'eugene', label: 'Eugene' },
-  { slug: 'springfield', label: 'Springfield' },
-  { slug: 'clackamas', label: 'Clackamas' },
-  { slug: 'milwaukie', label: 'Milwaukie' },
-  { slug: 'medford', label: 'Medford' },
-]
+const LOCATIONS = CLUBS.map(c => ({ slug: c.slug, label: c.name }))
 
 function capitalize(str) {
   if (!str) return ''

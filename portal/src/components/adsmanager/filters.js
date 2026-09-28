@@ -3,16 +3,15 @@
 // Meta stores none of that structurally, so the filters parse the name. Same
 // approach the read-only Meta Ads report already takes.
 
-// Ordered longest-first so "Springfield" is never shadowed by a substring
-// match, and aliases map the East Side brand onto its real clubs.
+import { CLUBS } from '../../config/locations.js'
+
+// Misspellings that turn up in real campaign names.
+const EXTRA_PATTERNS = { milwaukie: ['milwuakie'] }
+
+// One entry per club (matched on its slug), then aliases that map the East
+// Side brand onto its own filter.
 export const CAMPAIGN_LOCATIONS = [
-  { slug: 'salem', label: 'Salem', patterns: ['salem'] },
-  { slug: 'keizer', label: 'Keizer', patterns: ['keizer'] },
-  { slug: 'eugene', label: 'Eugene', patterns: ['eugene'] },
-  { slug: 'springfield', label: 'Springfield', patterns: ['springfield'] },
-  { slug: 'clackamas', label: 'Clackamas', patterns: ['clackamas'] },
-  { slug: 'milwaukie', label: 'Milwaukie', patterns: ['milwaukie', 'milwuakie'] },
-  { slug: 'medford', label: 'Medford', patterns: ['medford'] },
+  ...CLUBS.map(c => ({ slug: c.slug, label: c.name, patterns: [c.slug, ...(EXTRA_PATTERNS[c.slug] || [])] })),
   // ESAC is East Side Athletic Club — its own Page and audiences, so it earns
   // its own filter entry rather than being folded into a club.
   { slug: 'esac', label: 'East Side (ESAC)', patterns: ['esac', 'east side'] },

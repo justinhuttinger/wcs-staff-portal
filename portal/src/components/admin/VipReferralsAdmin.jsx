@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { vipReferrals } from '../../lib/api'
 import VipReferralsConfig from './VipReferralsConfig'
+import { CLUBS } from '../../config/locations'
 
 const SUB_STATUS = {
   completed: { label: 'All sent',    cls: 'bg-green-100 text-green-800' },
@@ -237,13 +238,7 @@ function VipSubmissions() {
             className="px-2.5 py-1 bg-bg border border-border rounded-lg text-xs focus:outline-none focus:border-wcs-red"
           >
             <option value="">All locations</option>
-            <option value="salem">salem</option>
-            <option value="keizer">keizer</option>
-            <option value="eugene">eugene</option>
-            <option value="milwaukie">milwaukie</option>
-            <option value="clackamas">clackamas</option>
-            <option value="springfield">springfield</option>
-            <option value="medford">medford</option>
+            {CLUBS.map(c => <option key={c.slug} value={c.slug}>{c.slug}</option>)}
           </select>
         </label>
         <label className="text-xs">

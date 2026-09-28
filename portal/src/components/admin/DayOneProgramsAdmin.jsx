@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getDayOnePrograms } from '../../lib/api'
+import { CLUB_NAME_BY_NUMBER } from '../../config/locations'
 
 // Public domain the Day One endpoints are served from. Using this host for the
 // GHL redirect is what makes the generated program PDF open on
@@ -9,11 +10,8 @@ const PUBLIC_BASE = 'https://api.wcstrength.com'
 const WEBHOOK_URL = `${PUBLIC_BASE}/day-one-program/webhook`
 const REDIRECT_URL = `${PUBLIC_BASE}/day-one-program/success?contactId={{contact.id}}`
 
-// club_code -> friendly name (from auth/src/config/ghlLocations.js)
-const CLUB_NAMES = {
-  '30935': 'Salem', '31599': 'Keizer', '7655': 'Eugene', '31598': 'Springfield',
-  '31600': 'Clackamas', '31601': 'Milwaukie', '32073': 'Medford',
-}
+// club_code -> friendly name (config/clubs)
+const CLUB_NAMES = CLUB_NAME_BY_NUMBER
 
 const STATUS_STYLES = {
   complete: 'bg-green-100 text-green-700 border-green-300',

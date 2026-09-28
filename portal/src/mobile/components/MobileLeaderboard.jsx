@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { getLeaderboard } from '../../lib/api'
 import MobileLoading from './MobileLoading'
 import MobileEmptyState from './MobileEmptyState'
+import { LOCATION_NAMES } from '../../config/locations'
 
 const ROLES = ['team_member', 'lead', 'manager', 'corporate', 'admin']
 
@@ -51,7 +52,7 @@ export default function MobileLeaderboard({ user }) {
   const isManager = ROLES.indexOf(role) >= ROLES.indexOf('manager')
   const canViewAllClubs = role === 'admin' || role === 'corporate' || role === 'director'
 
-  const ALL_LOCATIONS = ['Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
+  const ALL_LOCATIONS = [...LOCATION_NAMES]
   const viewableLocations = canViewAllClubs
     ? ALL_LOCATIONS
     : userLocations.map(l => l.name).filter(Boolean)

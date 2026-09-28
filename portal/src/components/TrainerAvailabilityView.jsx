@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getTrainerAvailability, updateTrainerAvailability, updateTrainerPriority } from '../lib/api'
+import { CLUBS } from '../config/locations'
 
 const PRIORITY_OPTIONS = [
   { value: 0, label: 'Low' },
@@ -7,15 +8,7 @@ const PRIORITY_OPTIONS = [
   { value: 1, label: 'High' },
 ]
 
-const LOCATIONS = [
-  { slug: 'salem', label: 'Salem' },
-  { slug: 'keizer', label: 'Keizer' },
-  { slug: 'eugene', label: 'Eugene' },
-  { slug: 'springfield', label: 'Springfield' },
-  { slug: 'clackamas', label: 'Clackamas' },
-  { slug: 'milwaukie', label: 'Milwaukie' },
-  { slug: 'medford', label: 'Medford' },
-]
+const LOCATIONS = CLUBS.map(c => ({ slug: c.slug, label: c.name }))
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 const DAY_LABELS = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' }
