@@ -6,6 +6,7 @@ const { buildContactIndex, matchContact, isClaimedByOther } = require('./contact
 const referral = require('../config/referral');
 const { isEligibleCandidate, processReferralReward } = require('./referralRewards');
 const { fetchMemberInvoices, adjustInvoice } = require('./client');
+const { MEMBER_DETAIL_FIELD_KEYS, desiredMemberDetails, memberDetailUpdates, dateOfBirthUpdate } = require('./memberDetailFields');
 
 const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
 
@@ -132,7 +133,7 @@ async function reconcileLocation(location, runId) {
   while (true) {
     const { data: page, error: pageErr } = await supabase
       .from('ghl_contacts_v2')
-      .select('id, email, phone, first_name, last_name, tags, custom_fields')
+      .select('id, email, phone, first_name, last_name, date_of_birth, tags, custom_fields')
       .eq('location_id', locationId)
       .range(from, from + PAGE_SIZE - 1);
 
@@ -173,7 +174,7 @@ async function reconcileLocation(location, runId) {
   // Also get field IDs for all our mapped fields
   const fieldKeyToId = {};
   if (Object.keys(ABC_GHL_FIELD_MAP).length > 0) {
-    const fieldKeys = Object.values(ABC_GHL_FIELD_MAP);
+    const fieldKeys = [...Object.values(ABC_GHL_FIELD_MAP), ...MEMBER_DETAIL_FIELD_KEYS];
     const { data: allFieldDefs } = await supabase
       .from('ghl_custom_field_defs')
       .select('id, field_key')
@@ -377,6 +378,9 @@ async function reconcileLocation(location, runId) {
       if (signFid && signDate) newCustomFields[signFid] = signDate;
       const salespersonFid = fieldKeyToId[ABC_GHL_FIELD_MAP.salesperson];
       if (salespersonFid && abc.sales_person_name) newCustomFields[salespersonFid] = abc.sales_person_name;
+      for (const [key, value] of Object.entries(desiredMemberDetails(abc))) {
+        if (fieldKeyToId[key]) newCustomFields[fieldKeyToId[key]] = value;
+      }
 
       const createBody = {
         locationId,
@@ -384,6 +388,7 @@ async function reconcileLocation(location, runId) {
         lastName: abc.last_name || '',
         email: validEmail || undefined,
         phone: phone || undefined,
+        dateOfBirth: dateOfBirthUpdate(abc, null) || undefined,
         tags: isWebSale(abc) ? [ABC_TAGS.active, ABC_TAGS.onlineJoin] : [ABC_TAGS.active],
         customFields: Object.entries(newCustomFields).map(([id, value]) => ({ id, value })),
       };
@@ -536,7 +541,13 @@ async function reconcileLocation(location, runId) {
       }
     }
 
-    const hasChanges = needsAddTag || needsRemoveTag || needsOnlineJoinTag || Object.keys(customFieldUpdates).length > 0;
+    // Billing / agreement / check-in detail (next billing, past due, barcode, ...)
+    Object.assign(customFieldUpdates, memberDetailUpdates(abc, cf, fieldKeyToId));
+
+    // Standard GHL Date of Birth, not a custom field
+    const dobUpdate = dateOfBirthUpdate(abc, ghlContact.date_of_birth);
+
+    const hasChanges = needsAddTag || needsRemoveTag || needsOnlineJoinTag || dobUpdate || Object.keys(customFieldUpdates).length > 0;
     if (!hasChanges) continue;
 
     // Build GHL update payload
@@ -552,6 +563,7 @@ async function reconcileLocation(location, runId) {
     if (needsAddTag || needsRemoveTag || needsOnlineJoinTag) {
       updateBody.tags = newTags;
     }
+    if (dobUpdate) updateBody.dateOfBirth = dobUpdate;
     if (Object.keys(customFieldUpdates).length > 0) {
       updateBody.customFields = Object.entries(customFieldUpdates).map(([id, value]) => ({ id, value }));
     }
@@ -589,6 +601,16 @@ async function reconcileLocation(location, runId) {
     }
 
     // Log field updates
+    if (dobUpdate) {
+      fieldUpdates++;
+      logEntries.push({
+        run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
+        ghl_contact_id: ghlContact.id, ghl_contact_name: contactName, ghl_contact_email: ghlContact.email,
+        abc_member_id: abc.member_id, action: 'update_field',
+        detail: { field: 'dateOfBirth', from: ghlContact.date_of_birth || null, to: dobUpdate, match_method: matchMethod },
+        applied: false, error: null,
+      });
+    }
     for (const [fieldId, value] of Object.entries(customFieldUpdates)) {
       fieldUpdates++;
       const fieldKey = Object.entries(fieldKeyToId).find(([k, v]) => v === fieldId)?.[0] || fieldId;
