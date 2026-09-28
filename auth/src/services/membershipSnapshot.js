@@ -53,9 +53,13 @@ function num(v) {
  */
 async function excludedAsOf(asOf) {
   const { supabaseAdmin } = require('./supabase')
-  const { data, error } = await supabaseAdmin
+  const { fetchAll } = require('../lib/supabaseFetchAll')
+  // PAGED: PostgREST silently cuts an unpaged reply at 1,000 rows and this set
+  // runs to thousands, so the nightly counts were keeping most of it.
+  const data = await fetchAll(supabaseAdmin
     .rpc('analytics_members_excluded_as_of', { p_asof: asOf })
-  if (error) throw new Error(error.message)
+    .order('club_number', { ascending: true })
+    .order('member_id', { ascending: true }))
   return new Set((data || []).map(r => `${r.club_number}|${r.member_id}`))
 }
 
