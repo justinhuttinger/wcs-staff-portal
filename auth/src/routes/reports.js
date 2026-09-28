@@ -731,13 +731,19 @@ router.get('/club-health', async (req, res) => {
       if (clubNumbers2.length === 0) clubNumbers2 = ['__none__']
     }
 
+    // New members are selected on since_date, the day the membership started,
+    // with no is_active filter — exactly the population Club Snapshot's Joined
+    // and Salesperson Performance count (see isNewSale in
+    // lib/salespersonPerformance). This used to select on sign_date, keep
+    // active rows only and drop since_date < sign_date as renewals; sign_date
+    // moves onto a member's latest agreement, so that lost anyone who had
+    // re-signed or already cancelled, and the two reports disagreed.
     let abcQuery = supabaseAdmin
       .from('abc_members')
       .select('sales_person_name, email, membership_type, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method')
-      .eq('is_active', true)
-      .not('sign_date', 'is', null)
-    if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
-    if (end_date) abcQuery = abcQuery.lte('sign_date', end_date)
+      .not('since_date', 'is', null)
+    if (start_date) abcQuery = abcQuery.gte('since_date', start_date)
+    if (end_date) abcQuery = abcQuery.lte('since_date', end_date)
     if (clubNumbers2.length > 0) abcQuery = abcQuery.in('club_number', clubNumbers2)
 
     const abcMembers = []
@@ -754,7 +760,6 @@ router.get('/club-health', async (req, res) => {
     const excludeCat = m => isCategoryExcluded(m, categoryFilter.categoryMap, categoryFilter.excluded)
     const filteredMembers = abcMembers.filter(m =>
       !skipTypes.has((m.membership_type || '').toLowerCase())
-      && m.since_date && m.sign_date && m.since_date >= m.sign_date
       && !excludeCat(m)
     )
 
@@ -1040,9 +1045,56 @@ router.get('/club-health', async (req, res) => {
       console.warn('[club-health] analytics member count unavailable:', err.message)
     }
 
+    // Joined / Left / New Dues, from the function Club Snapshot reads, so the
+    // two reports agree by construction. Left in particular cannot be
+    // re-derived here: it applies the conditional-membership rule inside SQL
+    // (a member who was never counted cannot be lost), and the JS copy of that
+    // exclusion set is capped at 1,000 rows by PostgREST. Same one-category
+    // arithmetic as the members count above. Falls back to the row counts
+    // above if the function is unavailable.
+    let windowCounts = null
+    if (start_date && end_date) {
+      try {
+        const excludedCats = categoryFilter.excluded
+        const windowFor = (category, basis) => supabaseAdmin.rpc('analytics_topline_window', {
+          p_start: start_date,
+          p_end: end_date,
+          p_clubs: clubNumbers2.length > 0 ? clubNumbers2 : null,
+          p_exclude: true,
+          p_category: category,
+          p_basis: basis,
+        })
+        const bases = ['members', 'agreements']
+        const results = await Promise.all(bases.flatMap(b =>
+          ['all', ...excludedCats].map(c => windowFor(c, b))))
+        if (!results.some(r => r.error || !r.data)) {
+          const rowOf = r => (Array.isArray(r.data) ? r.data[0] : r.data) || {}
+          const per = excludedCats.length + 1
+          const counts = {}
+          bases.forEach((b, bi) => {
+            const slice = results.slice(bi * per, bi * per + per).map(rowOf)
+            const field = (f) => countAfterExclusion(
+              Number(slice[0][f]) || 0,
+              Object.fromEntries(excludedCats.map((c, i) => [c, Number(slice[i + 1][f]) || 0])),
+              excludedCats,
+            )
+            counts[b] = { joined: field('new_members'), left: field('lost_members'), dues: field('new_dues') }
+          })
+          windowCounts = counts
+        }
+      } catch (err) {
+        console.warn('[club-health] analytics window counts unavailable:', err.message)
+      }
+    }
+    const joinedMembers = windowCounts?.members.joined ?? filteredMembers.length
+    const joinedAgreements = windowCounts?.agreements.joined ?? uniqueAgreements
+    const leftMembers = windowCounts?.members.left ?? cancelsInPeriodMembers
+    const leftAgreements = windowCounts?.agreements.left ?? cancelsInPeriodAgreements
+    if (windowCounts) newDues = Math.round(windowCounts.members.dues * 100) / 100
+
     res.json({
-      total_memberships: filteredMembers.length,
-      total_agreements: uniqueAgreements,
+      total_memberships: joinedMembers,
+      total_agreements: joinedAgreements,
       filter_note: categoryFilter.note,
       total_vips: totalVips || 0,
       total_same_day_sales: totalSameDaySales,
@@ -1070,10 +1122,10 @@ router.get('/club-health', async (req, res) => {
       active_members_source: toplineMembers != null ? 'analytics' : 'roster',
       active_agreements_total: activeAgreementsTotal,
       active_by_membership_type: activeByMembershipType,
-      cancels_members: cancelsInPeriodMembers,
-      cancels_agreements: cancelsInPeriodAgreements,
-      net_change_members: filteredMembers.length - cancelsInPeriodMembers,
-      net_change_agreements: uniqueAgreements - cancelsInPeriodAgreements,
+      cancels_members: leftMembers,
+      cancels_agreements: leftAgreements,
+      net_change_members: joinedMembers - leftMembers,
+      net_change_agreements: joinedAgreements - leftAgreements,
       // --- from the Analytics definitions, so Club Health and Club Snapshot
       // cannot disagree about the same month ---
       new_dues: newDues,

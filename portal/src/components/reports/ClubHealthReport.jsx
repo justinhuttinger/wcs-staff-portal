@@ -216,10 +216,10 @@ function SectionHeader({ title }) {
 // without its definition having been checked against this report's own. Three
 // of these could not reuse one:
 //
-//   - the membership cards count on sign_date, where Analytics counts on
-//     since_date, so they get 'club-health-sales' rather than 'new-members'
-//   - Cancels does not apply the conditional-membership rule, where Analytics'
-//     'lost-members' does, so it gets 'club-health-cancels'
+//   - the membership cards open 'club-health-sales', which counts on since_date
+//     like 'new-members' but carries the Same Day / Sold By columns and filters
+//   - Cancels opens 'club-health-cancels': the same rows as 'lost-members'
+//     (conditional-membership rule included), plus the Agreement column
 //   - Total VIPs counts the GHL `vip_team_member` field, where the 'vips' set
 //     reads the vip_credits table, so it gets 'club-health-vips'
 //

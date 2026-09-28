@@ -147,11 +147,11 @@ test('the club-wide sets exist and are renderable', () => {
 // ---------------------------------------------------------------------------
 // The sets Club Health needed of its own.
 //
-// Club Health counts its membership on sign_date where Analytics counts on
-// since_date, and its Cancels card does not apply the conditional-membership
-// rule where Analytics' does. These sets exist so each of its cards opens the
-// rows IT counted; the guard here is that they stay distinct from the
-// Analytics ones rather than quietly being aliased back onto them.
+// Club Health now counts the same members as Analytics (since_date joins,
+// conditional-membership rule on losses), but its sets carry extra columns
+// and filters (Same Day, Sold By, Agreement, same-day / ach). The guard here
+// is that they stay their own sets rather than being aliased onto the
+// Analytics ones and losing those columns.
 // ---------------------------------------------------------------------------
 
 test('Club Health has its own sets, and they are renderable', () => {
