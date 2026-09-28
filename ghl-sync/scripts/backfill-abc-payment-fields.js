@@ -33,7 +33,7 @@ function db() {
   return _supabase;
 }
 
-const CLUBS = ['30935', '31599', '7655', '31598', '31600', '31601', '32073'];
+const CLUBS = require('../src/config/clubs.json').clubs.filter(c => c.active).map(c => c.clubNumber);
 const BATCH = 250;
 
 function toBool(v) {

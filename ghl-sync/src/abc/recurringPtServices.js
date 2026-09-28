@@ -22,16 +22,11 @@ const ABC_APP_KEY = process.env.ABC_APP_KEY;
 const PAGE_SIZE = 200;
 
 // ABC club list (clubNumber drives the API; GHL keys are irrelevant here, so we
-// do NOT use config/locations which filters on GHL credentials).
-const CLUBS = [
-  { slug: 'salem', clubNumber: '30935', name: 'Salem' },
-  { slug: 'keizer', clubNumber: '31599', name: 'Keizer' },
-  { slug: 'eugene', clubNumber: '7655', name: 'Eugene' },
-  { slug: 'springfield', clubNumber: '31598', name: 'Springfield' },
-  { slug: 'clackamas', clubNumber: '31600', name: 'Clackamas' },
-  { slug: 'milwaukie', clubNumber: '31601', name: 'Milwaukie' },
-  { slug: 'medford', clubNumber: '32073', name: 'Medford' },
-];
+// do NOT use config/locations which filters on GHL credentials). Straight from
+// the club registry instead.
+const CLUBS = require('../config/clubs.json').clubs
+  .filter(c => c.active)
+  .map(c => ({ slug: c.slug, clubNumber: c.clubNumber, name: c.name }));
 
 function fmtDate(d) {
   const p = (n) => String(n).padStart(2, '0');
