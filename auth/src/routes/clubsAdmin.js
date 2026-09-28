@@ -12,8 +12,10 @@
  * GET  /             every club from the database, with which credentials are set
  * POST /             create a club
  * PUT  /:clubNumber  edit a club (name, slug and club number are fixed)
+ * POST /:clubNumber/photo  upload the club's photo (portal background)
  */
 const { Router } = require('express')
+const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
@@ -110,7 +112,10 @@ async function ensureClubIntegrations(row) {
   if (error) throw error
 }
 
-function afterSave(res, payload) {
+// defer: the portal is about to upload a photo for this club, and that request
+// does the restart, so the two do not race.
+function afterSave(res, payload, { defer = false } = {}) {
+  if (defer) return res.json({ ...payload, restart: { status: 'deferred', message: 'Saved.' } })
   const restart = canRestart()
     ? { status: 'restarting', message: 'The portal services are restarting to pick this up (about 2 minutes).' }
     : { status: 'manual', message: 'Saved. Restart wcs-auth-api and ghl-sync in Render to apply it (auto-restart is not configured).' }
@@ -149,7 +154,7 @@ router.post('/', async (req, res) => {
     await ensureClubIntegrations(row)
 
     console.log(`[clubs] created ${row.name} (${row.club_number}) by ${req.staff?.email || 'admin'}`)
-    afterSave(res, { club: rowToClub({ ...row, sort_order: sortOrder }) })
+    afterSave(res, { club: rowToClub({ ...row, sort_order: sortOrder }) }, { defer: req.body.deferRestart === true })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -176,7 +181,61 @@ router.put('/:clubNumber', async (req, res) => {
     await ensureClubIntegrations(row)
 
     console.log(`[clubs] updated ${name} (${club_number}) by ${req.staff?.email || 'admin'}`)
-    afterSave(res, { club: rowToClub({ ...currentRow, ...editable }) })
+    afterSave(res, { club: rowToClub({ ...currentRow, ...editable }) }, { defer: req.body.deferRestart === true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Club photo (the portal background for the club). Public bucket: the photo is
+// shown on the sign-in screen before anyone is signed in.
+const PHOTO_BUCKET = 'club-photos'
+const PHOTO_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
+const PHOTO_MAX = 5 * 1024 * 1024
+const photoUpload = multer({ limits: { fileSize: PHOTO_MAX, files: 1 } })
+
+let photoBucketReady = false
+async function ensurePhotoBucket() {
+  if (photoBucketReady) return
+  const { error } = await supabaseAdmin.storage.createBucket(PHOTO_BUCKET, {
+    public: true,
+    fileSizeLimit: '5MB',
+    allowedMimeTypes: Object.keys(PHOTO_TYPES),
+  })
+  if (error && !/exist/i.test(error.message || '')) throw error
+  photoBucketReady = true
+}
+
+// POST /admin/clubs/:clubNumber/photo  (multipart: file)
+router.post('/:clubNumber/photo', (req, res, next) => {
+  photoUpload.single('file')(req, res, err => {
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Photo must be under 5 MB.' : err.message })
+    next()
+  })
+}, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No photo was uploaded.' })
+    const ext = PHOTO_TYPES[req.file.mimetype]
+    if (!ext) return res.status(400).json({ error: 'Photo must be a JPG, PNG or WebP.' })
+
+    const rows = await readClubs()
+    const row = rows.find(r => r.club_number === String(req.params.clubNumber).replace(/^0+/, ''))
+    if (!row) return res.status(404).json({ error: 'Unknown club' })
+
+    await ensurePhotoBucket()
+    const path = `${row.slug}-${Date.now()}.${ext}`
+    const { error: upErr } = await supabaseAdmin.storage.from(PHOTO_BUCKET)
+      .upload(path, req.file.buffer, { contentType: req.file.mimetype, upsert: false })
+    if (upErr) throw upErr
+    const url = supabaseAdmin.storage.from(PHOTO_BUCKET).getPublicUrl(path)?.data?.publicUrl
+    if (!url) throw new Error('Storage did not return a public URL')
+
+    const { error } = await supabaseAdmin.from('clubs')
+      .update({ background: url, updated_at: new Date().toISOString() })
+      .eq('club_number', row.club_number)
+    if (error) throw error
+
+    afterSave(res, { club: rowToClub({ ...row, background: url }) })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

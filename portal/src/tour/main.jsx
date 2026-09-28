@@ -1,8 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import TourCheckinApp from './TourCheckinApp'
 import '../index.css'
 import { startAutoUpdate } from './autoUpdate'
+import { loadClubs } from '../config/locations'
 
 // Standalone, login-free entry. Token comes from the query string so this is a
 // plain physical file (/tour.html?token=...) the static host always serves -
@@ -21,8 +21,13 @@ if ('serviceWorker' in navigator) {
 // reload. Checks for a new entry bundle and reloads when the desk is quiet.
 startAutoUpdate(import.meta.url)
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <TourCheckinApp token={token} />
-  </React.StrictMode>
-)
+// The club list has to be loaded before the app is imported: many components
+// build their club lists at import time (see config/locations.js).
+loadClubs().then(async () => {
+  const { default: TourCheckinApp } = await import('./TourCheckinApp')
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <React.StrictMode>
+      <TourCheckinApp token={token} />
+    </React.StrictMode>
+  )
+})

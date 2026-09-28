@@ -1,8 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App'
 import './index.css'
 import { applyPrefs, getPrefs } from './lib/theme'
+import { loadClubs } from './config/locations'
 
 // Apply local prefs (including the derived --portal-accent-ink) before the
 // app renders, independent of hydrateUiPrefs's network round trip. The
@@ -14,8 +14,13 @@ import { applyPrefs, getPrefs } from './lib/theme'
 // hydrateUiPrefs's later, authoritative setPrefs call.
 applyPrefs(getPrefs())
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-)
+// The club list has to be loaded before the app is imported: many components
+// build their club lists at import time (see config/locations.js).
+loadClubs().then(async () => {
+  const { default: App } = await import('./App')
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  )
+})
