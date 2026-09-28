@@ -99,16 +99,6 @@
   </div><!-- end #modal -->
 
   <script>
-    const WCS_LOCATIONS = {
-      Salem: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
-      Springfield: { booking: 'https://api.westcoaststrength.com/widget/booking/PEyaqnkjmBN5tLpo6I9F', vip: 'https://api.westcoaststrength.com/widget/survey/uM48yWzOBhXhUBsG1fhW' },
-      Eugene: { booking: 'https://api.westcoaststrength.com/widget/booking/0c9CNdZ65NainMcStWXo', vip: 'https://api.westcoaststrength.com/widget/survey/xKYTE6V7QXKVpkUfWTFi' },
-      Keizer: { booking: 'https://api.westcoaststrength.com/widget/booking/8qFo1GnePy0mCgV9avWW', vip: 'https://api.westcoaststrength.com/widget/survey/HXB00WKKe6srvgSmfwI7' },
-      Clackamas: { booking: 'https://api.westcoaststrength.com/widget/booking/yOvDLsZMAboTVjv9c2HC', vip: 'https://api.westcoaststrength.com/widget/survey/Z9zEHwjGfQaMIYy9OueF' },
-      Milwaukie: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
-      Medford: { booking: 'https://api.westcoaststrength.com/widget/booking/Gq92GXsDRAgTGZeHh7mx', vip: 'https://api.westcoaststrength.com/widget/survey/FkrsORfLFVMiVS26LV9V' },
-    };
-
     const params = new URLSearchParams(window.location.search);
     const member = {
       firstName: params.get('firstName') || '',
@@ -118,7 +108,13 @@
       salesperson: params.get('salesperson') || '',
     };
     const locationName = params.get('location') || 'Salem';
-    const loc = WCS_LOCATIONS[locationName] || WCS_LOCATIONS['Salem'];
+    // Fallback only, if the Action Links call below fails: every club's links
+    // follow the same pattern as the values set in Admin -> Action Links.
+    const slug = encodeURIComponent(locationName.toLowerCase());
+    const loc = {
+      booking: 'https://book.westcoaststrength.com/dayone/' + slug,
+      vip: 'https://vip.westcoaststrength.com/' + slug + '/staff',
+    };
 
     const fullName = [member.firstName, member.lastName].filter(Boolean).join(' ').toUpperCase();
     const displayName = fullName || 'NEW MEMBER';
@@ -156,7 +152,7 @@
 
     // Links come from Admin -> Action Links (Day One + VIP per club), read
     // through a public endpoint because WCS ABC has no portal sign-in. The
-    // WCS_LOCATIONS table above is only the fallback if that call fails.
+    // pattern-built `loc` above is only the fallback if that call fails.
     const API_BASE = 'https://api.wcstrength.com';
     function loadFrames(links) {
       document.getElementById('booking-frame').src = buildUrl((links && links.dayone) || loc.booking);
