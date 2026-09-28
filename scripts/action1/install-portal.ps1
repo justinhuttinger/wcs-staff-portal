@@ -22,9 +22,9 @@
 
   Params:
     -Flavor portal|abc   which app (default portal)
-    -InstallIfMissing    fresh-install when the app isn't installed. Note a
-                         silent install skips the kiosk location page, so
-                         C:\WCS\config.json is not written.
+    -InstallIfMissing    fresh-install when the app isn't installed. Set the
+                         club afterwards with set-wcs-club.ps1 (writes
+                         C:\WCS\config.json).
     -NoTask              update only; don't install/refresh the scheduled tasks
     -RegisterOnly        install the tasks and exit (used by the installer)
     -InstallDir <dir>    with -RegisterOnly: detect the flavor from
@@ -288,7 +288,7 @@ try {
   $wasRunning = Stop-App $f
 
   # /S = silent. --updated makes electron-builder's NSIS script treat it as
-  # an update (keeps shortcuts, skips the kiosk location page).
+  # an update (keeps shortcuts).
   $argList = @('/S')
   if ($installed) { $argList += '--updated' }
   $p = Start-Process -FilePath $installer -ArgumentList $argList -Wait -PassThru

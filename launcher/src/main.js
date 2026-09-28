@@ -12,7 +12,7 @@ if (IS_ABC_ONLY) app.setPath('userData', path.join(app.getPath('appData'), APP_D
 if (process.platform === 'win32') app.setAppUserModelId(APP_DISPLAY_NAME)
 log('=== APP STARTING === platform=' + process.platform + ' version=' + app.getVersion() + ' mode=' + APP_MODE)
 const { PORTAL_URL, getAbcUrl, getLocation, readConfig, writeConfig } = require('./config')
-const { LOCATIONS, CLUB_NUMBERS } = require('./locations')
+const { LOCATIONS, CLUB_NUMBERS, loadClubsAtStartup } = require('./locations')
 const TabManager = require('./tabs')
 const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./overlay')
 const { openToolPopup } = require('./tool-popup')
@@ -43,9 +43,9 @@ let pendingDeepLink = null
 // First-launch location picker. Resolves with the saved config once
 // the user picks. If they close the window without picking, quits.
 //
-// Windows kiosks deployed via the NSIS installer write config.json
-// during install, so this is a no-op for them. macOS .dmg installs
-// hit the picker on the first launch and skip it on subsequent ones.
+// PCs set up by Action1 already have config.json (set-wcs-club.ps1), so
+// this is a no-op for them. Manual installs (Windows or macOS) hit the
+// picker on the first launch and skip it on subsequent ones.
 function pickLocationIfNeeded() {
   const cfg = readConfig()
   if (cfg && cfg.location) return Promise.resolve(cfg)
@@ -186,10 +186,14 @@ ipcMain.on('wcs-app-mode', (e) => { e.returnValue = APP_MODE })
 ipcMain.on('wcs-club-numbers', (e) => { e.returnValue = CLUB_NUMBERS })
 
 app.on('ready', async () => {
+  // Club list from Admin -> Clubs (cached; see locations.js), before the
+  // picker needs it.
+  await loadClubsAtStartup()
+
   // First-launch flow: prompt for location before showing the main
-  // window. Windows kiosks already have config.json written by the
-  // NSIS installer, so this resolves immediately. macOS .dmg
-  // installs hit the picker.
+  // window. PCs set up by Action1 (set-wcs-club.ps1) already have
+  // config.json, so this resolves immediately; a manual install hits the
+  // picker once.
   await pickLocationIfNeeded()
 
   const { session } = require('electron')
