@@ -532,5 +532,5 @@ module.exports = {
   CLUBS, CLUB_BY_NUMBER, CLUB_BY_SLUG, AGE_GROUPS,
   buildReport, buildFilterOptions, buildMemberIndex, matchMember,
   isExcludedType, personKey, displayName, digits10, ageOn, ageGroupKey, pct,
-  ACH_PAYMENT_METHOD, VIEW_BY, isNewSale, clubName,
+  ACH_PAYMENT_METHOD, VIEW_BY, isNewSale, clubName, daysToSign,
 }

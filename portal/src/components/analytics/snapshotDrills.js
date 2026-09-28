@@ -27,7 +27,7 @@ export const STAT_DRILLS = {
   vipCount:           { set: 'vips', title: 'VIP referrals' },
   vipPct:             { set: 'vips', title: 'VIP referrals' },
   toursGiven:         { set: 'tours', title: 'Tours given' },
-  sameDaySales:       { set: 'tours', title: 'Tours given' },
+  sameDaySales:       { set: 'tours', filter: 'same-day', title: 'Tours closed same day' },
   tourConversionRate: { set: 'tours', title: 'Tours given' },
   dayOnes:            { set: 'day-ones', title: 'Day Ones' },
   dayOnesShowed:      { set: 'day-ones', filter: 'completed', title: 'Completed Day Ones' },
