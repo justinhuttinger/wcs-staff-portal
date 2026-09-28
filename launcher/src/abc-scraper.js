@@ -614,7 +614,10 @@ function ensureCallHost() {
     '.tag{background:rgba(255,255,255,.2);border-radius:6px;padding:2px 9px;font-size:14px;font-weight:600;}' +
     '.tag.hot{background:#fff;color:#9b2c2c;}' +
     '.sub{font-size:13px;opacity:.85;margin-top:6px;}' +
-    '.act{pointer-events:auto;border:0;border-radius:10px;padding:10px 16px;font-weight:700;font-size:14px;font-family:inherit;background:#fff;color:#1a365d;cursor:not-allowed;opacity:.7;}' +
+    '.act{pointer-events:auto;border:0;border-radius:10px;padding:10px 16px;font-weight:700;font-size:14px;font-family:inherit;background:#fff;color:#1a365d;cursor:not-allowed;opacity:.7;white-space:nowrap;}' +
+    '.act.go{cursor:pointer;opacity:1;}.act.go:hover{filter:brightness(.92);}' +
+    '.acts{display:flex;flex-direction:column;gap:8px;}' +
+    '.link{text-decoration:underline;cursor:pointer;font-weight:700;}' +
     '.x{position:absolute;top:10px;right:12px;width:32px;height:32px;border:0;border-radius:50%;background:rgba(255,255,255,.2);' +
     'color:#fff;font-size:18px;cursor:pointer;}.x:hover{background:rgba(255,255,255,.35);}' +
     '</style><div class="stack"></div>'
@@ -627,6 +630,24 @@ function el(tag, cls, text) {
   if (cls) e.className = cls
   if (text != null) e.textContent = text
   return e
+}
+
+// Open a member's ABC record in the #main frame. ABC's own member search loads
+// exactly this URL; wizardFirstLoad=1 starts the agreement page fresh, so it
+// works from any screen (the bare AgreementCommand-AgreementTag URL only swaps
+// the member when an agreement page is already open). Verified 2026-09-28 for
+// same-club and other-club members.
+function openAbcMember(memberId) {
+  if (!/^[0-9a-f]{32}$/i.test(String(memberId || ''))) return
+  const frame = document.querySelector('#main')
+  if (!frame || !frame.contentWindow) return
+  frame.contentWindow.location.href = '/AgreementCommand.pml?wizardFirstLoad=1&selectedMemberId=' + memberId
+}
+
+function openButton(label, memberId) {
+  const b = el('button', 'act go', label)
+  b.addEventListener('click', () => openAbcMember(memberId))
+  return b
 }
 
 function showIncomingCall(call) {
@@ -650,9 +671,19 @@ function showIncomingCall(call) {
     if (m.clubName && m.clubName !== call.clubName) tags.appendChild(el('span', 'tag', `Home club: ${m.clubName}`))
     if (m.ptClient) tags.appendChild(el('span', 'tag', m.ptTrainer ? `PT client · ${m.ptTrainer}` : 'PT client'))
     body.appendChild(tags)
-    const others = matches.slice(1).filter(o => !o.nonMember).map(o => o.name).filter(Boolean)
-    const sub = [call.phone, m.barcode ? `Barcode ${m.barcode}` : '', others.length ? `Also on this number: ${others.join(', ')}` : '']
-    body.appendChild(el('div', 'sub', sub.filter(Boolean).join(' · ')))
+    const sub = el('div', 'sub', [call.phone, m.barcode ? `Barcode ${m.barcode}` : ''].filter(Boolean).join(' · '))
+    // Others sharing the number (family): click a name to open them instead.
+    const others = matches.slice(1).filter(o => !o.nonMember && o.name)
+    if (others.length) {
+      sub.appendChild(document.createTextNode(' · Also on this number: '))
+      others.forEach((o, i) => {
+        if (i) sub.appendChild(document.createTextNode(', '))
+        const a = el('span', 'link', o.name)
+        a.addEventListener('click', () => openAbcMember(o.memberId))
+        sub.appendChild(a)
+      })
+    }
+    body.appendChild(sub)
   } else {
     body.appendChild(el('div', 'name', call.name || (nonMemberRec && nonMemberRec.name) || call.phone || 'Unknown caller'))
     tags.appendChild(el('span', 'tag hot', 'Not a member'))
@@ -662,11 +693,16 @@ function showIncomingCall(call) {
     body.appendChild(el('div', 'sub', sub.filter(Boolean).join(' · ')))
   }
   card.appendChild(body)
-  if (!m) {
+  const acts = el('div', 'acts')
+  if (m) {
+    acts.appendChild(openButton('Open profile', m.memberId))
+  } else {
     const act = el('button', 'act', 'Log enquiry (coming soon)')
     act.disabled = true
-    card.appendChild(act)
+    acts.appendChild(act)
+    if (nonMemberRec) acts.appendChild(openButton('Open ABC record', nonMemberRec.memberId))
   }
+  card.appendChild(acts)
   const x = el('button', 'x', '✕')
   x.title = 'Dismiss'
   x.addEventListener('click', () => card.remove())
