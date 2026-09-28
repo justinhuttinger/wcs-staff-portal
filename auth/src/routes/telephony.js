@@ -6,13 +6,20 @@
 //    the result for that club.
 //  - GET /telephony/pending?club=30935&after=<id>  (launcher key) -- WCS ABC
 //    polls this every few seconds and shows a banner for anything new.
+//  - POST /telephony/enquiry  (launcher key) -- the banner's telephony enquiry
+//    form: name + email onto the caller's GHL contact, tagged. Only for a call
+//    this club received in the last hour (see recentCall), so this can't be
+//    used to edit arbitrary GHL contacts.
 //
 // The queue is in memory; see lib/incomingCalls.js for why that's OK for now.
 
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
-const { clubByNumber } = require('../config/clubs')
-const { last10, createCallQueue, summarizeMatches } = require('../lib/incomingCalls')
+const { clubByNumber, envFor } = require('../config/clubs')
+const { ghlFetch } = require('../services/ghlClient')
+const { last10, createCallQueue, summarizeMatches, cleanEnquiry } = require('../lib/incomingCalls')
+
+const ENQUIRY_TAG = 'telephony enquiry'
 
 const router = Router()
 const queue = createCallQueue()
@@ -113,6 +120,36 @@ router.get('/pending', requireLauncherKey, (req, res) => {
   if (!club) return res.status(400).json({ error: 'club required' })
   const after = Number(req.query.after) || 0
   res.json({ calls: queue.since(club, after), latestId: queue.latestId() })
+})
+
+router.post('/enquiry', requireLauncherKey, async (req, res) => {
+  const b = req.body || {}
+  const club = str(b.club, 20).replace(/^0+/, '')
+  const call = club ? queue.recentCall(club, b.callId) : null
+  if (!call) return res.status(404).json({ error: "Couldn't find this call (calls can be saved for an hour). Log it in GHL instead." })
+  if (!call.ghlContactId) return res.status(400).json({ error: 'This call has no GHL contact' })
+  const { value, error } = cleanEnquiry(b)
+  if (error) return res.status(400).json({ error })
+
+  const clubRec = clubByNumber(club)
+  const apiKey = clubRec && envFor(clubRec, 'GHL_API_KEY_')
+  if (!apiKey) return res.status(503).json({ error: 'GHL is not set up for this club' })
+
+  try {
+    const update = { firstName: value.firstName, lastName: value.lastName }
+    if (value.email) update.email = value.email
+    const contactPath = `/contacts/${encodeURIComponent(call.ghlContactId)}`
+    await ghlFetch(contactPath, apiKey, { method: 'PUT', body: update })
+    await ghlFetch(`${contactPath}/tags`, apiKey, { method: 'POST', body: { tags: [ENQUIRY_TAG] } })
+    console.log(`[telephony] enquiry saved call #${call.id} club=${club} by=${str(b.staffName, 80) || '?'}`)
+    res.json({ ok: true, ...value })
+  } catch (err) {
+    const msg = String(err.message || err)
+    console.error('[telephony] enquiry save failed:', msg)
+    // GHL's duplicate-contact rule rejects an email another contact already has.
+    const dup = /duplicat|already exist/i.test(msg)
+    res.status(502).json({ error: dup ? 'Another GHL contact already has that email' : 'Could not save to GHL' })
+  }
 })
 
 module.exports = router

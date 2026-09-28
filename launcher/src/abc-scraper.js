@@ -592,36 +592,65 @@ function hideAlertCue() {
 // stack, newest on top, and stay until staff close them.
 let callHost = null
 let callStack = null
+let clearAllBtn = null
+// Stepping away from the desk: untouched call cards clear themselves after
+// this long; a card staff started working (any button, or Collect info)
+// stays until closed. At most MAX_CALL_CARDS show; a new call pushes out the
+// oldest untouched card first.
+const CALL_CARD_TTL_MS = 10 * 60 * 1000
+const MAX_CALL_CARDS = 3
+
+function syncClearAll() {
+  if (clearAllBtn) clearAllBtn.hidden = callStack.querySelectorAll('.card').length < 2
+}
 function ensureCallHost() {
   if (callHost) return
   callHost = document.createElement('div')
   callHost.id = 'wcs-call-banner'
-  callHost.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;pointer-events:none;'
+  callHost.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;pointer-events:none;display:flex;flex-direction:column;'
   const root = callHost.attachShadow({ mode: 'closed' })
   root.innerHTML = '<style>' +
-    ".stack{display:flex;flex-direction:column;gap:8px;padding:10px 16px;font:500 15px/1.35 'Inter',-apple-system,'Segoe UI',sans-serif;}" +
-    '.card{pointer-events:auto;position:relative;display:flex;gap:16px;align-items:center;border-radius:14px;padding:16px 56px 16px 20px;' +
-    'color:#fff;box-shadow:0 14px 44px rgba(0,0,0,.35);animation:drop .25s ease-out;}' +
-    '@keyframes drop{from{transform:translateY(-20px);opacity:0}to{transform:none;opacity:1}}' +
+    ".stack{display:flex;flex-direction:column;gap:6px;padding:6px 12px;font:500 14px/1.3 'Inter',-apple-system,'Segoe UI',sans-serif;}" +
+    '.card{pointer-events:auto;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;border-radius:10px;padding:7px 8px 7px 14px;' +
+    'color:#fff;box-shadow:0 8px 28px rgba(0,0,0,.3);animation:drop .2s ease-out;}' +
+    '@keyframes drop{from{transform:translateY(-12px);opacity:0}to{transform:none;opacity:1}}' +
     '.card.member{background:linear-gradient(135deg,#1f6f43,#2f855a);}' +
     '.card.warn{background:linear-gradient(135deg,#9b2c2c,#c53030);}' +
     '.card.unknown{background:linear-gradient(135deg,#1a365d,#2b6cb0);}' +
-    '.icon{font-size:34px;line-height:1;}' +
-    '.body{flex:1;min-width:0;}' +
-    '.kicker{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.85;}' +
-    '.name{font-size:24px;font-weight:800;margin:2px 0 6px;}' +
-    '.tags{display:flex;flex-wrap:wrap;gap:6px;}' +
-    '.tag{background:rgba(255,255,255,.2);border-radius:6px;padding:2px 9px;font-size:14px;font-weight:600;}' +
+    '.info{flex:1;min-width:0;display:flex;align-items:center;gap:10px;white-space:nowrap;overflow:hidden;}' +
+    '.kicker{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.8;}' +
+    '.name{font-size:18px;font-weight:800;}' +
+    '.tags{display:flex;gap:5px;}' +
+    '.tag{background:rgba(255,255,255,.2);border-radius:5px;padding:1px 7px;font-size:12px;font-weight:600;}' +
     '.tag.hot{background:#fff;color:#9b2c2c;}' +
-    '.sub{font-size:13px;opacity:.85;margin-top:6px;}' +
-    '.act{pointer-events:auto;border:0;border-radius:10px;padding:10px 16px;font-weight:700;font-size:14px;font-family:inherit;background:#fff;color:#1a365d;cursor:not-allowed;opacity:.7;white-space:nowrap;}' +
-    '.act.go{cursor:pointer;opacity:1;}.act.go:hover{filter:brightness(.92);}' +
-    '.acts{display:flex;flex-direction:column;gap:8px;}' +
+    '.sub{font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;}' +
+    '.act{pointer-events:auto;border:0;border-radius:8px;padding:6px 11px;font-weight:700;font-size:13px;font-family:inherit;' +
+    'background:#fff;color:#1a365d;cursor:pointer;white-space:nowrap;}' +
+    '.act:hover{filter:brightness(.92);}.act:disabled{opacity:.45;cursor:not-allowed;filter:none;}' +
+    '.act.ghost{background:transparent;color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.7);}' +
+    '.acts{display:flex;gap:6px;flex-shrink:0;}' +
+    '.form{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}' +
+    '.form[hidden]{display:none;}' +
+    '.form input{border:0;border-radius:7px;padding:6px 9px;font-family:inherit;font-size:13px;width:150px;color:#1a202c;}' +
+    '.form input.email{width:210px;}' +
+    '.status{font-size:12px;font-weight:700;}' +
     '.link{text-decoration:underline;cursor:pointer;font-weight:700;}' +
-    '.x{position:absolute;top:10px;right:12px;width:32px;height:32px;border:0;border-radius:50%;background:rgba(255,255,255,.2);' +
-    'color:#fff;font-size:18px;cursor:pointer;}.x:hover{background:rgba(255,255,255,.35);}' +
+    '.clear{pointer-events:auto;align-self:flex-end;border:0;border-radius:999px;padding:3px 10px;margin-right:12px;' +
+    'font-weight:700;font-size:11px;font-family:inherit;background:rgba(26,32,44,.85);color:#fff;cursor:pointer;}.clear[hidden]{display:none;}' +
+    '.x{flex-shrink:0;width:26px;height:26px;border:0;border-radius:50%;background:rgba(255,255,255,.2);' +
+    'color:#fff;font-size:14px;cursor:pointer;}.x:hover{background:rgba(255,255,255,.35);}' +
     '</style><div class="stack"></div>'
   callStack = root.querySelector('.stack')
+  clearAllBtn = el('button', 'clear', 'Clear all calls')
+  clearAllBtn.hidden = true
+  clearAllBtn.addEventListener('click', () => {
+    callStack.querySelectorAll('.card').forEach(c => c.remove())
+    syncClearAll()
+  })
+  callStack.after(clearAllBtn)
+  for (const type of ['keydown', 'keyup', 'keypress']) {
+    callHost.addEventListener(type, e => e.stopPropagation())
+  }
   document.documentElement.appendChild(callHost)
 }
 
@@ -644,10 +673,80 @@ function openAbcMember(memberId) {
   frame.contentWindow.location.href = '/AgreementCommand.pml?wizardFirstLoad=1&selectedMemberId=' + memberId
 }
 
-function openButton(label, memberId) {
-  const b = el('button', 'act go', label)
-  b.addEventListener('click', () => openAbcMember(memberId))
+function actButton(label, onClick, cls = '') {
+  const b = el('button', ('act ' + cls).trim(), label)
+  b.addEventListener('click', onClick)
   return b
+}
+
+function openButton(label, memberId) {
+  return actButton(label, () => openAbcMember(memberId))
+}
+
+// The same tools as the ABC Actions toolbar, fed with the caller instead of a
+// scraped profile. getData() is read at click time so the enquiry form's
+// latest values are what gets prefilled.
+function withStaff(data) {
+  const staffName = scrapeStaffName()
+  return staffName ? { ...data, staffName } : data
+}
+const callAction = (channel, getData) => () => ipcRenderer.send(channel, withStaff(getData()))
+
+// GHL's call webhook only has the full name.
+function splitName(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean)
+  return { firstName: parts[0] || '', lastName: parts.slice(1).join(' ') }
+}
+
+// Telephony enquiry for a caller who isn't a member: first / last / email onto
+// their GHL contact (tagged 'telephony enquiry' by the API), then Book tour.
+function enquiryForm(call, nameEl, onSaved) {
+  const form = el('div', 'form')
+  form.hidden = true
+  const input = (ph, value, cls) => {
+    const i = el('input', cls || '')
+    i.placeholder = ph
+    i.value = value || ''
+    i.addEventListener('keydown', e => { if (e.key === 'Enter') save() })
+    form.appendChild(i)
+    return i
+  }
+  // Names start blank: GHL's name for an unknown caller is often a placeholder.
+  const first = input('First name', '')
+  const last = input('Last name', '')
+  const email = input('Email', call.email, 'email')
+  email.type = 'email'
+  const btn = actButton('Save', () => save())
+  form.appendChild(btn)
+  const status = el('span', 'status')
+  form.appendChild(status)
+
+  async function save() {
+    if (btn.disabled) return
+    btn.disabled = true
+    status.textContent = 'Saving…'
+    const staffName = scrapeStaffName()
+    let r
+    try {
+      r = await ipcRenderer.invoke('call-enquiry-save', {
+        callId: call.id, firstName: first.value, lastName: last.value, email: email.value, staffName,
+      })
+    } catch (err) {
+      r = { ok: false, error: 'Save failed' }
+    }
+    btn.disabled = false
+    if (!r || !r.ok) { status.textContent = '⚠ ' + ((r && r.error) || 'Save failed'); return }
+    first.value = r.firstName || first.value
+    last.value = r.lastName || ''
+    email.value = r.email || ''
+    nameEl.textContent = [first.value, last.value].filter(Boolean).join(' ')
+    status.textContent = ''
+    form.hidden = true
+    onSaved()
+  }
+
+  const open = () => { form.hidden = false; first.focus() }
+  return { form, open, values: () => ({ firstName: first.value.trim(), lastName: last.value.trim(), email: email.value.trim() }) }
 }
 
 function showIncomingCall(call) {
@@ -658,24 +757,24 @@ function showIncomingCall(call) {
   const nonMemberRec = !m && matches[0] ? matches[0] : null
   const warn = m && (!m.active || m.pastDue)
   const card = el('div', 'card ' + (m ? (warn ? 'warn' : 'member') : 'unknown'))
-  card.appendChild(el('div', 'icon', '📞'))
-  const body = el('div', 'body')
+  // One row: who's calling on the left, actions on the right.
+  const body = el('div', 'info')
   const when = new Date(call.at || Date.now()).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-  body.appendChild(el('div', 'kicker', `Incoming call · ${call.clubName || ''} · ${when}`))
+  body.appendChild(el('span', 'kicker', `Call · ${when}`))
   const tags = el('div', 'tags')
   if (m) {
-    body.appendChild(el('div', 'name', m.name || call.name || call.phone || 'Member'))
+    body.appendChild(el('span', 'name', m.name || call.name || call.phone || 'Member'))
     tags.appendChild(el('span', 'tag' + (m.active ? '' : ' hot'), m.active ? 'Member · Active' : `Member · ${m.status || 'Inactive'}`))
     if (m.pastDue) tags.appendChild(el('span', 'tag hot', 'Past due'))
     if (m.membershipType) tags.appendChild(el('span', 'tag', m.membershipType))
-    if (m.clubName && m.clubName !== call.clubName) tags.appendChild(el('span', 'tag', `Home club: ${m.clubName}`))
+    if (m.clubName && m.clubName !== call.clubName) tags.appendChild(el('span', 'tag', `Home: ${m.clubName}`))
     if (m.ptClient) tags.appendChild(el('span', 'tag', m.ptTrainer ? `PT client · ${m.ptTrainer}` : 'PT client'))
     body.appendChild(tags)
-    const sub = el('div', 'sub', [call.phone, m.barcode ? `Barcode ${m.barcode}` : ''].filter(Boolean).join(' · '))
+    const sub = el('span', 'sub', [call.phone, m.barcode ? `#${m.barcode}` : ''].filter(Boolean).join(' · '))
     // Others sharing the number (family): click a name to open them instead.
     const others = matches.slice(1).filter(o => !o.nonMember && o.name)
     if (others.length) {
-      sub.appendChild(document.createTextNode(' · Also on this number: '))
+      sub.appendChild(document.createTextNode(' · Also: '))
       others.forEach((o, i) => {
         if (i) sub.appendChild(document.createTextNode(', '))
         const a = el('span', 'link', o.name)
@@ -684,32 +783,82 @@ function showIncomingCall(call) {
       })
     }
     body.appendChild(sub)
-  } else {
-    body.appendChild(el('div', 'name', call.name || (nonMemberRec && nonMemberRec.name) || call.phone || 'Unknown caller'))
+  }
+  let getData
+  let tourBtn = null
+  let collectBtn = null
+  let enquiry = null
+  if (!m) {
+    const nameEl = el('span', 'name', call.name || (nonMemberRec && nonMemberRec.name) || call.phone || 'Unknown caller')
+    body.appendChild(nameEl)
     tags.appendChild(el('span', 'tag hot', 'Not a member'))
-    if (nonMemberRec) tags.appendChild(el('span', 'tag', `ABC non-member record · ${nonMemberRec.clubName || ''}`))
+    if (nonMemberRec) tags.appendChild(el('span', 'tag', `ABC non-member · ${nonMemberRec.clubName || ''}`))
+    // Matches are active-first, so a real membership further down is a lapsed one.
+    const former = matches.find(o => !o.nonMember)
+    if (former) {
+      const t = el('span', 'tag link', `Former member · ${former.status || 'Inactive'}`)
+      t.title = 'Open their old account'
+      t.addEventListener('click', () => openAbcMember(former.memberId))
+      tags.appendChild(t)
+    }
     body.appendChild(tags)
-    const sub = [call.phone, call.email, call.lookupError ? 'Member lookup failed' : '']
-    body.appendChild(el('div', 'sub', sub.filter(Boolean).join(' · ')))
+    const sub = [call.phone, call.lookupError ? 'Member lookup failed' : '']
+    body.appendChild(el('span', 'sub', sub.filter(Boolean).join(' · ')))
+    enquiry = enquiryForm(call, nameEl, () => {
+      if (tourBtn) { tourBtn.disabled = false; tourBtn.title = '' }
+      if (collectBtn) collectBtn.remove()
+      tags.appendChild(el('span', 'tag', 'Saved ✓'))
+    })
+    getData = () => ({ ...enquiry.values(), phone: call.phone || '' })
+  } else {
+    const names = { firstName: m.firstName, lastName: m.lastName }
+    if (!names.firstName) Object.assign(names, splitName(m.name))
+    getData = () => ({
+      ...names, email: m.email || call.email || '', phone: call.phone || '',
+      barcode: m.barcode || '', homeClub: m.clubName || '',
+    })
   }
   card.appendChild(body)
   const acts = el('div', 'acts')
   if (m) {
     acts.appendChild(openButton('Open profile', m.memberId))
+    acts.appendChild(actButton('Book Day One', callAction('abc-book-day-one', getData)))
+    acts.appendChild(actButton('VIPs', callAction('abc-open-vip', getData)))
+    acts.appendChild(actButton('Cancel Tool', callAction('abc-open-cancel-tool', getData), 'ghost'))
   } else {
-    const act = el('button', 'act', 'Log enquiry (coming soon)')
-    act.disabled = true
-    acts.appendChild(act)
-    if (nonMemberRec) acts.appendChild(openButton('Open ABC record', nonMemberRec.memberId))
+    collectBtn = actButton('Collect info', () => enquiry.open())
+    acts.appendChild(collectBtn)
+    // Book tour opens once the enquiry is saved, so the tour lands on a named contact.
+    tourBtn = actButton('Book tour', callAction('abc-book-tour', getData))
+    tourBtn.disabled = true
+    tourBtn.title = 'Collect info and save first'
+    acts.appendChild(tourBtn)
+    acts.appendChild(actButton('Book Day One', callAction('abc-book-day-one', getData)))
+    acts.appendChild(actButton('VIPs', callAction('abc-open-vip', getData)))
+    if (nonMemberRec) acts.appendChild(openButton('ABC record', nonMemberRec.memberId))
   }
   card.appendChild(acts)
   const x = el('button', 'x', '✕')
   x.title = 'Dismiss'
-  x.addEventListener('click', () => card.remove())
+  x.addEventListener('click', () => { card.remove(); syncClearAll() })
   card.appendChild(x)
+  if (enquiry) card.appendChild(enquiry.form)
+  // Any click on a button (other than close) means staff are working this call.
+  acts.addEventListener('click', () => { card.dataset.busy = '1' })
   callStack.prepend(card)
-  // Keep it to a few; the oldest go first.
-  while (callStack.children.length > 3) callStack.lastElementChild.remove()
+  const age = Date.now() - (call.at || Date.now())
+  setTimeout(() => {
+    if (card.dataset.busy || !card.isConnected) return
+    card.remove()
+    syncClearAll()
+  }, Math.max(CALL_CARD_TTL_MS - age, 60 * 1000))
+  // Too many: drop the oldest untouched card, or the oldest if all are busy.
+  while (callStack.children.length > MAX_CALL_CARDS) {
+    const cards = [...callStack.children]
+    const victim = cards.reverse().find(c => !c.dataset.busy) || callStack.lastElementChild
+    victim.remove()
+  }
+  syncClearAll()
 }
 
 if (IS_ABC_APP && window.top === window) {

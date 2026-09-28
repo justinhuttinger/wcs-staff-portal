@@ -549,6 +549,14 @@ app.on('ready', async () => {
     showOverlay({ ...(data || {}), salesperson: staffName }, mainWindow, tabManager, { mode: 'dayone' })
   })
 
+  // Incoming-call banner "Book tour": the same popup as Book Day One, showing
+  // the club's Gym Tour widget prefilled with the caller.
+  ipcMain.on('abc-book-tour', (e, data) => {
+    const staffName = staffNameFor(data)
+    log('Call banner Book tour - calling showOverlay')
+    showOverlay({ ...(data || {}), salesperson: staffName }, mainWindow, tabManager, { mode: 'tour' })
+  })
+
   // ABC toolbar "VIPs": open this club's staff VIP referral form in a new tab
   // with the member as the referrer and the logged-in staff member preselected.
   ipcMain.on('abc-open-vip', (e, data) => {

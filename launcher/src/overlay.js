@@ -3,7 +3,8 @@ const { PORTAL_URL, getLocation } = require('./config')
 
 let overlayWindow = null
 
-// options.mode = 'dayone' opens straight to the Day One booking widget
+// options.mode = 'dayone' opens straight to the Day One booking widget;
+// 'tour' opens the club's Gym Tour widget the same way (call banner)
 // (member profile button) instead of the post-signup two-step flow.
 function showOverlay(memberData, mainWindow, tabManager, options = {}) {
   if (overlayWindow) {
