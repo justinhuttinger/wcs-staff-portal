@@ -157,6 +157,7 @@ app.use('/analytics/revenue-per-member', require('./routes/analyticsRevenuePerMe
 app.use('/analytics/pt-penetration', require('./routes/analyticsPtPenetration'))
 app.use('/analytics/pt-scorecard', require('./routes/analyticsPtScorecard'))
 app.use('/analytics/membership-trends', require('./routes/analyticsMembershipTrends'))
+app.use('/analytics/web-joins', require('./routes/analyticsWebJoins'))
 app.use('/analytics/net-membership', require('./routes/analyticsNetMembership'))
 app.use('/analytics/revenue-by-profit-center', require('./routes/analyticsRevenueByProfitCenter'))
 app.use('/analytics/revenue-trends', require('./routes/analyticsRevenueTrends'))
