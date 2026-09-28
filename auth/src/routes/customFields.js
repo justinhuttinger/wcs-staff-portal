@@ -7,10 +7,13 @@ const router = Router()
 router.use(authenticate)
 router.use(requireRole('admin'))
 
-const LOCATIONS = require('../config/clubs').CLUBS.map(c => ({
+const { CLUBS, envFor } = require('../config/clubs')
+
+const LOCATIONS = CLUBS.map(c => ({
   name: c.name,
   locationId: c.ghlLocationId,
   apiKeyEnv: `GHL_API_KEY_${c.envKey}`,
+  club: c,
 }))
 
 const GHL_BASE = 'https://services.leadconnectorhq.com'
@@ -37,9 +40,9 @@ router.get('/', async (req, res) => {
     const results = []
 
     for (const loc of targets) {
-      const apiKey = process.env[loc.apiKeyEnv]
+      const apiKey = envFor(loc.club, 'GHL_API_KEY_')
       if (!apiKey) {
-        results.push({ name: loc.name, locationId: loc.locationId, error: `${loc.apiKeyEnv} not set` })
+        results.push({ name: loc.name, locationId: loc.locationId, error: `${loc.apiKeyEnv} not set (and no token in Admin -> Clubs)` })
         continue
       }
 
