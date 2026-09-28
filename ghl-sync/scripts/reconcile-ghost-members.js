@@ -31,7 +31,7 @@ require('dotenv').config()
 const { fetchAllABCMembers } = require('../src/abc/client')
 const { planGhosts } = require('../src/abc/ghostMembers')
 
-const CLUBS = ['30935', '31599', '7655', '31598', '31600', '31601', '32073']
+const CLUBS = require('../src/config/clubs.json').clubs.filter(c => c.active).map(c => c.clubNumber)
 const PAGE = 1000
 
 let _supabase = null

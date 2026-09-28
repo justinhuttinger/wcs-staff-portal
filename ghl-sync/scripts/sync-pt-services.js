@@ -39,7 +39,7 @@ const ABC_BASE_URL = process.env.ABC_BASE_URL || 'https://api.abcfinancial.com/r
 const ABC_APP_ID = process.env.ABC_APP_ID;
 const ABC_APP_KEY = process.env.ABC_APP_KEY;
 
-const CLUBS = ['30935', '31599', '7655', '31598', '31600', '31601', '32073'];
+const CLUBS = require('../src/config/clubs.json').clubs.filter(c => c.active).map(c => c.clubNumber);
 const MAX_RANGE_DAYS = 180;   // ABC's hard cap on saleTimestampRange
 const PAGE_SIZE = 200;
 const MAX_PAGES = 50;

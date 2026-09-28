@@ -8,7 +8,7 @@ const clubs = require('./clubs')
 
 test('every service copy matches config/clubs.json (run scripts/sync-clubs.js)', () => {
   const source = fs.readFileSync(path.join(ROOT, 'config', 'clubs.json'), 'utf8')
-  for (const rel of ['auth/src/config/clubs.json', 'ghl-sync/src/config/clubs.json', 'portal/src/config/clubs.json']) {
+  for (const rel of ['auth/src/config/clubs.json', 'ghl-sync/src/config/clubs.json', 'portal/src/config/clubs.json', 'launcher/src/clubs.json']) {
     assert.equal(fs.readFileSync(path.join(ROOT, rel), 'utf8'), source, `${rel} is stale`)
   }
 })

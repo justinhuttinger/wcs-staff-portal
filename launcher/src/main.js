@@ -12,7 +12,7 @@ if (IS_ABC_ONLY) app.setPath('userData', path.join(app.getPath('appData'), APP_D
 if (process.platform === 'win32') app.setAppUserModelId(APP_DISPLAY_NAME)
 log('=== APP STARTING === platform=' + process.platform + ' version=' + app.getVersion() + ' mode=' + APP_MODE)
 const { PORTAL_URL, getAbcUrl, getLocation, readConfig, writeConfig } = require('./config')
-const { LOCATIONS } = require('./locations')
+const { LOCATIONS, CLUB_NUMBERS } = require('./locations')
 const TabManager = require('./tabs')
 const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./overlay')
 const { openToolPopup } = require('./tool-popup')
@@ -181,6 +181,9 @@ function applyLocationConfig({ location, abc_url } = {}) {
 // abc-scraper asks which app it's in (check-in cues + ABC mute are WCS ABC
 // only). Registered before any window exists so the sync call always answers.
 ipcMain.on('wcs-app-mode', (e) => { e.returnValue = APP_MODE })
+// abc-scraper maps an agreement number's prefix to its home club. The preload
+// is sandboxed and can't read clubs.json, so it asks here.
+ipcMain.on('wcs-club-numbers', (e) => { e.returnValue = CLUB_NUMBERS })
 
 app.on('ready', async () => {
   // First-launch flow: prompt for location before showing the main

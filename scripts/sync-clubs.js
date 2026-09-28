@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Copies config/clubs.json (the one club list) into every service that needs it.
-// Render builds auth/, ghl-sync/ and portal/ from their own folders, so none of
-// them can import a file above their root. Each gets a copy instead, and
-// auth/tests/clubsRegistry.test.js fails if a copy drifts from the source.
+// Render builds auth/, ghl-sync/ and portal/ from their own folders, and the
+// launcher packages only launcher/, so none of them can import a file above
+// their root. Each gets a copy instead, and auth/src/config/clubs.test.js
+// fails if a copy drifts from the source.
 //
 // Usage: node scripts/sync-clubs.js           (write the copies)
 //        node scripts/sync-clubs.js --check   (exit 1 if any copy is stale)
@@ -15,6 +16,7 @@ const TARGETS = [
   'auth/src/config/clubs.json',
   'ghl-sync/src/config/clubs.json',
   'portal/src/config/clubs.json',
+  'launcher/src/clubs.json',
 ]
 
 const source = fs.readFileSync(SOURCE, 'utf8')

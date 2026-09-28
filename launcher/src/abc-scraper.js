@@ -223,12 +223,12 @@ function readRecord(doc, id) {
   return ''
 }
 
-// WCS club name -> ABC club number (mirrors auth/src/config/clubMap.js).
-// 5-digit numbers first so '7655' (Eugene) can't shadow a longer prefix.
-const CLUB_NUMBERS = {
-  Salem: '30935', Keizer: '31599', Springfield: '31598', Clackamas: '31600',
-  Milwaukie: '31601', Medford: '32073', Eugene: '7655',
-}
+// WCS club name -> ABC club number, longest numbers first so '7655' (Eugene)
+// can't shadow a longer prefix. This preload is sandboxed and can't read
+// clubs.json itself, so main.js hands the map over (see 'wcs-club-numbers').
+const CLUB_NUMBERS = (() => {
+  try { return ipcRenderer.sendSync('wcs-club-numbers') || {} } catch (e) { return {} }
+})()
 
 // ABC shows names in caps ("JANE  DOE"); title-case them for the booking form.
 function tidyName(s) {
