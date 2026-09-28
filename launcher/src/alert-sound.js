@@ -60,19 +60,24 @@ function ensureWindow() {
   return win
 }
 
+let logFn = () => {}
 function setup(log = () => {}, mainWindow = null) {
   // Create it up front so the first alert plays without a load delay.
   ensureWindow()
   // A hidden window would keep the app alive after the main window closes
   // (window-all-closed never fires), so it goes when the main window does.
   if (mainWindow) mainWindow.on('closed', () => { if (win && !win.isDestroyed()) win.destroy() })
-  ipcMain.on('abc-alert-sound', (e, level) => {
-    const lvl = ['red', 'blue', 'blue-double'].includes(level) ? level : 'blue'
-    const w = ensureWindow()
-    const play = () => w.webContents.executeJavaScript(`playCue(${JSON.stringify(lvl)})`).catch(err => log('[alert-sound] ' + err.message))
-    if (w.webContents.isLoading()) w.webContents.once('did-finish-load', play)
-    else play()
-  })
+  logFn = log
+  ipcMain.on('abc-alert-sound', (e, level) => play(level))
 }
 
-module.exports = { setup }
+// Also called directly from the main process (incoming-call banner).
+function play(level) {
+  const lvl = ['red', 'blue', 'blue-double'].includes(level) ? level : 'blue'
+  const w = ensureWindow()
+  const run = () => w.webContents.executeJavaScript(`playCue(${JSON.stringify(lvl)})`).catch(err => logFn('[alert-sound] ' + err.message))
+  if (w.webContents.isLoading()) w.webContents.once('did-finish-load', run)
+  else run()
+}
+
+module.exports = { setup, play }
