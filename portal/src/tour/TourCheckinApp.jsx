@@ -4,19 +4,10 @@ import { buildDayOneUrl } from '../lib/dayOnePrefill'
 import VipReferral from './VipReferral'
 import { useActiveMember, MemberOnlyNotice, MemberCheckPending } from './MemberGate'
 import { OUTCOMES, VIP_PASS, passRuleFor, passDaysFor } from './outcomes'
+import { LOCATION_BACKGROUNDS } from '../config/locations'
 
 const REFRESH_MS = 2000   // poll fast so a new arrival shows within ~2s (only while the app is open)
 
-// Same per-location photo backgrounds as the mobile app (keyed by lowercase name).
-const LOCATION_BACKGROUNDS = {
-  salem: '/bg-salem.jpg',
-  keizer: '/bg-keizer.jpg',
-  eugene: '/bg-eugene.jpg',
-  springfield: '/bg-springfield.jpg',
-  clackamas: '/bg-clackamas.jpg',
-  milwaukie: '/bg-milwaukie.jpg',
-  medford: '/bg-medford.jpg',
-}
 
 function capitalize(s) {
   if (!s) return ''

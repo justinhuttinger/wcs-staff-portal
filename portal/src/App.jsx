@@ -43,16 +43,8 @@ import WhatsNew from './components/WhatsNew'
 import { getMe, getToken, clearToken, setToken, api, onAuthExpired, logout, setImpersonateId, getTiles } from './lib/api'
 import { logEvent } from './lib/audit'
 import { useForceRefresh } from './lib/useForceRefresh'
+import { LOCATION_BACKGROUNDS } from './config/locations'
 
-const LOCATION_BACKGROUNDS = {
-  salem: '/bg-salem.jpg',
-  keizer: '/bg-keizer.jpg',
-  eugene: '/bg-eugene.jpg',
-  springfield: '/bg-springfield.jpg',
-  clackamas: '/bg-clackamas.jpg',
-  milwaukie: '/bg-milwaukie.jpg',
-  medford: '/bg-medford.jpg',
-}
 
 function getParam(key) {
   return new URLSearchParams(window.location.search).get(key)

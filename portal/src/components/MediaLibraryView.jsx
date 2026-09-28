@@ -2,8 +2,9 @@
 import { useState } from 'react'
 import { searchMedia, reindexMedia, downloadMediaFile } from '../lib/api'
 import AuthImg from './AuthImg'
+import { LOCATION_NAMES } from '../config/locations'
 
-const LOCATIONS = ['Salem', 'Eugene', 'Springfield', 'Clackamas', 'Keizer', 'Milwaukie', 'Medford', 'Etc.']
+const LOCATIONS = [...LOCATION_NAMES, 'Etc.']
 const inputCls = 'px-3 py-2 rounded-lg border border-border bg-bg text-sm text-text-primary focus:outline-none focus:border-wcs-red'
 const btnPrimary = 'px-4 py-2 rounded-lg bg-wcs-red text-white text-sm font-semibold hover:bg-wcs-red/90 transition-colors disabled:opacity-50'
 

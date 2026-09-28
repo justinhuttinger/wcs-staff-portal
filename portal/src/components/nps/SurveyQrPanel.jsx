@@ -1,18 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { nps as npsApi } from '../../lib/api'
+import { CLUBS as REGISTRY_CLUBS } from '../../config/locations'
 
 const SURVEY_BASE = 'https://survey.westcoaststrength.com'
 
-const CLUBS = [
-  { number: '30935', name: 'Salem' },
-  { number: '31599', name: 'Keizer' },
-  { number: '7655', name: 'Eugene' },
-  { number: '31598', name: 'Springfield' },
-  { number: '31600', name: 'Clackamas' },
-  { number: '31601', name: 'Milwaukie' },
-  { number: '32073', name: 'Medford' },
-]
+const CLUBS = REGISTRY_CLUBS.map(c => ({ number: c.clubNumber, name: c.name }))
 
 function clubName(number) {
   return CLUBS.find(c => c.number === number)?.name || number

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getDailySnapshot } from '../../../lib/api'
 import MobileLoading from '../MobileLoading'
+import { LOCATIONS_WITH_ALL } from '../../../config/locations'
 
 const DATE_PRESETS = [
   { key: 'yesterday', label: 'Yesterday' },
@@ -8,7 +9,7 @@ const DATE_PRESETS = [
   { key: 'custom', label: 'Custom' },
 ]
 
-const LOCATIONS = ['All', 'Salem', 'Keizer', 'Eugene', 'Springfield', 'Clackamas', 'Milwaukie', 'Medford']
+const LOCATIONS = [...LOCATIONS_WITH_ALL]
 
 function toDateInput(d) {
   return d.toISOString().slice(0, 10)

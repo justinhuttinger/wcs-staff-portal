@@ -1,15 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../lib/api'
+import { CLUBS as REGISTRY_CLUBS } from '../../../config/locations'
 
-const CLUBS = [
-  { clubNumber: '30935', name: 'Salem' },
-  { clubNumber: '31599', name: 'Keizer' },
-  { clubNumber: '7655', name: 'Eugene' },
-  { clubNumber: '31598', name: 'Springfield' },
-  { clubNumber: '31600', name: 'Clackamas' },
-  { clubNumber: '31601', name: 'Milwaukie' },
-  { clubNumber: '32073', name: 'Medford' },
-]
+const CLUBS = REGISTRY_CLUBS.map(c => ({ clubNumber: c.clubNumber, name: c.name }))
 
 const when = (iso) => (iso
   ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })

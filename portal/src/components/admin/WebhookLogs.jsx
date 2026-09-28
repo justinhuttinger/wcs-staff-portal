@@ -1,16 +1,8 @@
 import { useState, useEffect, Fragment } from 'react'
 import { getWebhookLogs } from '../../lib/api'
+import { CLUBS } from '../../config/locations'
 
-const LOCATION_OPTIONS = [
-  { label: 'All Locations', value: '' },
-  { label: 'Salem', value: 'salem' },
-  { label: 'Keizer', value: 'keizer' },
-  { label: 'Eugene', value: 'eugene' },
-  { label: 'Springfield', value: 'springfield' },
-  { label: 'Clackamas', value: 'clackamas' },
-  { label: 'Milwaukie', value: 'milwaukie' },
-  { label: 'Medford', value: 'medford' },
-]
+const LOCATION_OPTIONS = [{ label: 'All Locations', value: '' }, ...CLUBS.map(c => ({ label: c.name, value: c.slug }))]
 
 const STATUS_OPTIONS = [
   { label: 'All', value: '' },

@@ -4,6 +4,7 @@ import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { fmtInt, GOOD_COLOR, BAD_COLOR } from './chartPalette'
 import { RankedBars, zebraColumn } from './charts'
+import { CLUB_NAME_BY_NUMBER } from '../../config/locations'
 
 
 // ---------------------------------------------------------------------------
@@ -35,10 +36,7 @@ const MIN_REPORTABLE = 10
 
 // NPS rows carry ABC club numbers rather than slugs, so the map is by number
 // here. Anything unrecognised prints as-is rather than as a blank cell.
-const CLUB_NAMES = {
-  30935: 'Salem', 31599: 'Keizer', 7655: 'Eugene', 31598: 'Springfield',
-  31600: 'Clackamas', 31601: 'Milwaukie', 32073: 'Medford',
-}
+const CLUB_NAMES = CLUB_NAME_BY_NUMBER
 const CLUB_LABEL = n => CLUB_NAMES[n] || n
 const metricLabel = k => String(k || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 

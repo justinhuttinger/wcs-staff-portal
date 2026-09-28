@@ -7,6 +7,7 @@ import {
   startGoogleSheetsAuth,
 } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
+import { CLUBS } from '../../config/locations'
 
 const BASIS_PILLS = [
   { key: 'monthly', label: 'Monthly Equivalent' },
@@ -14,7 +15,7 @@ const BASIS_PILLS = [
 ]
 
 // Club column order matches the portal's location list, not club-number order.
-const CLUB_ORDER = ['salem', 'keizer', 'eugene', 'springfield', 'clackamas', 'milwaukie', 'medford']
+const CLUB_ORDER = CLUBS.map(c => c.slug)
 
 function money2(n) {
   if (n == null) return '—'

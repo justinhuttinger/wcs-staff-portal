@@ -44,6 +44,7 @@ import {
 import { getTheme, THEME_EVENT } from '../lib/theme'
 import { hydrateUiPrefs, startUiPrefsSync } from '../lib/uiPrefs'
 import { invalidate as invalidateApiCache } from '../lib/apiCache'
+import { LOCATION_BACKGROUNDS } from '../config/locations'
 
 // Icons for bottom tab bar (Heroicons outline)
 function HomeIcon({ active }) {
@@ -86,15 +87,6 @@ function CalendarIcon({ active }) {
   )
 }
 
-const LOCATION_BACKGROUNDS = {
-  salem: '/bg-salem.jpg',
-  keizer: '/bg-keizer.jpg',
-  eugene: '/bg-eugene.jpg',
-  springfield: '/bg-springfield.jpg',
-  clackamas: '/bg-clackamas.jpg',
-  milwaukie: '/bg-milwaukie.jpg',
-  medford: '/bg-medford.jpg',
-}
 
 /**
  * A message with nothing else on the screen.
