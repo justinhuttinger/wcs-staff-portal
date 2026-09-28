@@ -29,7 +29,7 @@ const router = Router()
 router.use(authenticate)
 router.use(requireRole('admin'))
 
-const CLUB_COLUMNS = 'club_number, slug, name, sort_order, active, env_key, ghl_location_id, state, timezone, abc_url, background, trading_name, updated_at'
+const CLUB_COLUMNS = 'club_number, slug, name, sort_order, active, env_key, ghl_location_id, state, timezone, abc_url, background, trading_name, abc_station_id, updated_at'
 
 async function readClubs() {
   const { data, error } = await supabaseAdmin.from('clubs').select(CLUB_COLUMNS).order('sort_order')

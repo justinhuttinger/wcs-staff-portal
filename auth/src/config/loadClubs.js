@@ -18,6 +18,7 @@ function rowToClub(r) {
     ghlLocationId: r.ghl_location_id || undefined,
     state: r.state || undefined,
     abcUrl: r.abc_url || undefined,
+    abcStationId: r.abc_station_id || undefined,
     background: r.background || undefined,
     timezone: r.timezone || 'America/Los_Angeles',
     active: r.active !== false,
@@ -46,7 +47,7 @@ async function fetchFromDb() {
   const { supabaseAdmin } = require('../services/supabase')
   const { data: rows, error } = await supabaseAdmin
     .from('clubs')
-    .select('club_number, slug, name, sort_order, active, env_key, ghl_location_id, state, timezone, abc_url, background, trading_name')
+    .select('club_number, slug, name, sort_order, active, env_key, ghl_location_id, state, timezone, abc_url, background, trading_name, abc_station_id')
     .order('sort_order')
   if (error) throw new Error(error.message)
   if (!rows || rows.length === 0) throw new Error('public.clubs is empty')

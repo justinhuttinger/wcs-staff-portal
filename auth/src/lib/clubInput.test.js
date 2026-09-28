@@ -68,3 +68,12 @@ test('default Action Links follow the house pattern', () => {
     vip_url_bend: 'https://vip.westcoaststrength.com/bend/staff',
   })
 })
+
+test('ABC station id: 32 hex characters, stored upper-case, kept on edit', () => {
+  const r = validateClubInput({ ...good, abcStationId: '401ff85a16bb61e3e0633ce114ac0cd6' }, existing)
+  assert.deepEqual(r.errors, [])
+  assert.equal(r.row.abc_station_id, '401FF85A16BB61E3E0633CE114AC0CD6')
+  assert.match(validateClubInput({ ...good, abcStationId: 'nope' }, existing).errors.join(' '), /station ID/)
+  const current = { ...existing.find(c => c.slug === 'salem'), abcStationId: 'E42B9D7C33C908BEE0532AE014ACBF25' }
+  assert.equal(validateClubInput({ active: true }, existing, { current }).row.abc_station_id, 'E42B9D7C33C908BEE0532AE014ACBF25')
+})
