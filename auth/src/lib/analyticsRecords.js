@@ -624,16 +624,11 @@ const SETS = {
   // CLUB HEALTH COUNTS ITS MEMBERSHIP DIFFERENTLY TO ANALYTICS, and these sets
   // exist because of that rather than in spite of it.
   //
-  // Analytics counts a new member on since_date, the day the membership
-  // started. Club Health counts on sign_date, the day the paperwork was signed,
-  // and additionally requires since_date >= sign_date. Those are different
-  // cohorts in any given month, so pointing Club Health's cards at
-  // 'new-members' would open a list whose length did not match the number that
-  // was clicked, which is the one failure a drill-down must never have.
-  //
-  // Neither definition is being corrected here. The reports disagree on purpose
-  // and that argument is not this change's to settle; what this does is make
-  // each number open the rows IT counted.
+  // Club Health now counts new members on since_date like Analytics does (it
+  // used to use sign_date + since_date >= sign_date, which lost re-signs and
+  // anyone already cancelled). This set is kept rather than pointing at
+  // 'new-members' because it carries the Same Day and Sold By columns and the
+  // same-day / ach filters Club Health's cards open with.
 
   'club-health-sales': {
     label: 'Memberships Sold',
@@ -649,23 +644,21 @@ const SETS = {
       { key: 'sameDay', label: 'Same Day', format: T.text },
       { key: 'salesperson', label: 'Sold By', format: T.text },
     ],
-    // The predicates are GET /reports/club-health's own, in the same order:
-    // active, a sign_date inside the window, the skip list, and since_date on
-    // or after sign_date. Change one there and this list stops matching.
+    // The predicates are GET /reports/club-health's own: a since_date inside
+    // the window (active or not) and the skip list. Change one there and this
+    // list stops matching.
     async load({ start, end, clubNumbers, person, filter, exclude }) {
       const q = lazySupabase()
         .from('abc_members')
         .select('first_name, last_name, membership_type, agreement_term, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method, sales_person_name, email, club_number')
-        .eq('is_active', true)
-        .not('sign_date', 'is', null)
-        .gte('sign_date', start)
-        .lte('sign_date', end)
+        .not('since_date', 'is', null)
+        .gte('since_date', start)
+        .lte('since_date', end)
       if (clubNumbers) q.in('club_number', clubNumbers)
       const [rows, skip] = await Promise.all([fetchAllRows(q), skipList(exclude)])
 
       let kept = rows
         .filter(r => !isExcludedType(r.membership_type, skip))
-        .filter(r => r.since_date && r.sign_date && r.since_date >= r.sign_date)
         .filter(r => matchesPerson(r.sales_person_name, person))
 
       // Same Day Sale lives in GHL, not ABC, and the report joins the two on
@@ -757,21 +750,23 @@ const SETS = {
       { key: 'joined', label: 'Joined', format: T.date },
       { key: 'months', label: 'Months', format: T.int },
     ],
-    // NOT 'lost-members'. That set also drops the members the conditional
-    // membership rule says were not live, because the Analytics card it sits
-    // behind does. Club Health's Cancels card does not apply that rule, so
-    // applying it here would return fewer rows than the number clicked.
+    // Same predicates as 'lost-members' — Club Health's Cancels card now reads
+    // analytics_topline_window like Club Snapshot's Left, conditional rule and
+    // all. Kept as its own set for the Agreement column.
     async load({ start, end, clubNumbers, exclude }) {
       const q = lazySupabase()
         .from('abc_members')
-        .select('first_name, last_name, membership_type, agreement_term, member_status, member_status_date, since_date, agreement_number, club_number')
+        .select('member_id, first_name, last_name, membership_type, agreement_term, member_status, member_status_date, since_date, agreement_number, club_number')
         .in('member_status', LOST_STATUSES)
         .gte('member_status_date', start)
         .lte('member_status_date', end)
       if (clubNumbers) q.in('club_number', clubNumbers)
-      const [rows, skip] = await Promise.all([fetchAllRows(q), skipList(exclude)])
+      const [rows, skip, dead] = await Promise.all([
+        fetchAllRows(q), skipList(exclude), excludedAsOf(end, exclude),
+      ])
       return rows
         .filter(r => !isExcludedType(r.membership_type, skip))
+        .filter(r => !dead.has(`${r.club_number}|${r.member_id}`))
         .map(r => ({
           member: name(r.first_name, r.last_name),
           type: r.membership_type || '-',
