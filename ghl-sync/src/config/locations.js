@@ -1,14 +1,15 @@
 require('dotenv').config();
 
-// The club list is clubs.json, a copy of config/clubs.json at the repo root
-// (edit the root file, then run `node scripts/sync-clubs.js`).
-const { clubs } = require('./clubs.json');
+// GHL-enabled clubs: every active club (config/clubs, loaded from public.clubs
+// at boot) that has a GHL location id and token, from its Render env vars or
+// from what was saved in the portal's Admin -> Clubs.
+const { activeClubs, envFor } = require('./clubs');
 
-const ACTIVE = clubs.filter(c => c.active);
+const ACTIVE = activeClubs();
 
 const LOCATIONS = ACTIVE.map(c => ({
-  id: process.env[`GHL_LOCATION_${c.envKey}`],
-  apiKey: process.env[`GHL_API_KEY_${c.envKey}`],
+  id: envFor(c, 'GHL_LOCATION_'),
+  apiKey: envFor(c, 'GHL_API_KEY_'),
   name: c.name,
   slug: c.slug,
   clubNumber: c.clubNumber,
@@ -16,7 +17,7 @@ const LOCATIONS = ACTIVE.map(c => ({
 
 const skipped = ACTIVE.filter(c => !LOCATIONS.some(l => l.slug === c.slug));
 if (skipped.length && process.env.NODE_ENV !== 'test') {
-  console.warn(`[clubs] GHL sync: skipping ${skipped.map(c => c.name).join(', ')} (missing GHL_LOCATION_<CLUB> / GHL_API_KEY_<CLUB>)`);
+  console.warn(`[clubs] GHL sync: skipping ${skipped.map(c => c.name).join(', ')} (no GHL token in env or Admin -> Clubs)`);
 }
 
 module.exports = LOCATIONS;
