@@ -328,6 +328,24 @@ function scrapeStaffName() {
   return ''
 }
 
+// Prohibition for our buttons. @font-face can't be declared inside a shadow
+// root, and ABC's CSP could block a font URL, so the bytes come from main and
+// are registered on each document (top shell, and the #main frame, which is
+// a new document on every navigation) as a FontFace.
+const DISPLAY_FONT = "'WCS Prohibition','Inter',-apple-system,'Segoe UI',sans-serif"
+let displayFontBytes
+function ensureDisplayFont(doc) {
+  try {
+    if (!doc || doc.__wcsFont) return
+    doc.__wcsFont = true
+    if (displayFontBytes === undefined) displayFontBytes = ipcRenderer.sendSync('wcs-display-font') || null
+    if (!displayFontBytes) return
+    const face = new doc.defaultView.FontFace('WCS Prohibition', displayFontBytes)
+    doc.fonts.add(face)
+    face.load().catch(() => {})
+  } catch (e) {}
+}
+
 // Actions toolbar: a collapsed "Actions" tab that expands into a list of member
 // actions. Add future actions to TOOLBAR_ACTIONS.
 const TOOLBAR_ACTIONS = [
@@ -383,18 +401,18 @@ function ensureToolbar() {
   const root = toolbarHost.attachShadow({ mode: 'closed' })
   root.innerHTML = `
     <style>
-      :host{font:600 17px 'Inter',-apple-system,'Segoe UI',sans-serif}
+      :host{font:600 19px ${DISPLAY_FONT};letter-spacing:.02em}
       .bar{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
       .actions{display:none;flex-direction:column;gap:8px;padding:10px;border-radius:16px;
         background:#1f2937;box-shadow:0 8px 24px rgba(0,0,0,.3)}
       .bar.open .actions{display:flex}
       .action{display:flex;align-items:center;gap:10px;padding:14px 20px;border:0;border-radius:12px;min-width:200px;
-        background:#e53e3e;color:#fff;font:inherit;cursor:pointer;white-space:nowrap;text-align:left}
-      .action:hover{background:#c53030}
+        background:#ff0000;color:#fff;font:inherit;cursor:pointer;white-space:nowrap;text-align:left}
+      .action:hover{background:#d60000}
       .toggle{display:flex;align-items:center;gap:8px;padding:14px 24px;border:0;border-radius:999px;
-        background:#e53e3e;color:#fff;font:inherit;letter-spacing:.04em;cursor:pointer;
+        background:#ff0000;color:#fff;font:inherit;letter-spacing:.04em;cursor:pointer;
         box-shadow:0 6px 20px rgba(0,0,0,.25)}
-      .toggle:hover{background:#c53030}
+      .toggle:hover{background:#d60000}
       .chev{display:inline-block;transition:transform .15s}
       .bar.open .chev{transform:rotate(180deg)}
     </style>
@@ -432,6 +450,7 @@ function ensureToolbar() {
     bar.classList.toggle('open', toolbarOpen)
   })
   bar.classList.toggle('open', toolbarOpen)
+  ensureDisplayFont(document)
   document.body.appendChild(toolbarHost)
   return toolbarHost
 }
@@ -468,6 +487,78 @@ function updateToolbar() {
     host._buttons.forEach(b => { b.style.display = (b.dataset.admin === '1') === adminMode ? '' : 'none' })
   }
   positionToolbar(host)
+}
+
+// --- Club Home quick buttons (WCS ABC) ---------------------------------------
+// ABC's Club Home (ClubHomeCommand.pml in #main) has a club announcements card
+// that WCS uses for "IMPORTANT LINKS". We cover that card with big buttons for
+// the same jobs (Justin, 2026-09-29). Anchored on ABC's stable data-abc-id
+// (its class names are generated), re-attached if ABC re-renders the card, and
+// simply absent if ABC ever drops it.
+const CLUB_HOME_BUTTONS = [
+  { label: 'Insurance Verification', icon: '🛡️', run: () => ipcRenderer.send('abc-open-link', 'insurance') },
+  { label: 'VIPs', icon: '⭐', run: () => ipcRenderer.send('abc-open-vip', withStaff({})) },
+  { label: 'Book Day One', icon: '📅', run: () => ipcRenderer.send('abc-book-day-one', withStaff({})) },
+  { label: 'Book Tour', icon: '🏋️', run: () => ipcRenderer.send('abc-book-tour', withStaff({})) },
+  { label: 'See Calendar', icon: '🗓️', soon: true },
+  { label: 'Cancel Form', icon: '📝', run: () => ipcRenderer.send('abc-open-cancel-tool', withStaff({})) },
+  { label: 'Paychex', icon: '💼', run: () => ipcRenderer.send('abc-open-link', 'paychex') },
+]
+
+function updateClubHomeButtons() {
+  let doc
+  try {
+    const frame = document.querySelector('#main')
+    doc = frame && frame.contentDocument
+    if (!doc || !/ClubHomeCommand\.pml/i.test(doc.location.href)) return
+  } catch (e) {
+    return
+  }
+  const card = doc.querySelector('[data-abc-id="announcements-widget"]')
+  if (!card || card.querySelector(':scope > [data-wcs-club-home]')) return
+
+  ensureDisplayFont(doc)
+  if (doc.defaultView.getComputedStyle(card).position === 'static') card.style.position = 'relative'
+  const host = doc.createElement('div')
+  host.setAttribute('data-wcs-club-home', '')
+  host.style.cssText = 'position:absolute;inset:0;z-index:5;'
+  const root = host.attachShadow({ mode: 'closed' })
+  root.innerHTML = '<style>' +
+    ':host{font-family:' + DISPLAY_FONT + '}' +
+    '.panel{box-sizing:border-box;height:100%;background:#fff;border-radius:inherit;padding:20px 24px;display:flex;flex-direction:column;gap:14px;}' +
+    '.title{margin:0;font-size:24px;font-weight:400;letter-spacing:.04em;color:#1a1a2e;}' +
+    '.grid{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:78px;gap:12px;align-content:start;}' +
+    // Pure red (#FF0000), per Justin: "as red as it can be".
+    '.btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;border-radius:10px;' +
+    'background:#ff0000;color:#fff;font-weight:400;font-size:21px;letter-spacing:.03em;line-height:1.1;font-family:inherit;cursor:pointer;padding:6px 8px;text-align:center;' +
+    'box-shadow:0 3px 10px rgba(255,0,0,.28);transition:background .1s,transform .1s;}' +
+    '.btn:hover{background:#d60000;}.btn:active{transform:scale(.97);}' +
+    '.btn .i{font-size:20px;line-height:1;}' +
+    '.btn[disabled]{background:#cbd5e0;color:#4a5568;box-shadow:none;cursor:not-allowed;}' +
+    '.soon{font-size:11px;font-weight:600;opacity:.8;}' +
+    '</style><div class="panel"><h3 class="title">QUICK LINKS</h3><div class="grid"></div></div>'
+  const grid = root.querySelector('.grid')
+  for (const b of CLUB_HOME_BUTTONS) {
+    const btn = doc.createElement('button')
+    btn.type = 'button'
+    btn.className = 'btn'
+    const icon = doc.createElement('span')
+    icon.className = 'i'
+    icon.textContent = b.icon
+    btn.appendChild(icon)
+    btn.appendChild(doc.createTextNode(b.label))
+    if (b.soon) {
+      btn.disabled = true
+      const soon = doc.createElement('span')
+      soon.className = 'soon'
+      soon.textContent = 'Coming soon'
+      btn.appendChild(soon)
+    } else {
+      btn.addEventListener('click', () => b.run())
+    }
+    grid.appendChild(btn)
+  }
+  card.appendChild(host)
 }
 
 // --- Check-in alert cues ----------------------------------------------------
@@ -918,6 +1009,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
   updateToolbar()
   setInterval(updateToolbar, 1000)
+
+  // WCS ABC only: Club Home quick buttons (main shell)
+  if (IS_ABC_APP && window.top === window) {
+    updateClubHomeButtons()
+    setInterval(updateClubHomeButtons, 1000)
+  }
   console.log('[WCS Scraper] Loaded on:', window.location.href)
 
   setInterval(() => {

@@ -76,3 +76,25 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }, 500)
 })
+
+// Back button: tool popups have no browser chrome, so once staff click
+// through a page there was no way back (Justin, 2026-09-29). A small fixed
+// "Back" pill, top-left, shown whenever there's somewhere to go back to.
+function mountBackButton() {
+  if (window.top !== window || !document.documentElement) return
+  if (document.getElementById('wcs-popup-back')) return
+  const host = document.createElement('div')
+  host.id = 'wcs-popup-back'
+  host.style.cssText = 'position:fixed;top:10px;left:10px;z-index:2147483647;'
+  const root = host.attachShadow({ mode: 'closed' })
+  root.innerHTML = '<style>button{border:0;border-radius:999px;padding:7px 14px;' +
+    "font:700 14px 'Inter',-apple-system,'Segoe UI',sans-serif;background:rgba(17,24,39,.88);color:#fff;" +
+    'cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3);}button:hover{background:#000;}</style>' +
+    '<button type="button" title="Back (Alt+Left)">← Back</button>'
+  root.querySelector('button').addEventListener('click', () => history.back())
+  document.documentElement.appendChild(host)
+  const sync = () => { host.style.display = history.length > 1 ? '' : 'none' }
+  sync()
+  setInterval(sync, 1000)
+}
+window.addEventListener('DOMContentLoaded', mountBackButton)

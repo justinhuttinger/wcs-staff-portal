@@ -1,0 +1,4 @@
+# Prohibition trial font (internal use only, not for a public repo). Copy
+# ProhibitionTest-Regular.otf here before `npm run dist:abc`; without it the
+# buttons fall back to the default font. See main.js 'wcs-display-font'.
+assets/fonts/

@@ -184,6 +184,20 @@ ipcMain.on('wcs-app-mode', (e) => { e.returnValue = APP_MODE })
 // abc-scraper maps an agreement number's prefix to its home club. The preload
 // is sandboxed and can't read clubs.json, so it asks here.
 ipcMain.on('wcs-club-numbers', (e) => { e.returnValue = CLUB_NUMBERS })
+// Display font for the ABC Actions toolbar and Club Home buttons (abc-scraper
+// loads it as a FontFace). A local, gitignored trial of Prohibition, fine for
+// this internal tool (Justin, 2026-09-29); null when the build doesn't have it.
+let displayFont
+ipcMain.on('wcs-display-font', (e) => {
+  if (displayFont === undefined) {
+    try {
+      displayFont = require('fs').readFileSync(path.join(__dirname, '..', 'assets', 'fonts', 'ProhibitionTest-Regular.otf'))
+    } catch {
+      displayFont = null
+    }
+  }
+  e.returnValue = displayFont
+})
 
 app.on('ready', async () => {
   // Club list from Admin -> Clubs (cached; see locations.js), before the
@@ -571,6 +585,21 @@ app.on('ready', async () => {
     if (staffName) url.searchParams.set('employee', staffName)
     log('ABC toolbar VIPs - opening ' + url.origin + url.pathname)
     openToolPopup('vip', url.toString(), 'VIP Referrals', mainWindow)
+  })
+
+  // WCS ABC Club Home quick links (abc-scraper.js CLUB_HOME_BUTTONS) that are
+  // plain web pages. The page sends a key, never a URL, so it can only open
+  // these.
+  const CLUB_LINKS = {
+    insurance: { title: 'Insurance Verification', url: (slug) => `https://strengthcoastwest.com/insurance/${slug}` },
+    paychex: { title: 'Paychex', url: () => 'https://login.flex.paychex.com/' },
+  }
+  ipcMain.on('abc-open-link', (e, key) => {
+    const link = CLUB_LINKS[key]
+    if (!link) return
+    const slug = encodeURIComponent(String(getLocation() || 'Salem').trim().toLowerCase())
+    log('ABC Club Home link - ' + key)
+    openToolPopup(key, link.url(slug), link.title, mainWindow)
   })
 
   // ABC toolbar "Cancel Tool": external memberservices app in a popup, with
