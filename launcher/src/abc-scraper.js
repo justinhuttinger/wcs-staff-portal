@@ -342,8 +342,8 @@ function ensureDisplayFont(doc) {
     if (!displayFontBytes) return
     const face = new doc.defaultView.FontFace('WCS Prohibition', displayFontBytes)
     doc.fonts.add(face)
-    face.load().catch(() => {})
-  } catch (e) {}
+    face.load().catch((err) => console.log('[WCS font] load failed in ' + doc.location.pathname + ': ' + err))
+  } catch (e) { console.log('[WCS font] error: ' + e.message) }
 }
 
 // Actions toolbar: a collapsed "Actions" tab that expands into a list of member
@@ -401,8 +401,10 @@ function ensureToolbar() {
   const root = toolbarHost.attachShadow({ mode: 'closed' })
   root.innerHTML = `
     <style>
-      :host{font:600 19px ${DISPLAY_FONT};letter-spacing:.02em}
-      .bar{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+      /* Font on .bar, not :host: ABC's page CSS targets the host div from
+         outside and beats a :host rule, which is why Actions kept ABC's font. */
+      .bar{display:flex;flex-direction:column;align-items:flex-end;gap:10px;
+        font:400 21px ${DISPLAY_FONT};letter-spacing:.03em}
       .actions{display:none;flex-direction:column;gap:8px;padding:10px;border-radius:16px;
         background:#1f2937;box-shadow:0 8px 24px rgba(0,0,0,.3)}
       .bar.open .actions{display:flex}
@@ -500,7 +502,7 @@ const CLUB_HOME_BUTTONS = [
   { label: 'VIPs', icon: '⭐', run: () => ipcRenderer.send('abc-open-vip', withStaff({})) },
   { label: 'Book Day One', icon: '📅', run: () => ipcRenderer.send('abc-book-day-one', withStaff({})) },
   { label: 'Book Tour', icon: '🏋️', run: () => ipcRenderer.send('abc-book-tour', withStaff({})) },
-  { label: 'See Calendar', icon: '🗓️', soon: true },
+  { label: 'See Calendar', icon: '🗓️', run: () => ipcRenderer.send('abc-open-calendar') },
   { label: 'Cancel Form', icon: '📝', run: () => ipcRenderer.send('abc-open-cancel-tool', withStaff({})) },
   { label: 'Paychex', icon: '💼', run: () => ipcRenderer.send('abc-open-link', 'paychex') },
 ]
@@ -525,7 +527,7 @@ function updateClubHomeButtons() {
   const root = host.attachShadow({ mode: 'closed' })
   root.innerHTML = '<style>' +
     ':host{font-family:' + DISPLAY_FONT + '}' +
-    '.panel{box-sizing:border-box;height:100%;background:#fff;border-radius:inherit;padding:20px 24px;display:flex;flex-direction:column;gap:14px;}' +
+    '.panel{box-sizing:border-box;height:100%;background:#fff;border-radius:inherit;padding:20px 24px;display:flex;flex-direction:column;gap:14px;font-family:' + DISPLAY_FONT + ';}' +
     '.title{margin:0;font-size:24px;font-weight:400;letter-spacing:.04em;color:#1a1a2e;}' +
     '.grid{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:78px;gap:12px;align-content:start;}' +
     // Pure red (#FF0000), per Justin: "as red as it can be".
