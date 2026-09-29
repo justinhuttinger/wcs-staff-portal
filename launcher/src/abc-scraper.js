@@ -515,6 +515,36 @@ function isFreshCheckin(card) {
   return first === card
 }
 
+// Staff-typed ABC alerts ("Member Message Alert"): the check-in card shows
+// only the short message; the full note is in ABC's API. For a new check-in
+// whose alerts include text that isn't a known system alert, ask for the
+// member's staff alerts (main: member-alerts.js). PURPLE ones get the intense
+// beep and a purple banner with the full note (Justin, 2026-09-29). Add
+// colours to CUE_MESSAGE_COLORS to cue more.
+const SYSTEM_ALERT_RE = /overdue|past due|balance|cancel|expire|\bRFC\b|collections?|need (photo|dob|date of birth|birth ?date|address|email)|access restriction|already checked|minor|manual check ?in|free drink|recurring service|agreement|pending pos|freeze|frozen|credit card/i
+const CUE_MESSAGE_COLORS = /purple/i
+const messageChecked = new Set()
+
+function checkMemberMessages(card, cilid) {
+  if (messageChecked.has(cilid)) return
+  const memberId = (card.getAttribute('memberid') || '').toLowerCase()
+  if (!/^[0-9a-f]{32}$/.test(memberId)) return
+  const texts = [...card.querySelectorAll('.datatrak-alert')].map(a => (a.textContent || '').trim()).filter(Boolean)
+  if (!texts.some(t => !SYSTEM_ALERT_RE.test(t))) return
+  messageChecked.add(cilid)
+  const title = card.querySelector('.title')
+  const name = title ? tidyName(title.textContent.trim()) : ''
+  ipcRenderer.invoke('abc-member-alerts', memberId).then(res => {
+    const hits = ((res && res.alerts) || [])
+      .filter(a => CUE_MESSAGE_COLORS.test(a.color || ''))
+      .map(a => ({
+        text: a.note && a.note.toLowerCase() !== a.message.toLowerCase() ? `${a.message}: ${a.note}` : (a.note || a.message),
+        level: 'purple',
+      }))
+    if (hits.length) showAlertCue('purple', name, hits)
+  }).catch(() => {})
+}
+
 const seenCheckins = new Set()
 let alertBaselineDone = false
 const pendingRecheck = new Map() // cilid -> tries left (alerts can render a beat after the card)
@@ -538,6 +568,7 @@ function scanCheckinFeed() {
     if (!isNew && !pendingRecheck.has(id)) return
     seenCheckins.add(id)
     if (isNew && !isFreshCheckin(card)) return // older check-in loaded by scrolling
+    checkMemberMessages(card, id)
     const found = []
     card.querySelectorAll('.datatrak-alert').forEach(a => {
       const level = alertLevel(a)
@@ -572,8 +603,9 @@ let cueHost = null
 let cueRoot = null
 let cueTimer = null
 function showAlertCue(sound, name, hits) {
-  playCue(sound)
-  const level = sound === 'red' ? 'red' : 'blue' // blue-double looks the same as blue
+  // Purple (staff alert, full note) uses the intense red beep.
+  playCue(sound === 'purple' ? 'red' : sound)
+  const level = sound === 'red' || sound === 'purple' ? sound : 'blue' // blue-double looks the same as blue
   if (!cueHost) {
     cueHost = document.createElement('div')
     cueHost.id = 'wcs-alert-cue'
@@ -582,14 +614,15 @@ function showAlertCue(sound, name, hits) {
     cueRoot.innerHTML = '<style>' +
       '.edge{position:fixed;inset:0;pointer-events:none;animation:pulse 0.8s ease-in-out 4;}' +
       '.edge.red{box-shadow:inset 0 0 0 10px #e53e3e,inset 0 0 60px 20px rgba(229,62,62,.55);}' +
+      '.edge.purple{box-shadow:inset 0 0 0 10px #9f3cf5,inset 0 0 60px 20px rgba(159,60,245,.55);}' +
       '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}' +
       '.banner{position:fixed;top:14px;left:50%;transform:translateX(-50%);max-width:min(720px,90vw);' +
       'pointer-events:auto;cursor:pointer;border-radius:12px;padding:14px 22px;color:#fff;' +
       "font:600 18px/1.35 'Inter',-apple-system,'Segoe UI',sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.35);}" +
-      '.banner.red{background:#c53030;}.banner.blue{background:#2b6cb0;}' +
+      '.banner.red{background:#c53030;}.banner.blue{background:#2b6cb0;}.banner.purple{background:#6b21a8;}' +
       '.name{font-size:20px;font-weight:800;margin-bottom:4px;}' +
       '.alerts{display:flex;flex-wrap:wrap;gap:6px;}' +
-      '.tag{background:rgba(255,255,255,.18);border-radius:6px;padding:2px 8px;font-size:15px;}' +
+      '.tag{background:rgba(255,255,255,.18);border-radius:6px;padding:2px 8px;font-size:15px;white-space:pre-wrap;}' +
       '.hint{font-size:12px;font-weight:500;opacity:.8;margin-top:6px;}' +
       '</style><div class="edge"></div><div class="banner"><div class="name"></div>' +
       '<div class="alerts"></div><div class="hint">Click to dismiss</div></div>'
@@ -598,15 +631,15 @@ function showAlertCue(sound, name, hits) {
   }
   const edge = cueRoot.querySelector('.edge')
   const banner = cueRoot.querySelector('.banner')
-  // Red flashes the screen edge; blue is banner + chime only.
-  edge.style.display = level === 'red' ? '' : 'none'
+  // Red and purple flash the screen edge; blue is banner + chime only.
+  edge.style.display = level === 'blue' ? 'none' : ''
   edge.className = 'edge ' + level
   // Restart the pulse for back-to-back check-ins.
   edge.style.animation = 'none'
   void edge.offsetWidth
   edge.style.animation = ''
   banner.className = 'banner ' + level
-  cueRoot.querySelector('.name').textContent = (level === 'red' ? '⚠ ' : '') + (name || 'Check-in alert')
+  cueRoot.querySelector('.name').textContent = (level === 'red' ? '⚠ ' : level === 'purple' ? '💬 ' : '') + (name || 'Check-in alert')
   const alerts = cueRoot.querySelector('.alerts')
   alerts.textContent = ''
   hits.forEach(h => {
@@ -617,7 +650,8 @@ function showAlertCue(sound, name, hits) {
   })
   cueHost.style.display = ''
   clearTimeout(cueTimer)
-  cueTimer = setTimeout(hideAlertCue, level === 'red' ? 15000 : 8000)
+  // Purple carries a message to read, so it stays up longest.
+  cueTimer = setTimeout(hideAlertCue, level === 'purple' ? 45000 : level === 'red' ? 15000 : 8000)
 }
 
 function hideAlertCue() {
