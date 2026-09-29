@@ -262,6 +262,8 @@ app.on('ready', async () => {
   if (IS_ABC_ONLY) require('./alert-sound').setup(log, mainWindow)
   // WCS ABC: full text of staff-typed ABC alerts for the check-in cue.
   if (IS_ABC_ONLY) require('./member-alerts').setup(log)
+  // WCS ABC: "See Calendar" window (club tours + Day Ones, no sign-in).
+  if (IS_ABC_ONLY) require('./club-calendar').setup(log, mainWindow)
 
   // Don't open at sign-in. Older builds registered a login item, so actively
   // turn it off: this removes that entry (HKCU Run key on Windows, Login
