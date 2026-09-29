@@ -597,7 +597,7 @@ app.on('ready', async () => {
       if (adminWin && !adminWin.isDestroyed()) { adminWin.focus(); return }
       adminWin = new BrowserWindow({
         width: 520,
-        height: 440,
+        height: 560,
         title: 'WCS ABC Admin',
         parent: mainWindow,
         modal: true,
@@ -616,7 +616,17 @@ app.on('ready', async () => {
       adminWin.on('closed', () => { adminWin = null })
       log('[abc-admin] opened')
     })
-    ipcMain.handle('abc-admin:get', () => ({ config: readConfig() || {}, locations: LOCATIONS }))
+    const volumeGuard = require('./volume-guard')
+    ipcMain.handle('abc-admin:get', () => ({
+      config: readConfig() || {}, locations: LOCATIONS, alertVolume: volumeGuard.targetPercent(),
+    }))
+    // "Test sound": play the call chime at the slider's level (not yet saved).
+    // The saved level comes back on the next check (<= 1 min) if not saved.
+    ipcMain.handle('abc-admin:test-sound', async (e, pct) => {
+      await volumeGuard.setLevel(pct)
+      require('./alert-sound').play('blue', { keepVolume: true })
+      return true
+    })
     ipcMain.handle('abc-admin:save', (e, cfg) => {
       const loc = LOCATIONS.find(l => l.name === (cfg && cfg.location))
       if (!loc) return { success: false, error: 'Pick a club' }
@@ -625,8 +635,19 @@ app.on('ready', async () => {
       if (!url || url.protocol !== 'https:' || !/(^|\.)abc(financial|fitness)\.com$/i.test(url.hostname)) {
         return { success: false, error: 'ABC URL must be an https://…abcfinancial.com or abcfitness.com link' }
       }
-      log('[abc-admin] saved location=' + loc.name)
-      return applyLocationConfig({ location: loc.name, abc_url: url.toString() })
+      const vol = Number(cfg && cfg.alert_volume)
+      if (!Number.isFinite(vol) || vol < 0 || vol > 100) return { success: false, error: 'Alert volume must be 0-100' }
+      const before = readConfig() || {}
+      // Only reload ABC when the club or URL actually changed.
+      let res = { success: true }
+      if (before.location !== loc.name || before.abc_url !== url.toString()) {
+        res = applyLocationConfig({ location: loc.name, abc_url: url.toString() })
+        if (!res || !res.success) return res
+      }
+      writeConfig({ ...(readConfig() || {}), alert_volume: Math.round(vol) })
+      volumeGuard.ensure()
+      log('[abc-admin] saved location=' + loc.name + ' alert_volume=' + Math.round(vol))
+      return res
     })
   }
 

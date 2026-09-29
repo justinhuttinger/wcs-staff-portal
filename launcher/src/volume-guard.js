@@ -1,17 +1,21 @@
-// WCS ABC: keep the PC audible so check-in and call alerts are never silent.
+// WCS ABC: hold the PC at this station's alert volume so check-in and call
+// alerts are never silent (or blasting).
 //
-// Before every alert cue (alert-sound.js) and once a minute, make sure the
-// Windows default output device is unmuted and at least MIN_VOLUME. It only
-// ever raises the volume, never lowers it. It can't reach a speaker's own
-// knob or a monitor's buttons.
+// Before every alert cue (alert-sound.js) and once a minute, the Windows
+// default output device is unmuted and set to EXACTLY the station's level:
+// C:\WCS\config.json `alert_volume` (0-100, default 75), set per PC from the
+// WCS ABC Admin window. Exact, not a minimum (Justin, 2026-09-29), so staff
+// can't turn it up or down for long. It can't reach a speaker's own knob or a
+// monitor's buttons.
 //
 // Windows' volume lives behind the Core Audio COM API, which Node can't call.
 // One hidden PowerShell process compiles a tiny C# wrapper once at startup and
 // then answers one request per stdin line, so each check is instant (no
 // per-alert PowerShell startup or compile).
 const { spawn } = require('child_process')
+const { readConfig } = require('./config')
 
-const MIN_VOLUME = 0.75 // Justin, 2026-09-28
+const DEFAULT_VOLUME = 75
 const CHECK_MS = 60 * 1000
 const REPLY_TIMEOUT_MS = 400
 
@@ -57,12 +61,12 @@ public static class WcsVolume {
     v.GetMute(out m); v.GetMasterVolumeLevelScalar(out l);
     return "muted=" + m + " level=" + Math.Round(l * 100);
   }
-  public static string Ensure(float min) {
+  public static string Set(float target) {
     var v = Endpoint(); var g = Guid.Empty; bool m; float l;
     v.GetMute(out m); v.GetMasterVolumeLevelScalar(out l);
     string r = "";
     if (m) { v.SetMute(false, ref g); r += "unmuted "; }
-    if (l < min) { v.SetMasterVolumeLevelScalar(min, ref g); r += "raised " + Math.Round(l * 100) + "->" + Math.Round(min * 100); }
+    if (Math.Abs(l - target) > 0.005) { v.SetMasterVolumeLevelScalar(target, ref g); r += "set " + Math.Round(l * 100) + "->" + Math.Round(target * 100); }
     return r.Length > 0 ? r.Trim() : "ok";
   }
 }
@@ -72,7 +76,7 @@ while ($true) {
   $line = [Console]::In.ReadLine()
   if ($null -eq $line) { break }
   try {
-    if ($line -eq 'get') { $out = [WcsVolume]::Get() } else { $out = [WcsVolume]::Ensure([float]$line) }
+    if ($line -eq 'get') { $out = [WcsVolume]::Get() } else { $out = [WcsVolume]::Set([float]$line) }
   } catch { $out = 'err ' + $_.Exception.Message }
   [Console]::Out.WriteLine($out); [Console]::Out.Flush()
 }
@@ -128,8 +132,17 @@ function send(cmd) {
   })
 }
 
-// Unmute + raise to MIN_VOLUME if needed. Resolves quickly either way.
-function ensure() { return send(String(MIN_VOLUME)) }
+// This station's level, 0-100 (config.json alert_volume, else DEFAULT_VOLUME).
+function targetPercent() {
+  const v = Number((readConfig() || {}).alert_volume)
+  return Number.isFinite(v) ? Math.min(100, Math.max(0, Math.round(v))) : DEFAULT_VOLUME
+}
+
+// Unmute + set to exactly `pct` (0-100). Resolves quickly either way.
+function setLevel(pct) { return send(String(Math.min(100, Math.max(0, Number(pct) || 0)) / 100)) }
+
+// Unmute + hold this station's level.
+function ensure() { return setLevel(targetPercent()) }
 
 // Current state, for the log: "muted=False level=40".
 function get() { return send('get') }
@@ -149,4 +162,4 @@ function stop() {
   if (child) try { child.kill() } catch {}
 }
 
-module.exports = { start, stop, ensure, get, MIN_VOLUME }
+module.exports = { start, stop, ensure, get, setLevel, targetPercent, DEFAULT_VOLUME }

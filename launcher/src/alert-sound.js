@@ -76,13 +76,16 @@ function setup(log = () => {}, mainWindow = null) {
 }
 
 // Also called directly from the main process (incoming-call banner).
-function play(level) {
+// opts.keepVolume: the Admin "Test sound" has just set a trial level; don't
+// put the saved one back before playing.
+function play(level, opts = {}) {
   const lvl = ['red', 'blue', 'blue-double'].includes(level) ? level : 'blue'
   const w = ensureWindow()
   const run = () => w.webContents.executeJavaScript(`playCue(${JSON.stringify(lvl)})`).catch(err => logFn('[alert-sound] ' + err.message))
   // Unmute / raise to the floor first (volume-guard.js); it answers in
   // milliseconds and never holds the cue back more than a moment.
-  volumeGuard.ensure().finally(() => {
+  const ready = opts.keepVolume ? Promise.resolve() : volumeGuard.ensure()
+  ready.finally(() => {
     if (w.isDestroyed()) return
     if (w.webContents.isLoading()) w.webContents.once('did-finish-load', run)
     else run()
