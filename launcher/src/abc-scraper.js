@@ -628,14 +628,148 @@ function checkMemberMessages(card, cilid) {
   const title = card.querySelector('.title')
   const name = title ? tidyName(title.textContent.trim()) : ''
   ipcRenderer.invoke('abc-member-alerts', memberId).then(res => {
-    const hits = ((res && res.alerts) || [])
-      .filter(a => CUE_MESSAGE_COLORS.test(a.color || ''))
-      .map(a => ({
-        text: a.note && a.note.toLowerCase() !== a.message.toLowerCase() ? `${a.message}: ${a.note}` : (a.note || a.message),
-        level: 'purple',
-      }))
-    if (hits.length) showAlertCue('purple', name, hits)
+    const alerts = ((res && res.alerts) || []).filter(a => CUE_MESSAGE_COLORS.test(a.color || ''))
+    if (alerts.length) showPurpleAck({ memberId, name, alerts })
   }).catch(() => {})
+}
+
+// --- PURPLE: blocking acknowledgement -----------------------------------------
+// Purple is serious (Justin, 2026-09-29). Instead of a banner: a box in the
+// middle of a dimmed, click-blocked screen, the intense beep every 10s, and it
+// only closes when staff type their initials and confirm. Each close is
+// logged server-side (purple_alert_acks) with the ABC login and times. If the
+// server can't be reached twice, it can be closed anyway so the desk isn't
+// stuck, and that's written to the app log.
+const PURPLE_BEEP_MS = 10 * 1000
+const purpleQueue = []
+let purpleHost = null
+let purpleRoot = null
+let purpleBeep = null
+let purpleCurrent = null
+
+function showPurpleAck(item) {
+  purpleQueue.push(item)
+  if (!purpleCurrent) nextPurple()
+}
+
+function ensurePurpleHost() {
+  if (purpleHost) return
+  ensureDisplayFont(document)
+  purpleHost = document.createElement('div')
+  purpleHost.id = 'wcs-purple-ack'
+  purpleHost.style.cssText = 'position:fixed;inset:0;z-index:2147483647;'
+  purpleRoot = purpleHost.attachShadow({ mode: 'closed' })
+  purpleRoot.innerHTML = '<style>' +
+    ".veil{position:fixed;inset:0;background:rgba(30,0,50,.78);display:flex;align-items:center;justify-content:center;font-family:'Inter',-apple-system,'Segoe UI',sans-serif;}" +
+    '.box{width:min(620px,92vw);background:#fff;border-radius:18px;overflow:hidden;box-shadow:0 0 0 6px #9f3cf5,0 30px 80px rgba(0,0,0,.6);animation:ring 1.2s ease-in-out infinite;}' +
+    '@keyframes ring{0%,100%{box-shadow:0 0 0 6px #9f3cf5,0 30px 80px rgba(0,0,0,.6)}50%{box-shadow:0 0 0 14px rgba(159,60,245,.55),0 30px 80px rgba(0,0,0,.6)}}' +
+    '.head{background:#6b21a8;color:#fff;padding:18px 24px;}' +
+    '.kicker{font-family:' + DISPLAY_FONT + ';font-size:22px;letter-spacing:.06em;}' +
+    '.name{font-size:26px;font-weight:800;margin-top:2px;}' +
+    '.body{padding:20px 24px;color:#1a1a2e;}' +
+    '.alert{border-left:5px solid #6b21a8;background:#f5efff;border-radius:8px;padding:12px 14px;margin-bottom:10px;}' +
+    '.msg{font-weight:800;font-size:17px;}' +
+    '.note{font-size:16px;margin-top:6px;white-space:pre-wrap;line-height:1.4;}' +
+    '.ack{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap;}' +
+    '.ack label{font-weight:700;font-size:14px;}' +
+    '.ack input{width:110px;border:2px solid #6b21a8;border-radius:8px;padding:9px 10px;font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;}' +
+    '.ack button{border:0;border-radius:10px;padding:11px 18px;background:#6b21a8;color:#fff;font-weight:800;font-size:15px;cursor:pointer;}' +
+    '.ack button:disabled{opacity:.4;cursor:not-allowed;}' +
+    '.ack button.skip{background:#e2e8f0;color:#1a1a2e;}' +
+    '.status{font-size:13px;font-weight:700;color:#9b2c2c;margin-top:8px;min-height:16px;}' +
+    '.more{font-size:12px;color:#6e6e73;margin-top:6px;}' +
+    '</style><div class="veil"><div class="box"><div class="head"><div class="kicker">PURPLE ALERT</div><div class="name"></div></div>' +
+    '<div class="body"><div class="alerts"></div>' +
+    '<div class="ack"><label for="i">Your initials</label><input id="i" maxlength="4" autocomplete="off" spellcheck="false">' +
+    '<button type="button" class="ok" disabled>I\'ve read this</button><button type="button" class="skip" hidden>Close without saving</button></div>' +
+    '<div class="status"></div><div class="more"></div></div></div></div>'
+  // Typing initials must not reach ABC's keyboard shortcuts.
+  for (const type of ['keydown', 'keyup', 'keypress']) purpleHost.addEventListener(type, e => e.stopPropagation())
+  const input = purpleRoot.getElementById('i')
+  const ok = purpleRoot.querySelector('.ok')
+  const valid = () => input.value.replace(/[^A-Za-z]/g, '').length >= 2
+  input.addEventListener('input', () => { ok.disabled = !valid() })
+  input.addEventListener('keydown', e => { if (e.key === 'Enter' && valid()) submitPurple() })
+  ok.addEventListener('click', submitPurple)
+  purpleRoot.querySelector('.skip').addEventListener('click', () => {
+    console.log('[WCS purple] closed WITHOUT saving (server unreachable) member=' + (purpleCurrent && purpleCurrent.memberId))
+    nextPurple()
+  })
+  document.documentElement.appendChild(purpleHost)
+}
+
+function nextPurple() {
+  purpleCurrent = purpleQueue.shift() || null
+  if (!purpleCurrent) {
+    clearInterval(purpleBeep)
+    purpleBeep = null
+    if (purpleHost) purpleHost.style.display = 'none'
+    return
+  }
+  ensurePurpleHost()
+  purpleCurrent.shownAt = new Date().toISOString()
+  purpleCurrent.failures = 0
+  purpleRoot.querySelector('.name').textContent = purpleCurrent.name || 'Member'
+  const list = purpleRoot.querySelector('.alerts')
+  list.textContent = ''
+  for (const a of purpleCurrent.alerts) {
+    const box = document.createElement('div')
+    box.className = 'alert'
+    const msg = document.createElement('div')
+    msg.className = 'msg'
+    msg.textContent = a.message
+    box.appendChild(msg)
+    if (a.note && a.note.toLowerCase() !== String(a.message).toLowerCase()) {
+      const note = document.createElement('div')
+      note.className = 'note'
+      note.textContent = a.note
+      box.appendChild(note)
+    }
+    list.appendChild(box)
+  }
+  const input = purpleRoot.getElementById('i')
+  input.value = ''
+  purpleRoot.querySelector('.ok').disabled = true
+  purpleRoot.querySelector('.skip').hidden = true
+  purpleRoot.querySelector('.status').textContent = ''
+  purpleRoot.querySelector('.more').textContent = purpleQueue.length ? `${purpleQueue.length} more purple alert(s) waiting` : ''
+  purpleHost.style.display = ''
+  setTimeout(() => input.focus(), 50)
+  playCue('red')
+  clearInterval(purpleBeep)
+  purpleBeep = setInterval(() => playCue('red'), PURPLE_BEEP_MS)
+}
+
+async function submitPurple() {
+  const item = purpleCurrent
+  if (!item) return
+  const input = purpleRoot.getElementById('i')
+  const ok = purpleRoot.querySelector('.ok')
+  const status = purpleRoot.querySelector('.status')
+  const initials = input.value.replace(/[^A-Za-z]/g, '').toUpperCase()
+  if (initials.length < 2) return
+  ok.disabled = true
+  status.textContent = 'Saving…'
+  const staffName = scrapeStaffName()
+  let failed = null
+  for (const a of item.alerts) {
+    let r
+    try {
+      r = await ipcRenderer.invoke('abc-member-alert-ack', {
+        memberId: item.memberId, memberName: item.name, alertId: a.alertId, message: a.message, note: a.note,
+        initials, staffName, shownAt: item.shownAt,
+      })
+    } catch (e) {
+      r = { ok: false, error: 'Save failed' }
+    }
+    if (!r || !r.ok) { failed = (r && r.error) || 'Save failed'; break }
+  }
+  if (!failed) { nextPurple(); return }
+  item.failures = (item.failures || 0) + 1
+  ok.disabled = false
+  status.textContent = '⚠ ' + failed + '. Try again.'
+  // Don't trap the desk if the server is down; the close is logged locally.
+  if (item.failures >= 2) purpleRoot.querySelector('.skip').hidden = false
 }
 
 const seenCheckins = new Set()

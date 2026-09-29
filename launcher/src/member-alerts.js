@@ -12,7 +12,31 @@ function clubNumber() {
   return hit ? hit[1] : ''
 }
 
+function launcherHeaders(extra = {}) {
+  const headers = { ...extra }
+  if (process.env.WCS_LAUNCHER_KEY) headers['x-launcher-key'] = process.env.WCS_LAUNCHER_KEY
+  return headers
+}
+
 function setup(log = () => {}) {
+  // Purple alert acknowledged (initials typed): record it server-side.
+  ipcMain.handle('abc-member-alert-ack', async (e, ack) => {
+    try {
+      const res = await fetch(`${API_URL}/member-alerts/ack`, {
+        method: 'POST',
+        headers: launcherHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ ...(ack || {}), club: clubNumber() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return { ok: false, error: data.error || ('Save failed (' + res.status + ')') }
+      log('[member-alerts] purple ack saved member=' + (ack && ack.memberId) + ' by=' + (ack && ack.initials))
+      return { ok: true }
+    } catch (err) {
+      log('[member-alerts] purple ack failed: ' + (err && err.message))
+      return { ok: false, error: 'Could not reach the server' }
+    }
+  })
+
   ipcMain.handle('abc-member-alerts', async (e, memberId) => {
     const id = String(memberId || '').toLowerCase()
     if (!/^[0-9a-f]{32}$/.test(id)) return { alerts: [] }
