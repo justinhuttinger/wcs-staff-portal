@@ -211,6 +211,21 @@ app.on('ready', async () => {
   const persistSes = ses.fromPartition('persist:wcs-portal')
   persistSes.webRequest.onHeadersReceived(stripFrameHeaders)
 
+  // ABC member record opened (member search, call banner, ...): ABC loads
+  // AgreementCommand.pml?wizardFirstLoad=1&selectedMemberId=<id>, and its tabs
+  // (Personal, Agreement, Billing, ...) then re-POST the same page WITHOUT the
+  // id. Tell the ABC tab which member is open so the Actions toolbar can keep
+  // working on every tab (abc-scraper.js memberProfile).
+  persistSes.webRequest.onBeforeRequest(
+    { urls: ['*://*.abcfinancial.com/*', '*://*.abcfitness.com/*'] },
+    (details, callback) => {
+      const m = /AgreementCommand\.pml\?[^#]*\bselectedMemberId=([0-9a-f]{32})/i.exec(details.url)
+      const wc = details.webContents
+      if (m && wc && !wc.isDestroyed()) wc.send('abc-member-opened', m[1].toLowerCase())
+      callback({})
+    },
+  )
+
   // BrowserWindow's `icon` option only matters on Windows / Linux —
   // macOS reads its dock icon from the packaged .icns the builder
   // emits, so we leave it unset on darwin.

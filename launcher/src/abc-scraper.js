@@ -328,6 +328,38 @@ function scrapeStaffName() {
   return ''
 }
 
+// --- Member record across ABC's profile tabs ---------------------------------
+// ABC's member record is one page (AgreementCommand.pml in #main) with tabs.
+// Only some tabs carry the name / email / phone (Personal does), so the
+// Actions toolbar used to vanish on the others. Now it shows on every tab,
+// using the fields seen on any tab for the member that's open. main.js says
+// which member opened ('abc-member-opened'); leaving the record forgets it.
+let openMemberId = null
+let memberCache = null // { memberId, data }
+
+ipcRenderer.on('abc-member-opened', (e, id) => {
+  if (id !== openMemberId) { openMemberId = id; memberCache = null }
+})
+
+function onMemberRecord() {
+  try {
+    const frame = document.querySelector('#main')
+    const href = frame && frame.contentWindow && frame.contentWindow.location.href
+    return /\/AgreementCommand(-AgreementTag\/AgreementCommand)?\.pml/i.test(href || '')
+  } catch (e) {
+    return false
+  }
+}
+
+// scrapeProfile() plus whatever other tabs showed for the same member.
+function memberProfile() {
+  const current = scrapeProfile()
+  if (!onMemberRecord()) { memberCache = null; return current }
+  if (!memberCache || memberCache.memberId !== openMemberId) memberCache = { memberId: openMemberId, data: {} }
+  for (const [k, v] of Object.entries(current)) if (v) memberCache.data[k] = v
+  return { ...memberCache.data }
+}
+
 // Actions toolbar: a collapsed "Actions" tab that expands into a list of member
 // actions. Add future actions to TOOLBAR_ACTIONS.
 const TOOLBAR_ACTIONS = [
@@ -414,7 +446,7 @@ function ensureToolbar() {
     btn.innerHTML = `<span aria-hidden="true">${a.icon}</span>`
     btn.appendChild(document.createTextNode(' ' + a.label))
     btn.addEventListener('click', () => {
-      const data = scrapeProfile()
+      const data = memberProfile()
       const staffName = scrapeStaffName()
       if (staffName) data.staffName = staffName
       console.log('[WCS Scraper] ' + a.label + ':', JSON.stringify(data))
@@ -455,8 +487,9 @@ function updateToolbar() {
   // Only a VISIBLE password field means the login screen: the ABC shell keeps
   // a hidden password-type input (employeeClockInBarcode) on every page.
   const onLogin = Array.from(document.querySelectorAll('input[type="password"]')).some(el => el.offsetParent)
-  const d = onLogin ? {} : scrapeProfile()
-  const memberMode = !!(d.firstName && d.lastName && (d.email || d.phone))
+  const d = onLogin ? {} : memberProfile()
+  // Any tab of a member record, or any other page that shows a full profile.
+  const memberMode = !onLogin && (onMemberRecord() || !!(d.firstName && d.lastName && (d.email || d.phone)))
   // WCS ABC only: the Admin action on the Settings page for admins.
   const adminMode = !onLogin && !memberMode && IS_ABC_APP && onSettingsPage() && isAdminStaff()
   const show = memberMode || adminMode
