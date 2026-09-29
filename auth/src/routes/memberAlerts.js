@@ -1,4 +1,7 @@
-// GET /member-alerts/:memberId  (launcher key)
+// GET  /member-alerts/:memberId  (launcher key)
+// POST /member-alerts/ack         (launcher key): staff acknowledged a PURPLE
+//   alert (typed initials in WCS ABC's blocking box); one row in
+//   purple_alert_acks per acknowledgement (migration 217).
 //
 // Staff-typed ABC member alerts, with the full note, for the WCS ABC check-in
 // cue (abc-scraper.js). The check-in card shows only the short message; the
@@ -10,10 +13,11 @@
 // the member's 32-hex ABC id, which only the check-in card on an ABC screen
 // provides.
 
-const { Router } = require('express')
+const express = require('express')
+const { Router } = express
 const { supabaseAdmin } = require('../services/supabase')
 const { abcConfigured, abcGet } = require('../lib/abcSearch')
-const { memberMessageAlerts } = require('../lib/memberMessageAlerts')
+const { memberMessageAlerts, cleanAck } = require('../lib/memberMessageAlerts')
 
 const router = Router()
 
@@ -28,6 +32,18 @@ function requireLauncherKey(req, res, next) {
 // A check-in fires this once; a short cache absorbs re-scans and double taps.
 const CACHE_MS = 60 * 1000
 const cache = new Map() // memberId -> { at, body }
+
+router.post('/ack', requireLauncherKey, express.json({ limit: '20kb' }), async (req, res) => {
+  const { value, error } = cleanAck(req.body || {})
+  if (error) return res.status(400).json({ error })
+  const { error: dbErr } = await supabaseAdmin.from('purple_alert_acks').insert(value)
+  if (dbErr) {
+    console.error('[member-alerts] ack insert failed:', dbErr.message)
+    return res.status(500).json({ error: 'Could not save the acknowledgement' })
+  }
+  console.log(`[member-alerts] purple ack club=${value.club_number} member=${value.member_id} by=${value.initials}`)
+  res.json({ ok: true })
+})
 
 router.get('/:memberId', requireLauncherKey, async (req, res) => {
   const memberId = String(req.params.memberId || '').toLowerCase()
