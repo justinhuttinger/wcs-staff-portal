@@ -92,6 +92,8 @@ app.use('/launcher', require('./routes/launcher'))
 app.use('/telephony', require('./routes/telephony'))
 // Staff-typed ABC member alert text for the WCS ABC check-in cue.
 app.use('/member-alerts', require('./routes/memberAlerts'))
+// Read-only club calendar (tours + Day Ones) for the WCS ABC "See Calendar" button.
+app.use('/club-calendar', require('./routes/clubCalendar'))
 app.use('/webhooks', require('./routes/webhooks'))
 app.use('/webhooks', require('./routes/metaCapi'))
 // Same module, second mount: the Gravity Forms lead route answers at
