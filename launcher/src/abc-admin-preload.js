@@ -5,4 +5,5 @@ const { ipcRenderer, contextBridge } = require('electron')
 contextBridge.exposeInMainWorld('abcAdminIPC', {
   get: () => ipcRenderer.invoke('abc-admin:get'),
   save: (config) => ipcRenderer.invoke('abc-admin:save', config),
+  testSound: (pct) => ipcRenderer.invoke('abc-admin:test-sound', pct),
 })

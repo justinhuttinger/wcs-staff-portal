@@ -46,7 +46,7 @@
     .header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.2px; margin-bottom: 6px; }
     .header p { font-size: 12px; color: var(--muted); line-height: 1.5; }
 
-    .body { flex: 1; padding: 8px 28px 0; display: flex; flex-direction: column; gap: 14px; }
+    .body { flex: 1; padding: 8px 28px 0; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
     label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
     select, textarea {
       width: 100%;
@@ -60,6 +60,9 @@
     textarea { height: 84px; resize: none; font-family: ui-monospace, Consolas, monospace; font-size: 11px; line-height: 1.45; }
     select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
     .hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+    .vol { display: flex; align-items: center; gap: 10px; }
+    .vol input[type=range] { flex: 1; accent-color: var(--accent); }
+    .vol output { width: 40px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
     .error { font-size: 12px; color: var(--error); min-height: 16px; }
 
     .footer {
@@ -88,7 +91,7 @@
   <div class="wizard">
     <div class="header">
       <h1>WCS ABC Admin</h1>
-      <p>Which club this PC's WCS ABC opens and receives calls for.<br>Saving reloads ABC.</p>
+      <p>This PC's club, ABC URL and alert volume.<br>Changing the club or URL reloads ABC.</p>
     </div>
     <div class="body">
       <div>
@@ -99,6 +102,15 @@
         <label for="url">ABC URL</label>
         <textarea id="url" spellcheck="false"></textarea>
         <div class="hint">Picking a club fills in its default workstation URL. Edit it only if this PC uses a different workstation.</div>
+      </div>
+      <div>
+        <label for="vol">Alert volume</label>
+        <div class="vol">
+          <input type="range" id="vol" min="0" max="100" step="5">
+          <output id="volOut"></output>
+          <button class="btn btn-secondary" id="test" type="button">Test sound</button>
+        </div>
+        <div class="hint">WCS ABC keeps this PC's Windows volume at exactly this level and unmuted, checked before every alert and once a minute.</div>
       </div>
       <div class="error" id="error"></div>
     </div>
