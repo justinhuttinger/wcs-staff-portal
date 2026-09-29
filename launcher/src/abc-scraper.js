@@ -617,8 +617,14 @@ function isFreshCheckin(card) {
 const SYSTEM_ALERT_RE = /overdue|past due|balance|cancel|expire|\bRFC\b|collections?|need (photo|dob|date of birth|birth ?date|address|email)|access restriction|already checked|minor|manual check ?in|free drink|recurring service|agreement|pending pos|freeze|frozen|credit card/i
 const CUE_MESSAGE_COLORS = /purple/i
 const messageChecked = new Set()
+// OFF until Justin is ready to launch purple alerts (2026-09-29). The whole
+// flow is built and was tested end to end (ABC note lookup, blocking box,
+// initials, purple_alert_acks log, migration 217 applied): set this to true
+// and release to turn it on. While false, check-ins make no alert lookups.
+const PURPLE_ALERTS_ENABLED = false
 
 function checkMemberMessages(card, cilid) {
+  if (!PURPLE_ALERTS_ENABLED) return
   if (messageChecked.has(cilid)) return
   const memberId = (card.getAttribute('memberid') || '').toLowerCase()
   if (!/^[0-9a-f]{32}$/.test(memberId)) return
