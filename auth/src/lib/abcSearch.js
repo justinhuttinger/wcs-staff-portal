@@ -105,4 +105,4 @@ async function searchAbc(clubs, q) {
   return { results, errors }
 }
 
-module.exports = { abcConfigured, searchMembers, searchProspects, searchAbc }
+module.exports = { abcConfigured, abcGet, searchMembers, searchProspects, searchAbc }

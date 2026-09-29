@@ -260,6 +260,8 @@ app.on('ready', async () => {
   else createTray(mainWindow)
   // WCS ABC: check-in alert sounds play from a hidden window (the ABC tab is muted).
   if (IS_ABC_ONLY) require('./alert-sound').setup(log, mainWindow)
+  // WCS ABC: full text of staff-typed ABC alerts for the check-in cue.
+  if (IS_ABC_ONLY) require('./member-alerts').setup(log)
 
   // Don't open at sign-in. Older builds registered a login item, so actively
   // turn it off: this removes that entry (HKCU Run key on Windows, Login
