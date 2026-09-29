@@ -5,6 +5,7 @@ const path = require('path')
 const { BrowserWindow, ipcMain } = require('electron')
 const { API_URL, getLocation } = require('./config')
 const { CLUB_NUMBERS } = require('./locations')
+const { FREE_WINDOW, addWindowKeys } = require('./window-controls')
 
 function clubNumber() {
   const loc = String(getLocation() || '').toLowerCase()
@@ -17,18 +18,19 @@ let win = null
 function setup(log = () => {}, mainWindow = null) {
   ipcMain.on('abc-open-calendar', () => {
     if (win && !win.isDestroyed()) { win.focus(); return }
+    // A normal window: move, resize, minimise, maximise, F11 (window-controls.js).
     win = new BrowserWindow({
+      ...FREE_WINDOW,
       width: 760,
       height: 820,
       title: 'Club Calendar',
-      parent: mainWindow || undefined,
-      autoHideMenuBar: true,
       webPreferences: {
         preload: path.join(__dirname, 'club-calendar-preload.js'),
         contextIsolation: true,
         nodeIntegration: false,
       },
     })
+    addWindowKeys(win)
     win.loadFile(path.join(__dirname, '..', 'ui', 'club-calendar.html'))
     win.on('closed', () => { win = null })
     log('[club-calendar] opened')
