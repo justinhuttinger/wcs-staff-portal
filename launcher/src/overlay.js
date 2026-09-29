@@ -1,4 +1,5 @@
 const { BrowserWindow } = require('electron')
+const { FREE_WINDOW, addWindowKeys } = require('./window-controls')
 const { PORTAL_URL, getLocation } = require('./config')
 
 let overlayWindow = null
@@ -22,22 +23,36 @@ function showOverlay(memberData, mainWindow, tabManager, options = {}) {
   welcomeUrl.searchParams.set('location', location)
   if (options.mode) welcomeUrl.searchParams.set('mode', options.mode)
 
-  // Child window of main — appears on top like a modal, can't go behind
-  overlayWindow = new BrowserWindow({
-    parent: mainWindow,
-    modal: true,
-    width: 1100,
-    height: 750,
-    title: 'WCS — Next Steps',
-    autoHideMenuBar: true,
-    resizable: false,
-    center: true,
-    frame: false,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-  })
+  // The automatic post-signup popup is a modal child of main (can't go behind,
+  // so the Day One gets booked). Opened from a button (Book Day One / Book
+  // Tour), it's a normal window staff can move, resize, minimise and maximise.
+  const fromButton = !!options.mode
+  const webPreferences = { nodeIntegration: false, contextIsolation: true }
+  overlayWindow = fromButton
+    ? new BrowserWindow({
+      ...FREE_WINDOW,
+      width: 1100,
+      height: 750,
+      title: options.mode === 'tour' ? 'Book Tour' : 'Book Day One',
+      center: true,
+      webPreferences,
+    })
+    : new BrowserWindow({
+      parent: mainWindow,
+      modal: true,
+      width: 1100,
+      height: 750,
+      title: 'WCS — Next Steps',
+      autoHideMenuBar: true,
+      resizable: false,
+      center: true,
+      frame: false,
+      webPreferences,
+    })
+  if (fromButton) {
+    overlayWindow.on('page-title-updated', (e) => e.preventDefault())
+    addWindowKeys(overlayWindow)
+  }
 
   overlayWindow.loadURL(welcomeUrl.toString())
 

@@ -5,6 +5,7 @@ const path = require('path')
 // tool: clicking the action again reuses and refocuses it. An optional
 // `prefill` object is handed to popup-prefill.js on request so external
 // sites (which take no URL params) get their form fields filled in.
+const { FREE_WINDOW, addWindowKeys } = require('./window-controls')
 const popups = new Map()          // key -> BrowserWindow
 const prefills = new Map()        // webContents.id -> prefill object
 
@@ -22,13 +23,14 @@ function openToolPopup(key, url, title, mainWindow, prefill) {
     return win
   }
 
+  // Free-standing (not a child of mainWindow) so it can be minimised,
+  // maximised and moved on its own; see window-controls.js.
   win = new BrowserWindow({
-    parent: mainWindow,
+    ...FREE_WINDOW,
     width: 960,
     height: 860,
     title,
     center: true,
-    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'popup-prefill.js'),
       contextIsolation: true,
@@ -37,6 +39,7 @@ function openToolPopup(key, url, title, mainWindow, prefill) {
     },
   })
   win.webContents.setUserAgent(CHROME_UA)
+  addWindowKeys(win)
   const id = win.webContents.id
   if (prefill) prefills.set(id, prefill)
   // Keep the given title instead of the page's <title>.
