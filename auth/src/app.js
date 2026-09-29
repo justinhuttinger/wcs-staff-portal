@@ -90,6 +90,8 @@ app.use('/config', require('./routes/config'))
 app.use('/launcher', require('./routes/launcher'))
 // Incoming-call banner for WCS ABC: GHL call webhook + per-club poll.
 app.use('/telephony', require('./routes/telephony'))
+// Read-only club calendar (tours + Day Ones) for the WCS ABC "See Calendar" button.
+app.use('/club-calendar', require('./routes/clubCalendar'))
 app.use('/webhooks', require('./routes/webhooks'))
 app.use('/webhooks', require('./routes/metaCapi'))
 // Same module, second mount: the Gravity Forms lead route answers at

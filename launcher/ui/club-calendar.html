@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Club Calendar</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'">
+  <style>
+    :root {
+      --bg: #f5f5f7; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --border: #d2d2d7;
+      --red: #ff0000; --tour: #2b6cb0; --dayone: #2f855a;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #1e1e1e; --card: #2c2c2e; --text: #f5f5f7; --muted: #98989d; --border: #3a3a3c; --tour: #63b3ed; --dayone: #68d391; }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { font: 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+    header { display: flex; align-items: center; gap: 10px; padding: 16px 20px; background: var(--card); border-bottom: 1px solid var(--border); }
+    header h1 { font-size: 18px; font-weight: 700; flex: 1; }
+    header h1 small { font-weight: 500; color: var(--muted); font-size: 13px; margin-left: 6px; }
+    button { font: inherit; font-weight: 600; border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+    button:hover { border-color: var(--red); }
+    button.primary { background: var(--red); border-color: var(--red); color: #fff; }
+    main { flex: 1; overflow-y: auto; padding: 14px 20px 24px; }
+    .day { margin-bottom: 18px; }
+    .day h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 8px; }
+    .day h2.today { color: var(--red); }
+    .entry { display: grid; grid-template-columns: 78px 76px 1fr auto; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin-bottom: 6px; }
+    .time { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .type { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; text-align: center; border-radius: 999px; padding: 3px 0; color: #fff; }
+    .type.tour { background: var(--tour); }
+    .type.dayone { background: var(--dayone); }
+    .name { font-weight: 600; }
+    .staff { color: var(--muted); font-size: 13px; }
+    .status { font-size: 11px; color: var(--muted); text-transform: uppercase; margin-left: 6px; }
+    .empty, .msg { color: var(--muted); padding: 8px 2px; }
+    .msg.error { color: var(--red); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="title">Club Calendar<small id="range"></small></h1>
+    <button id="prev" title="Previous week">‹</button>
+    <button id="today" class="primary">Today</button>
+    <button id="next" title="Next week">›</button>
+    <button id="refresh" title="Refresh">↻</button>
+  </header>
+  <main id="list"><div class="msg">Loading…</div></main>
+  <script src="club-calendar.js"></script>
+</body>
+</html>
