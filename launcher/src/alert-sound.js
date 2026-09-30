@@ -5,7 +5,7 @@
 // the ABC page plays, so the alert cues are played here instead, from a
 // hidden window of our own. abc-scraper.js sends 'abc-alert-sound' with the
 // level: 'red' = harsh BEEP BEEP BEEP, 'blue' = two-note chime,
-// 'blue-double' = the chime twice, 'party' = a rising fanfare for a
+// 'blue-double' = the chime twice, 'party' = a rising fanfare (twice) for a
 // check-in milestone ("CELEBRATE 10TH VISIT!" alert).
 const { BrowserWindow, ipcMain } = require('electron')
 const volumeGuard = require('./volume-guard')
@@ -26,12 +26,14 @@ function playCue(level) {
   const notes = red
     ? [[0, 1040, 0.22, 'square'], [0.32, 1040, 0.22, 'square'], [0.64, 1040, 0.22, 'square']]
     : level === 'blue-double' ? chime.concat(chime.map(([at, f, d, t]) => [at + 1.0, f, d, t])) : chime
-  // party: a quick C-E-G-C arpeggio, then a sparkle on top.
+  // party: a quick C-E-G-C arpeggio with a sparkle on top, played twice
+  // (Justin, 2026-09-30). One fanfare ends at ~1.0s; the repeat starts at 1.15s.
   if (level === 'party') {
-    notes.length = 0
-    notes.push(
+    const fanfare = [
       [0, 523, 0.16, 'triangle'], [0.11, 659, 0.16, 'triangle'], [0.22, 784, 0.16, 'triangle'], [0.33, 1047, 0.45, 'triangle'],
-      [0.55, 1568, 0.12, 'sine'], [0.63, 2093, 0.12, 'sine'], [0.71, 2637, 0.3, 'sine'])
+      [0.55, 1568, 0.12, 'sine'], [0.63, 2093, 0.12, 'sine'], [0.71, 2637, 0.3, 'sine']]
+    notes.length = 0
+    notes.push(...fanfare, ...fanfare.map(([at, f, d, t]) => [at + 1.15, f, d, t]))
   }
   const peak = red ? 0.22 : 0.8
   for (const [at, freq, dur, type] of notes) {
