@@ -5,6 +5,8 @@ const { fetchAllABCMembers, transformABCMember } = require('./client');
 const { upsertABCMembers } = require('./upsertMembers');
 const { reconcileClubGhosts } = require('./ghostReconcile');
 const { reconcileLocation } = require('./reconcile');
+const { runMetaPurchaseForLocation } = require('./metaPurchase');
+const { getSkipList } = require('../config/membership-skip-list');
 
 // Prevent concurrent sync runs (cron overlap or manual + cron)
 let abcSyncRunning = false;
@@ -143,6 +145,22 @@ async function _runAbcSync() {
       // Persist the actual GHL error details (message + which contact/stage)
       // so a recurring failure is diagnosable from ghl_sync_log without diving
       // into Render logs. Fall back to the bare count if details are absent.
+      // Step 3b: Meta CAPI Purchase for new joins. Off unless enabled, and a
+      // failure here never costs the club its sync.
+      if (process.env.META_CAPI_PURCHASE_ENABLED === 'true') {
+        try {
+          // META_PURCHASE_DRY_RUN lets this be watched in the logs while the
+          // rest of the sync stays live; falls back to the sync-wide DRY_RUN.
+          const dryRun = (process.env.META_PURCHASE_DRY_RUN || process.env.DRY_RUN || 'true') === 'true';
+          const skipTypes = await getSkipList();
+          const p = await runMetaPurchaseForLocation(location, { dryRun, skipTypes });
+          console.log(`[MetaPurchase] ${location.name}${dryRun ? ' (dry run)' : ''}: ${p.candidates} new joins, ${p.alreadySent} already sent, ${p.sent} sent, ${p.failed} failed, ${p.gaveUp} gave up`);
+          if (dryRun) for (const j of p.planned) console.log(`[MetaPurchase]   ${location.name} ${j.name} (${j.member_id}) since ${j.since} ${j.match}`);
+        } catch (metaErr) {
+          console.error(`[MetaPurchase] ${location.name} failed:`, metaErr.message);
+        }
+      }
+
       const reconcileErrorRows = (reconcileResult.errorDetails && reconcileResult.errorDetails.length)
         ? reconcileResult.errorDetails
         : (reconcileResult.errors > 0 ? [{ ghl_errors: reconcileResult.errors }] : []);
