@@ -45,10 +45,16 @@ const tableStub = (table) => ({
       select: () => ({ single: async () => ({ data: { id: 'raw-1' }, error: null }) }),
     }
   },
-  upsert: async (row) => {
+  // Awaitable directly, or chained .select().single() (persistJobEmail).
+  upsert: (row) => {
     writes.push({ table, op: 'upsert', row })
-    return { error: null }
+    const result = { error: null }
+    return {
+      then: (ok, bad) => Promise.resolve(result).then(ok, bad),
+      select: () => ({ single: async () => ({ data: { id: 'row-1' }, error: null }) }),
+    }
   },
+  delete: () => ({ eq: async () => ({ error: null }) }),
 })
 
 const supabaseStub = {
@@ -177,4 +183,31 @@ test('a decimal percent rounds half up, like Operandio did', async () => {
   })
   assert.equal(payload?.audit, true)
   assert.equal(payload.score_pct, 83)
+})
+
+// A submission that carries a real score but that the audit branch could not
+// parse is almost certainly an audit in a format we don't know yet (that is how
+// 13 audits silently became checklists 9/23-9/28, with no email left to
+// replay). Keep its raw email so it can be recovered, and don't file it as a
+// checklist.
+test('a scored submission the audit branch rejects keeps its raw email', async () => {
+  const { payload, writes: w } = await post({
+    subject: 'PT Audit (Monthly) submitted at Clackamas',
+    text: 'PT Audit\r\nOverall score 40 33 82,5 %\r\n',
+    html: '<html><body></body></html>',
+  })
+  assert.notEqual(payload?.audit, true)
+  const raw = w.find(x => x.table === 'operandio_raw_emails')
+  assert.ok(raw, 'raw email was not captured')
+  assert.equal(raw.row.reason, 'audit_unparsed')
+  assert.ok(!w.some(x => x.table === 'operandio_job_events'), 'a scored audit must not be filed as a checklist')
+})
+
+test('an UNSCORED checklist submission does not capture a raw email', async () => {
+  const { writes: w } = await post({
+    subject: 'Daily Huddle submitted at Clackamas',
+    text: 'Daily Huddle\r\nOverall score 0 0 %\r\n',
+    html: '<html><body></body></html>',
+  })
+  assert.ok(!w.some(x => x.table === 'operandio_raw_emails'), 'unscored checklist should not be kept raw')
 })

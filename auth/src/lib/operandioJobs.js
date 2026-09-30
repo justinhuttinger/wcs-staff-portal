@@ -64,8 +64,12 @@ function parseOverdueSubject(subject) {
 
 // Distinguishes a checklist (no possible points) from a scored audit.
 // Audit: "Overall score 370 215 58%". Checklist: "Overall score 0 0 %".
+// Deliberately loose (any non-zero digit before the %): this decides whether a
+// submission may be filed as a checklist, so an audit in a format the audit
+// parser doesn't know yet ("78.18%" from 2026-09-23) must still read as scored.
 function hasRealAuditScore(text) {
-  return /Overall score\s+\d+\s+\d+\s+\d+%/i.test(text || '')
+  const m = (text || '').match(/Overall score([^%]{0,60})%/i)
+  return !!m && /[1-9]/.test(m[1])
 }
 
 // Parse the per-task table out of a submission's HTML body.
