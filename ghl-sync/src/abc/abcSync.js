@@ -6,6 +6,7 @@ const { upsertABCMembers } = require('./upsertMembers');
 const { reconcileClubGhosts } = require('./ghostReconcile');
 const { reconcileLocation } = require('./reconcile');
 const { runMetaPurchaseForLocation } = require('./metaPurchase');
+const { syncMetaLeads } = require('../meta/leadSync');
 const { getSkipList } = require('../config/membership-skip-list');
 
 // Prevent concurrent sync runs (cron overlap or manual + cron)
@@ -69,6 +70,18 @@ async function _runAbcSync() {
   let totalMatched = 0, totalUnmatched = 0, totalTagChanges = 0, totalFieldUpdates = 0, totalSyncErrors = 0;
   let totalGhosted = 0;
   let clubsProcessed = 0;
+
+  // Meta Instant Form leads, so each Purchase below can carry its lead id.
+  // Once per run, incremental, and never allowed to cost a club its sync.
+  if (process.env.META_CAPI_PURCHASE_ENABLED === 'true' && process.env.META_LEADS_SYNC_ENABLED !== 'false') {
+    try {
+      const l = await syncMetaLeads();
+      console.log(`[MetaLeads] ${l.forms} forms, ${l.readable} readable, ${l.leads} leads stored` +
+        (l.skipped.length ? `; skipped ${l.skipped.map(x => `${x.formId} (page ${x.pageId}): ${x.error}`).join('; ')}` : ''));
+    } catch (err) {
+      console.error('[MetaLeads] sync failed:', err.message);
+    }
+  }
 
   for (const location of locationsWithClub) {
     if (abcSyncAbort) {

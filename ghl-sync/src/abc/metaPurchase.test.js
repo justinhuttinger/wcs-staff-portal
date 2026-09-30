@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const crypto = require('crypto')
 const {
   runMetaPurchaseForLocation, buildPurchaseEvent, isNewJoin, eventTimeFor,
-  normalizePhone, normalizeDob, fbcFromFbclid,
+  normalizePhone, normalizeDob, fbcFromFbclid, findLeadId,
 } = require('./metaPurchase')
 
 const sha = v => crypto.createHash('sha256').update(v).digest('hex')
@@ -29,6 +29,8 @@ function fakeDb({ tables = {} } = {}) {
       eq: (col, val) => { out = out.filter(r => !(col in r) || r[col] === val); return b },
       in: (col, vals) => { out = out.filter(r => !(col in r) || vals.includes(r[col])); return b },
       gte: (col, val) => { out = out.filter(r => !(col in r) || r[col] >= val); return b },
+      lt: () => b,
+      or: () => b,
       ilike: (col, val) => { out = out.filter(r => String(r[col] || '').toLowerCase() === val); return b },
       order: () => b,
       limit: n => { out = out.slice(0, n); return b },
@@ -124,7 +126,7 @@ test('dry run plans the send and writes nothing', async () => {
   const s = await runMetaPurchaseForLocation(LOCATION, { dryRun: true, db, nowMs: NOW, send: async () => { sends++; return { ok: true } } })
   assert.equal(s.candidates, 1)
   assert.equal(s.planned.length, 1)
-  assert.match(s.planned[0].match, /^em=y ph=y fn=y ln=y db=y fbp=n fbc=n xid=n$/)
+  assert.match(s.planned[0].match, /^em=y ph=y fn=y ln=y db=y fbp=n fbc=n xid=n lead=n$/)
   assert.equal(sends, 0)
   assert.equal(db.upserts.length, 0)
 })
@@ -156,4 +158,34 @@ test('already-sent joins are skipped; failures retry until the cap', async () =>
   const c = await runMetaPurchaseForLocation(LOCATION, { dryRun: false, db: cappedDb, nowMs: NOW, send })
   assert.equal(c.gaveUp, 1)
   assert.equal(cappedDb.upserts.length, 0)
+})
+
+test('a lead id rides on the event unhashed and shows in the match column', async () => {
+  const ev = buildPurchaseEvent({ member: member('m1'), contact: null, value: 990, nowMs: NOW, leadId: '1234567890' })
+  assert.equal(ev.user_data.lead_id, '1234567890')
+  const without = buildPurchaseEvent({ member: member('m1'), contact: null, value: 990, nowMs: NOW })
+  assert.equal(without.user_data.lead_id, undefined)
+})
+
+test('findLeadId looks up by email or phone in the 90 days before the join', async () => {
+  let q = null
+  const db = { from: () => {
+    const b = {
+      select: () => b,
+      or: v => { q = { or: v }; return b },
+      gte: (_c, v) => { q.from = v; return b },
+      lt: (_c, v) => { q.to = v; return b },
+      order: () => b,
+      limit: () => Promise.resolve({ data: [{ lead_id: 'L9' }], error: null }),
+    }
+    return b
+  } }
+  assert.equal(await findLeadId(db, member('m1')), 'L9')
+  assert.equal(q.or, 'email.eq.jesplata50@gmail.com,phone.eq.5418404182')
+  assert.equal(q.from, '2026-07-01T00:00:00.000Z')
+  assert.equal(q.to, '2026-10-01T00:00:00.000Z')
+
+  const missingTable = { from: () => { const b = { select: () => b, or: () => b, gte: () => b, lt: () => b, order: () => b, limit: () => Promise.resolve({ data: null, error: { message: 'relation does not exist' } }) }; return b } }
+  assert.equal(await findLeadId(missingTable, member('m1')), null)
+  assert.equal(await findLeadId(db, member('m1', { email: null, primary_phone: null, mobile_phone: null })), null)
 })

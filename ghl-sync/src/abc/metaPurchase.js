@@ -42,7 +42,7 @@ const DELETING_TYPE = /^z\./i
 // (auth/src/lib/metaMatch.js) so the two can be grepped the same way.
 const MATCH_KEYS = [
   ['em', 'em'], ['ph', 'ph'], ['fn', 'fn'], ['ln', 'ln'], ['db', 'db'],
-  ['fbp', 'fbp'], ['fbc', 'fbc'], ['xid', 'external_id'],
+  ['fbp', 'fbp'], ['fbc', 'fbc'], ['xid', 'external_id'], ['lead', 'lead_id'],
 ]
 function matchCoverage(userData) {
   return MATCH_KEYS.map(([label, key]) => `${label}=${userData[key] ? 'y' : 'n'}`).join(' ')
@@ -121,7 +121,7 @@ function eventTimeFor(member, nowMs) {
  * @param {object|null} contact ghl_contacts_v2 row, when one matched
  * @param {object} fieldIds { fbp, fbc, fbclid, external_id } custom field ids for this location
  */
-function buildPurchaseEvent({ member, contact, fieldIds = {}, value, currency = 'USD', locationName, nowMs }) {
+function buildPurchaseEvent({ member, contact, fieldIds = {}, value, currency = 'USD', locationName, nowMs, leadId = null }) {
   const userData = {}
   const email = normalizeEmail(member.email) || normalizeEmail(contact && contact.email)
   const phone = normalizePhone(member.mobile_phone || member.primary_phone) || normalizePhone(contact && contact.phone)
@@ -142,6 +142,10 @@ function buildPurchaseEvent({ member, contact, fieldIds = {}, value, currency = 
   if (fbp) userData.fbp = String(fbp)
   if (fbc) userData.fbc = String(fbc)
   if (xid) userData.external_id = [sha256(xid)]
+  // The Instant Form lead this member came from (meta_leads). Sent raw, not
+  // hashed: it is Meta's own id, and the strongest key Meta has for tying the
+  // sale back to that lead and its ad.
+  if (leadId) userData.lead_id = String(leadId)
 
   // Online joins happen on the website but we have none of the browser data
   // Meta requires for action_source=website, so they go as system_generated.
@@ -229,6 +233,26 @@ async function findContact(db, locationId, member, fieldIds) {
   return null
 }
 
+// The Instant Form lead a join came from: same email or phone, submitted in
+// the LEAD_LOOKBACK_DAYS before they joined. Newest wins.
+const LEAD_LOOKBACK_DAYS = 90
+async function findLeadId(db, member) {
+  const email = normalizeEmail(member.email)
+  const digits = String(member.mobile_phone || member.primary_phone || '').replace(/\D/g, '')
+  const phone = digits.length >= 10 ? digits.slice(-10) : null
+  if (!email && !phone) return null
+  const day = String(member.since_date).slice(0, 10)
+  const from = new Date(Date.parse(`${day}T00:00:00Z`) - LEAD_LOOKBACK_DAYS * 86400000).toISOString()
+  const to = new Date(Date.parse(`${day}T00:00:00Z`) + 2 * 86400000).toISOString()
+  const ors = [email && `email.eq.${email}`, phone && `phone.eq.${phone}`].filter(Boolean).join(',')
+  const { data, error } = await db.from('meta_leads').select('lead_id')
+    .or(ors).gte('created_time', from).lt('created_time', to)
+    .order('created_time', { ascending: false }).limit(1)
+  // Before migration 223 the table doesn't exist: send without a lead id.
+  if (error) return null
+  return data && data[0] ? data[0].lead_id : null
+}
+
 async function runMetaPurchaseForLocation(location, options = {}) {
   const {
     dryRun = true,
@@ -269,7 +293,8 @@ async function runMetaPurchaseForLocation(location, options = {}) {
     if (prior && (prior.attempts || 0) >= MAX_ATTEMPTS) { summary.gaveUp++; continue }
 
     const contact = await findContact(db, locationId, member, fieldIds)
-    const event = buildPurchaseEvent({ member, contact, fieldIds, value, locationName, nowMs })
+    const leadId = await findLeadId(db, member)
+    const event = buildPurchaseEvent({ member, contact, fieldIds, value, locationName, nowMs, leadId })
     const match = matchCoverage(event.user_data)
     const name = `${member.first_name || ''} ${member.last_name || ''}`.trim()
     summary.planned.push({ member_id: member.member_id, name, since: member.since_date, match })
@@ -313,4 +338,5 @@ module.exports = {
   normalizeDob,
   fbcFromFbclid,
   matchCoverage,
+  findLeadId,
 }
