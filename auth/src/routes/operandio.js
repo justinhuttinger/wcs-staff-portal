@@ -91,7 +91,7 @@ function parseLocationsSection(text) {
 // ---------------------------------------------------------------------------
 // Operandio audits (QA-Cleaning + the other monthly department audits)
 // Subject: "QA-Cleaning (Jun 5) submitted at Salem"
-// Body (text part) carries: "Overall score 370 215 58%"
+// Body (text part) carries: "Overall score 370 215 58%" (or "58.11%", see parseQaScore)
 // and a click-tracking link to the full report in the Operandio app.
 // Any "<job> submitted at <club>" email whose body has an Overall score is an
 // audit; scoreless submission emails (daily checklists) fall through to the
@@ -110,13 +110,18 @@ function parseAuditSubject(subject) {
   return { jobName, department, locationSlug: slug }
 }
 
+// Since 2026-09-23 Operandio prints a non-whole score with decimals ("78.18%");
+// it used to round. Accept both and round, since the columns are integers.
+// A whole-number-only pattern sent every non-whole audit to the checklist
+// branch, where it never reached the QA KPI.
 function parseQaScore(text) {
-  const m = (text || '').match(/Overall score\s+(\d+)\s+(\d+)\s+(\d+)%/i)
+  const num = '(\\d+(?:\\.\\d+)?)'
+  const m = (text || '').match(new RegExp(`Overall score\\s+${num}\\s+${num}\\s+${num}%`, 'i'))
   if (!m) return null
   return {
-    possible: parseInt(m[1], 10),
-    achieved: parseInt(m[2], 10),
-    pct: parseInt(m[3], 10),
+    possible: Math.round(parseFloat(m[1])),
+    achieved: Math.round(parseFloat(m[2])),
+    pct: Math.round(parseFloat(m[3])),
   }
 }
 
