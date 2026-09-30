@@ -18,7 +18,7 @@ function toForm(settings) {
     enabled: s.enabled ?? true,
     require_email_code: s.require_email_code ?? true,
     max_offers_shown: String(s.max_offers_shown ?? 2),
-    owed_balance_mode: s.owed_balance_mode === 'block' ? 'block' : 'staff',
+    owed_balance_mode: ['block', 'charge'].includes(s.owed_balance_mode) ? s.owed_balance_mode : 'staff',
     staff_notify_emails: (s.staff_notify_emails || []).join('\n'),
   }
   for (const k of COPY_KEYS) f[k] = s[k] || ''
@@ -131,11 +131,17 @@ export default function SettingsTab() {
               className={inputClass(errors.owed_balance_mode)}>
               <option value="staff">Record it for staff to finish</option>
               <option value="block">Tell the member to call the club</option>
-              <option value="charge" disabled>Charge a card (not set up yet)</option>
+              <option value="charge">Member pays by card on the page</option>
             </select>
             {errors.owed_balance_mode
               ? <p className="text-xs text-wcs-red mt-1">{errors.owed_balance_mode}</p>
-              : <p className="text-xs text-text-muted mt-1">Card payments are not set up yet.</p>}
+              : <p className="text-xs text-text-muted mt-1">
+                  {f.owed_balance_mode === 'charge'
+                    ? 'Past due, club account, the next payment in the notice period and any early fee are paid by card (Enigma Vault) as part of the cancel.'
+                    : f.owed_balance_mode === 'block'
+                      ? 'The member cannot cancel online until the balance is paid at the club.'
+                      : 'The cancel request is saved and staff collect the balance and finish it in ABC.'}
+                </p>}
           </div>
         </div>
 

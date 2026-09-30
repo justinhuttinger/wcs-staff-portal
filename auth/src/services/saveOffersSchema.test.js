@@ -52,10 +52,8 @@ test('validateSettings bounds max_offers_shown to 0-5', () => {
   assert.strictEqual(validateSettings({ max_offers_shown: 1.5 }).ok, false)
 })
 
-test('validateSettings rejects charge with a clear message', () => {
-  const r = validateSettings({ owed_balance_mode: 'charge' })
-  assert.strictEqual(r.ok, false)
-  assert.strictEqual(r.error, 'Card payments are not set up yet')
+test('validateSettings accepts charge (card payments via Enigma) and rejects unknown modes', () => {
+  assert.deepStrictEqual(validateSettings({ owed_balance_mode: 'charge' }).patch, { owed_balance_mode: 'charge' })
   assert.strictEqual(validateSettings({ owed_balance_mode: 'nope' }).ok, false)
   assert.deepStrictEqual(validateSettings({ owed_balance_mode: 'block' }).patch, { owed_balance_mode: 'block' })
 })

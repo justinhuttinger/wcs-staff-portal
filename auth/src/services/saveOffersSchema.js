@@ -14,9 +14,10 @@ const { NAME_TO_CLUB } = require('../config/clubMap')
 
 const CLUB_NUMBERS = Object.values(NAME_TO_CLUB)
 const OFFER_TYPES = ['dues_discount', 'freeze', 'perk']
-// 'charge' exists in the table's check constraint but is reserved for the
-// Stripe provider. Until that ships, the admin cannot pick it.
-const OWED_BALANCE_MODES = ['staff', 'block']
+// What happens when a member owes money to cancel. 'charge' = they pay by card
+// on the cancel page (wcs-save, Enigma Vault); it only takes effect when the
+// Worker has its Enigma secrets, otherwise the balance goes to staff.
+const OWED_BALANCE_MODES = ['staff', 'block', 'charge']
 const OUTCOMES = ['in_progress', 'saved', 'cancelled', 'needs_staff', 'abandoned', 'failed']
 // save_cancel_rules.plan_kind (migration 213), in display order. From the ABC
 // agreement term: Open = month_to_month, Installment = contract,
@@ -107,8 +108,7 @@ function validateSettings(body) {
 
   if ('owed_balance_mode' in b) {
     const m = String(b.owed_balance_mode || '').trim()
-    if (m === 'charge') fields.owed_balance_mode = 'Card payments are not set up yet'
-    else if (!OWED_BALANCE_MODES.includes(m)) fields.owed_balance_mode = 'Owed balance mode must be staff or block'
+    if (!OWED_BALANCE_MODES.includes(m)) fields.owed_balance_mode = 'Owed balance mode must be staff, block or charge'
     else patch.owed_balance_mode = m
   }
 
