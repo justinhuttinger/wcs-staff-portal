@@ -148,3 +148,33 @@ test('a real scored audit is still stored as an audit', async () => {
   assert.ok(tables.includes('operandio_qa_reports'), 'audit was not written')
   assert.ok(!tables.includes('till_counts'), 'audit leaked into till_counts')
 })
+
+// Regression: from 2026-09-23 Operandio prints a non-whole audit score with
+// decimals ("Overall score 55 43 78.18%"). The whole-number-only regex failed,
+// so the audit fell through to the checklist branch and never reached
+// operandio_qa_reports (13 audits missed 9/23-9/28). Whole scores kept working,
+// which made it look random.
+test('an audit with a DECIMAL percent is still stored as an audit', async () => {
+  const { payload, writes: w } = await post({
+    subject: 'Membership Coordinator Audit (Monthly) submitted at Keizer',
+    text: 'Membership Coordinator Audit\r\nOverall score 55 43 78.18%\r\n',
+    html: '<html><body>no drawer rows here</body></html>',
+  })
+  assert.equal(payload?.audit, true, 'expected an audit response')
+  assert.equal(payload.score_pct, 78)
+  const row = w.find(x => x.table === 'operandio_qa_reports')?.row
+  assert.ok(row, 'audit was not written')
+  assert.equal(row.score_possible, 55)
+  assert.equal(row.score_achieved, 43)
+  assert.equal(row.score_pct, 78)
+})
+
+test('a decimal percent rounds half up, like Operandio did', async () => {
+  const { payload } = await post({
+    subject: 'PT Audit (Monthly) submitted at Clackamas',
+    text: 'PT Audit\r\nOverall score 40 33 82.5%\r\n',
+    html: '<html><body></body></html>',
+  })
+  assert.equal(payload?.audit, true)
+  assert.equal(payload.score_pct, 83)
+})
