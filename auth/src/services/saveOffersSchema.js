@@ -171,8 +171,42 @@ function validateReason(body, { partial = false } = {}) {
     else row.active = b.active
   }
 
+  if ('questions' in b) {
+    const q = validateReasonQuestions(b.questions)
+    if (q.error) fields.questions = q.error
+    else row.questions = q.questions
+  }
+
   if (Object.keys(fields).length) return fail(fields)
   return { ok: true, row }
+}
+
+// Follow-up questions shown after a member picks the reason (migration 218).
+// Free-text answers; `required` means the member can't continue without one.
+// A new question arrives without an id and gets one here, so answers stay
+// matched to their question when labels are edited or rows reordered.
+const REASON_QUESTIONS_MAX = 5
+const QUESTION_LABEL_MAX = 200
+
+function validateReasonQuestions(list) {
+  if (!Array.isArray(list)) return { error: 'Questions must be a list' }
+  if (list.length > REASON_QUESTIONS_MAX) return { error: `At most ${REASON_QUESTIONS_MAX} questions per reason` }
+  const out = []
+  const seen = new Set()
+  for (const [i, item] of list.entries()) {
+    const n = i + 1
+    const label = String(item?.label ?? '').trim()
+    if (!label) return { error: `Question ${n} needs some text` }
+    if (label.length > QUESTION_LABEL_MAX) return { error: `Keep question ${n} under ${QUESTION_LABEL_MAX} characters` }
+    if ('required' in (item || {}) && typeof item.required !== 'boolean') return { error: `Question ${n}: required must be true or false` }
+    let id = item?.id
+    if (id == null || id === '') id = require('crypto').randomUUID()
+    else if (!isUuid(id)) return { error: `Question ${n} has an invalid id` }
+    if (seen.has(id)) return { error: `Question ${n} is a duplicate` }
+    seen.add(id)
+    out.push({ id, label, required: item?.required === true })
+  }
+  return { questions: out }
 }
 
 // ---------------------------------------------------------------- offers
@@ -425,6 +459,7 @@ module.exports = {
   needsAction,
   validateSettings,
   validateReason,
+  validateReasonQuestions,
   normalizeOfferConfig,
   validateOffer,
   isPlanKind,

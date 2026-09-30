@@ -3,8 +3,74 @@ import { saveAdmin } from '../../../lib/api'
 import { Card, Toggle, inputClass, btnPrimary, btnSecondary } from './shared'
 
 const CODE_RE = /^[A-Z0-9]{3}$/
+const QUESTIONS_MAX = 5
+
+// Follow-up questions asked after a member picks this reason (migration 218).
+// Free-text answers; "Required" means they can't continue without one. New
+// questions get their id on the server.
+function QuestionsEditor({ reason, busy, onSave }) {
+  const saved = reason.questions || []
+  const [rows, setRows] = useState(saved.map(q => ({ ...q })))
+  const [err, setErr] = useState('')
+  const dirty = JSON.stringify(rows.map(({ id, label, required }) => ({ id, label, required: !!required })))
+    !== JSON.stringify(saved.map(({ id, label, required }) => ({ id, label, required: !!required })))
+
+  const update = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  const move = (i, dir) => {
+    const next = [...rows]
+    const [item] = next.splice(i, 1)
+    next.splice(i + dir, 0, item)
+    setRows(next)
+  }
+
+  async function save() {
+    if (rows.some(r => !r.label.trim())) return setErr('Every question needs some text (or remove it)')
+    setErr('')
+    const e = await onSave(reason, { questions: rows.map(r => ({ ...(r.id ? { id: r.id } : {}), label: r.label.trim(), required: !!r.required })) })
+    if (e) setErr(e)
+  }
+
+  return (
+    <div className="w-full mt-2 ml-8 rounded-lg border border-border bg-bg p-3 space-y-2">
+      <p className="text-xs text-text-muted">
+        Asked after a member picks <span className="font-semibold text-text-primary">{reason.label}</span>. They type the answer; staff see it on the request in Activity.
+      </p>
+      {rows.length === 0 && <p className="text-sm text-text-muted">No questions yet.</p>}
+      {rows.map((q, i) => (
+        <div key={q.id || `new-${i}`} className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1">
+            <button type="button" aria-label="Move question up" disabled={busy || i === 0} onClick={() => move(i, -1)}
+              className="h-7 w-6 rounded border border-border text-xs text-text-muted hover:bg-surface disabled:opacity-30">&#9650;</button>
+            <button type="button" aria-label="Move question down" disabled={busy || i === rows.length - 1} onClick={() => move(i, 1)}
+              className="h-7 w-6 rounded border border-border text-xs text-text-muted hover:bg-surface disabled:opacity-30">&#9660;</button>
+          </div>
+          <input value={q.label} maxLength={200} onChange={e => update(i, { label: e.target.value })}
+            placeholder="e.g. What monthly price would have worked for you?"
+            className={`${inputClass(false)} flex-1 min-w-[220px]`} aria-label={`Question ${i + 1}`} />
+          <label className="flex items-center gap-1.5 text-sm text-text-primary">
+            <input type="checkbox" checked={!!q.required} onChange={e => update(i, { required: e.target.checked })} />
+            Required
+          </label>
+          <button type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))} disabled={busy}
+            className="px-2 py-1 rounded text-sm text-wcs-red hover:bg-surface disabled:opacity-50">Remove</button>
+        </div>
+      ))}
+      {err && <p className="text-xs text-wcs-red">{err}</p>}
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button type="button" onClick={() => setRows([...rows, { label: '', required: false }])}
+          disabled={busy || rows.length >= QUESTIONS_MAX} className={btnSecondary}>
+          + Add question{rows.length >= QUESTIONS_MAX ? ` (max ${QUESTIONS_MAX})` : ''}
+        </button>
+        {dirty && <button type="button" onClick={save} disabled={busy} className={btnPrimary}>Save questions</button>}
+        {dirty && <button type="button" onClick={() => { setRows(saved.map(q => ({ ...q }))); setErr('') }} className={btnSecondary}>Undo</button>}
+      </div>
+    </div>
+  )
+}
 
 function ReasonRow({ reason, index, count, busy, onSave, onMove, onToggle, onDelete }) {
+  const [showQuestions, setShowQuestions] = useState(false)
+  const questionCount = (reason.questions || []).length
   const [label, setLabel] = useState(reason.label)
   const [code, setCode] = useState(reason.abc_cancel_code)
   const [err, setErr] = useState('')
@@ -50,6 +116,16 @@ function ReasonRow({ reason, index, count, busy, onSave, onMove, onToggle, onDel
           Delete
         </button>
       </div>
+      <div className="w-full pl-8">
+        <button type="button" onClick={() => setShowQuestions(v => !v)} aria-expanded={showQuestions}
+          className="text-xs font-semibold text-text-muted hover:text-text-primary">
+          {showQuestions ? '▾' : '▸'} Follow-up questions ({questionCount})
+          {!showQuestions && questionCount > 0 && (
+            <span className="font-normal"> · {(reason.questions || []).filter(q => q.required).length} required</span>
+          )}
+        </button>
+      </div>
+      {showQuestions && <QuestionsEditor reason={reason} busy={busy} onSave={onSave} />}
     </div>
   )
 }
@@ -113,6 +189,7 @@ export default function ReasonsTab({ reasons, onChange }) {
         <p className="text-xs text-text-muted mt-1">
           The list members pick from, in this order. Each reason sends its ABC cancel code with the cancellation,
           so the code must exist in ABC for every club. Hidden reasons stay on past activity but members do not see them.
+          Use <span className="font-semibold">Follow-up questions</span> under a reason to ask the member more (e.g. for &quot;Too expensive&quot;: what price would have worked); mark a question Required to make them answer it.
         </p>
         {error && <p className="text-sm text-wcs-red mt-3">{error}</p>}
       </Card>

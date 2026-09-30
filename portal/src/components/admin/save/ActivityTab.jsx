@@ -179,6 +179,10 @@ function RequestDetail({ id, onClose, onResolved }) {
             <Row label="Email verified">{formatDateTime(req.verified_at)}</Row>
             <Row label="Reason">{req.reason_label}</Row>
             <Row label="Member note">{req.reason_note}</Row>
+            {/* Follow-up questions for the reason (migration 218), as worded when asked. */}
+            {(req.reason_answers || []).map(a => (
+              <Row key={a.id || a.question} label={a.question}>{a.answer || null}</Row>
+            ))}
             <Row label="Offers shown">{(req.offers_shown || []).length || null}</Row>
             <Row label="Offer taken">{req.offer_snapshot?.headline}</Row>
             <Row label="Plan">{plan == null ? null : typeof plan === 'object' ? JSON.stringify(plan) : String(plan)}</Row>

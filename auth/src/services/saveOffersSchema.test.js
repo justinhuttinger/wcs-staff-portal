@@ -296,3 +296,38 @@ test('sortCancelRules orders month to month, contract, prepaid', () => {
   ])
   assert.deepStrictEqual(sorted.map(r => r.plan_kind), ['month_to_month', 'contract', 'prepaid', 'mystery'])
 })
+
+// ------------------------------------------------ reason follow-up questions (migration 218)
+const { validateReasonQuestions } = require('./saveOffersSchema')
+const Q1 = '44444444-4444-4444-8444-444444444444'
+
+test('reason questions: new ones get an id, required defaults to false', () => {
+  const r = validateReason({ questions: [{ label: '  What price would work?  ', required: true }, { label: 'Anything else?' }] }, { partial: true })
+  assert.strictEqual(r.ok, true)
+  assert.strictEqual(r.row.questions.length, 2)
+  assert.match(r.row.questions[0].id, /^[0-9a-f-]{36}$/)
+  assert.deepStrictEqual({ ...r.row.questions[0], id: 'x' }, { id: 'x', label: 'What price would work?', required: true })
+  assert.strictEqual(r.row.questions[1].required, false)
+})
+
+test('reason questions: existing ids are kept', () => {
+  const r = validateReasonQuestions([{ id: Q1, label: 'Why?', required: false }])
+  assert.deepStrictEqual(r.questions, [{ id: Q1, label: 'Why?', required: false }])
+})
+
+test('reason questions: bad input is refused with a readable message', () => {
+  assert.match(validateReasonQuestions('nope').error, /list/)
+  assert.match(validateReasonQuestions([{ label: '' }]).error, /Question 1 needs some text/)
+  assert.match(validateReasonQuestions([{ label: 'x'.repeat(201) }]).error, /under 200/)
+  assert.match(validateReasonQuestions([{ label: 'a', required: 'yes' }]).error, /required must be true or false/)
+  assert.match(validateReasonQuestions([{ id: 'bad', label: 'a' }]).error, /invalid id/)
+  assert.match(validateReasonQuestions([{ id: Q1, label: 'a' }, { id: Q1, label: 'b' }]).error, /duplicate/)
+  assert.match(validateReasonQuestions(Array.from({ length: 6 }, (_, i) => ({ label: `q${i}` }))).error, /At most 5/)
+  const r = validateReason({ questions: [{ label: '' }] }, { partial: true })
+  assert.strictEqual(r.ok, false)
+  assert.ok(r.fields.questions)
+})
+
+test('reason questions: an empty list clears them', () => {
+  assert.deepStrictEqual(validateReason({ questions: [] }, { partial: true }).row, { questions: [] })
+})

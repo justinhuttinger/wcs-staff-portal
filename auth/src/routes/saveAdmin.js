@@ -76,8 +76,8 @@ function serverError(res, label, err) {
   console.error(`[save-admin] ${label}:`, err?.message || err)
   // Most likely cause before merge-day: migration 211 not applied yet.
   const msg = err?.message || ''
-  const missing = /relation .* does not exist|Could not find the table/i.test(msg)
-  const migration = /save_cancel_rules/.test(msg) ? '213' : '211'
+  const missing = /relation .* does not exist|Could not find the table|column .*(questions|reason_answers)/i.test(msg)
+  const migration = /save_cancel_rules/.test(msg) ? '213' : /questions|reason_answers/.test(msg) ? '218' : '211'
   return res.status(500).json({
     error: missing ? `Save tables not found. Apply migration ${migration}.` : `Failed to ${label}`,
   })
