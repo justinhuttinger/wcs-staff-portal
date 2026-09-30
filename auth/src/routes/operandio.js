@@ -3,7 +3,7 @@ const multer = require('multer')
 const authenticate = require('../middleware/auth')
 const { requireRole, requireReportAccess } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
-const { classifyJobEmail, persistJobEmail } = require('../lib/operandioJobs')
+const { classifyJobEmail, persistJobEmail, hasRealAuditScore } = require('../lib/operandioJobs')
 const { classifyTillCount } = require('../lib/tillCountParse')
 const { parseQaItems } = require('../lib/operandioEmailAudit')
 const { resolveScopedSlugs } = require('../services/locationScope')
@@ -301,6 +301,17 @@ router.post('/webhook', upload.any(), async (req, res) => {
     }
     console.log('[Operandio] Audit stored:', audit.locationSlug, '-', audit.jobName, '-', `${auditScore.pct}%`)
     return res.json({ audit: true, location: audit.locationSlug, department: audit.department, score_pct: auditScore.pct })
+  }
+
+  // A scored submission the audit parser couldn't read is an audit in a format
+  // we don't know yet. From 9/23-9/28 these were filed as checklists with no
+  // email kept, so 13 audits vanished from the QA KPI unrecoverably. Keep the
+  // raw email to replay once the parser is fixed, and say so loudly.
+  if (audit && hasRealAuditScore(text)) {
+    const attachments = await storeAttachments(req.files)
+    await captureRawEmail({ subject, text, html, from, reason: 'audit_unparsed', attachments })
+    console.warn('[Operandio] Scored submission but audit score not parsed, raw kept:', subject)
+    return res.status(200).json({ ignored: true, reason: 'Audit score not parsed; captured raw' })
   }
 
   // Per-job submission / overdue events (Phase 2). A checklist submission
