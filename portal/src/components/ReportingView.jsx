@@ -20,6 +20,7 @@ import MetaAdsView from './MetaAdsView'
 import GoogleMarketingView from './GoogleMarketingView'
 import EmailMarketingReport from './reports/EmailMarketingReport'
 import MarketingEngagementReport from './reports/MarketingEngagementReport'
+import MarketingScoreboardReport from './reports/MarketingScoreboardReport'
 import KpiReport from './reports/KpiReport'
 import OperandioReport, { OPERANDIO_SINGLE_CLUB_VIEWS } from './reports/OperandioReport'
 import ReportInfoButton from './ReportInfoButton'
@@ -55,6 +56,7 @@ const REPORT_ICONS = {
   'meta-ads': 'M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6',
   'google-marketing': 'm21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z',
   'email-marketing': 'M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75',
+  'marketing-scoreboard': 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z',
   'marketing-engagement': 'M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z',
   kpis: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z',
 }
@@ -81,6 +83,7 @@ const ALL_REPORT_TILES = [
   { key: 'google-marketing', label: 'Google', desc: 'Business + Analytics' },
   { key: 'email-marketing', label: 'Email Marketing', desc: 'Campaign Performance' },
   { key: 'marketing-engagement', label: 'Marketing Engagement', desc: 'Email + SMS Performance' },
+  { key: 'marketing-scoreboard', label: 'Scoreboard', desc: 'Leads, Carts & Joins by Day' },
   { key: 'kpis', label: 'KPIs', desc: 'Goals vs. Actuals' },
 ]
 
@@ -111,7 +114,7 @@ const REPORT_GROUPS = [
     label: 'Marketing',
     desc: 'Ads, SEO & Lead Capture',
     iconPath: REPORT_ICONS['marketing'],
-    reports: ['meta-ads', 'google-marketing', 'email-marketing', 'marketing-engagement'],
+    reports: ['marketing-scoreboard', 'meta-ads', 'google-marketing', 'email-marketing', 'marketing-engagement'],
   },
 ]
 
@@ -460,7 +463,7 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
       {/* Header card */}
       <div className="relative z-20 bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         {(() => {
-          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'compliance' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing'
+          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'compliance' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'marketing-scoreboard'
           const showLocation = hasMultipleReportLocations
           return (
             <>
@@ -680,6 +683,9 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
           )}
           {activeReport === 'email-marketing' && (
             <EmailMarketingReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'marketing-scoreboard' && (
+            <MarketingScoreboardReport locationSlug={locationSlug} />
           )}
           {activeReport === 'marketing-engagement' && (
             <MarketingEngagementReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} isAdmin={isAdmin} />

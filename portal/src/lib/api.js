@@ -1689,6 +1689,16 @@ export async function getFbRoas(params = {}) {
   return api('/reports/fb-roas' + (qs ? '?' + qs : ''))
 }
 
+// Marketing Scoreboard (admin): daily leads / carts / joins per channel.
+export async function getMarketingScoreboard({ month, club = 'all' } = {}) {
+  const qs = new URLSearchParams({ club, ...(month ? { month } : {}) }).toString()
+  return api('/reports/marketing-scoreboard?' + qs)
+}
+
+export async function saveMarketingScoreboardGoals(goal) {
+  return api('/reports/marketing-scoreboard/goals', { method: 'PUT', body: JSON.stringify(goal) })
+}
+
 // Google Business Profile
 export async function getGoogleBusinessStatus() {
   return api('/google-business/status')

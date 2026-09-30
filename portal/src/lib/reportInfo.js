@@ -454,6 +454,36 @@ const REPORT_INFO = {
     ],
   },
 
+  'marketing-scoreboard': {
+    title: 'Marketing Scoreboard',
+    sections: [
+      {
+        heading: 'What this is',
+        body:
+          'Leads, carts and joins by day for one month, in two tables that are never blended: Meta (paid Facebook & Instagram) and Organic website. Totals, cost per lead / cart / join, month-end pace and your goals sit under each table.',
+      },
+      {
+        heading: 'How each number is counted',
+        body: [
+          'Leads: GHL contacts created that day. Meta = Instant Form leads plus website visits from a paid click. Organic = website form fills with no paid click.',
+          'Carts: Online Join starts, one per person per day. Meta when the start came from a paid click or the person was a Meta lead in the 90 days before.',
+          'Joins: new memberships by start date (primary members; no staff, non-member, childcare). Meta when the member first came in through a Meta ad; Organic when they joined online or first came in through the website. Walk-ins are in neither.',
+          'Spend, impressions and link clicks come from Meta, split by club from the campaign name. Sessions come from Google Analytics and leave out paid channels.',
+        ],
+      },
+      {
+        heading: 'Pace and goals',
+        body: [
+          'Month-end pace = the month so far at its daily rate. Goals are set per month and per club (or All) with Edit goals.',
+          'CPL turns red when it is over the target CPL.',
+        ],
+      },
+    ],
+    notes: [
+      'Online Join only started recording ad clicks when the website began passing them to the join page, so Meta carts before then are undercounted.',
+    ],
+  },
+
   'meta-ads': {
     title: 'Meta Ads',
     sections: [
