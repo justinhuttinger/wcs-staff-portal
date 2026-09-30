@@ -80,4 +80,5 @@ export const CUSTOM_REPORT_CATALOG = [
   { key: 'google-marketing',  label: 'Google' },
   { key: 'email-marketing',   label: 'Email Marketing' },
   { key: 'marketing-engagement', label: 'Marketing Engagement' },
+  { key: 'marketing-scoreboard', label: 'Marketing Scoreboard' },
 ]
