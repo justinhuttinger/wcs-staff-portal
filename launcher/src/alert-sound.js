@@ -5,7 +5,8 @@
 // the ABC page plays, so the alert cues are played here instead, from a
 // hidden window of our own. abc-scraper.js sends 'abc-alert-sound' with the
 // level: 'red' = harsh BEEP BEEP BEEP, 'blue' = two-note chime,
-// 'blue-double' = the chime twice.
+// 'blue-double' = the chime twice, 'party' = a rising fanfare for a
+// check-in milestone ("CELEBRATE 10TH VISIT!" alert).
 const { BrowserWindow, ipcMain } = require('electron')
 const volumeGuard = require('./volume-guard')
 
@@ -25,6 +26,13 @@ function playCue(level) {
   const notes = red
     ? [[0, 1040, 0.22, 'square'], [0.32, 1040, 0.22, 'square'], [0.64, 1040, 0.22, 'square']]
     : level === 'blue-double' ? chime.concat(chime.map(([at, f, d, t]) => [at + 1.0, f, d, t])) : chime
+  // party: a quick C-E-G-C arpeggio, then a sparkle on top.
+  if (level === 'party') {
+    notes.length = 0
+    notes.push(
+      [0, 523, 0.16, 'triangle'], [0.11, 659, 0.16, 'triangle'], [0.22, 784, 0.16, 'triangle'], [0.33, 1047, 0.45, 'triangle'],
+      [0.55, 1568, 0.12, 'sine'], [0.63, 2093, 0.12, 'sine'], [0.71, 2637, 0.3, 'sine'])
+  }
   const peak = red ? 0.22 : 0.8
   for (const [at, freq, dur, type] of notes) {
     const osc = ctx.createOscillator()
@@ -79,7 +87,7 @@ function setup(log = () => {}, mainWindow = null) {
 // opts.keepVolume: the Admin "Test sound" has just set a trial level; don't
 // put the saved one back before playing.
 function play(level, opts = {}) {
-  const lvl = ['red', 'blue', 'blue-double'].includes(level) ? level : 'blue'
+  const lvl = ['red', 'blue', 'blue-double', 'party'].includes(level) ? level : 'blue'
   const w = ensureWindow()
   const run = () => w.webContents.executeJavaScript(`playCue(${JSON.stringify(lvl)})`).catch(err => logFn('[alert-sound] ' + err.message))
   // Unmute / raise to the floor first (volume-guard.js); it answers in

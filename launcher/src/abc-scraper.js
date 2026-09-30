@@ -614,7 +614,7 @@ function isFreshCheckin(card) {
 // member's staff alerts (main: member-alerts.js). PURPLE ones get the intense
 // beep and a purple banner with the full note (Justin, 2026-09-29). Add
 // colours to CUE_MESSAGE_COLORS to cue more.
-const SYSTEM_ALERT_RE = /overdue|past due|balance|cancel|expire|\bRFC\b|collections?|need (photo|dob|date of birth|birth ?date|address|email)|access restriction|already checked|minor|manual check ?in|free drink|recurring service|agreement|pending pos|freeze|frozen|credit card/i
+const SYSTEM_ALERT_RE = /overdue|past due|balance|cancel|expire|\bRFC\b|collections?|need (photo|dob|date of birth|birth ?date|address|email)|access restriction|already checked|minor|manual check ?in|free drink|recurring service|agreement|pending pos|freeze|frozen|credit card|celebrate/i
 const CUE_MESSAGE_COLORS = /purple/i
 const messageChecked = new Set()
 // OFF until Justin is ready to launch purple alerts (2026-09-29). The whole
@@ -778,6 +778,76 @@ async function submitPurple() {
   if (item.failures >= 2) purpleRoot.querySelector('.skip').hidden = false
 }
 
+// --- Check-in milestones: party cue --------------------------------------------
+// ghl-sync's nightly milestone job gives a member one visit short of a
+// milestone a show-once ABC alert, "CELEBRATE 10TH VISIT!" (checkinMilestonesJob.js),
+// so it lands on the card of the milestone check-in itself. When a fresh card
+// carries it: a party fanfare and a gold banner with confetti, so the desk
+// makes a moment of it. Never blocks the screen; a red cue on the same
+// check-in plays first.
+function parseCelebration(text) {
+  const m = /CELEBRATE\s+(\d+)\s*TH\s+VISIT/i.exec(String(text || ''))
+  return m ? Number(m[1]) : null
+}
+
+const celebrated = new Set() // cilids already partied (cards are rescanned)
+const PARTY_MS = 12 * 1000
+const CONFETTI_COLORS = ['#f6c343', '#ff6b6b', '#4dabf7', '#51cf66', '#cc5de8', '#ffa94d']
+let partyHost = null
+let partyRoot = null
+let partyTimer = null
+
+function showPartyCue(party, belowAlert) {
+  playCue('party')
+  if (!partyHost) {
+    partyHost = document.createElement('div')
+    partyHost.id = 'wcs-party-cue'
+    partyHost.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;'
+    partyRoot = partyHost.attachShadow({ mode: 'closed' })
+    partyRoot.innerHTML = '<style>' +
+      '.banner{position:fixed;left:50%;transform:translateX(-50%);max-width:min(620px,90vw);pointer-events:auto;cursor:pointer;' +
+      'border-radius:14px;padding:14px 24px;color:#3b2500;background:linear-gradient(135deg,#ffe38a,#f6b93b 55%,#f39c12);' +
+      "font:600 17px/1.35 'Inter',-apple-system,'Segoe UI',sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.35);text-align:center;" +
+      'animation:pop .45s cubic-bezier(.2,1.6,.4,1);}' +
+      '@keyframes pop{from{transform:translateX(-50%) scale(.6);opacity:0}to{transform:translateX(-50%) scale(1);opacity:1}}' +
+      '.name{font-size:22px;font-weight:800;}' +
+      '.hint{font-size:12px;font-weight:500;opacity:.75;margin-top:4px;}' +
+      '.bit{position:fixed;top:-12px;width:9px;height:14px;border-radius:2px;opacity:.95;animation:fall linear forwards;}' +
+      '@keyframes fall{to{transform:translateY(105vh) rotate(720deg);opacity:.2}}' +
+      '</style><div class="confetti"></div><div class="banner"><div class="name"></div><div class="what"></div>' +
+      '<div class="hint">Give them a shout-out! Click to dismiss</div></div>'
+    partyRoot.querySelector('.banner').addEventListener('click', hidePartyCue)
+    document.documentElement.appendChild(partyHost)
+  }
+  const banner = partyRoot.querySelector('.banner')
+  banner.style.top = belowAlert ? '130px' : '14px'
+  // Restart the pop for back-to-back milestones.
+  banner.style.animation = 'none'
+  void banner.offsetWidth
+  banner.style.animation = ''
+  partyRoot.querySelector('.name').textContent = '🎉 ' + (party.name || 'Milestone check-in')
+  partyRoot.querySelector('.what').textContent = party.n + 'th visit!'
+  const confetti = partyRoot.querySelector('.confetti')
+  confetti.textContent = ''
+  for (let i = 0; i < 40; i++) {
+    const bit = document.createElement('span')
+    bit.className = 'bit'
+    bit.style.left = (Math.random() * 100) + 'vw'
+    bit.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length]
+    bit.style.animationDuration = (1.6 + Math.random() * 1.2) + 's'
+    bit.style.animationDelay = (Math.random() * 0.4) + 's'
+    confetti.appendChild(bit)
+  }
+  partyHost.style.display = ''
+  clearTimeout(partyTimer)
+  partyTimer = setTimeout(hidePartyCue, PARTY_MS)
+}
+
+function hidePartyCue() {
+  clearTimeout(partyTimer)
+  if (partyHost) partyHost.style.display = 'none'
+}
+
 const seenCheckins = new Set()
 let alertBaselineDone = false
 const pendingRecheck = new Map() // cilid -> tries left (alerts can render a beat after the card)
@@ -795,6 +865,7 @@ function scanCheckinFeed() {
   let worst = null
   const hits = []
   let name = ''
+  let party = null
   cards.forEach(card => {
     const id = card.getAttribute('cilid')
     const isNew = !seenCheckins.has(id)
@@ -802,6 +873,14 @@ function scanCheckinFeed() {
     seenCheckins.add(id)
     if (isNew && !isFreshCheckin(card)) return // older check-in loaded by scrolling
     checkMemberMessages(card, id)
+    if (!celebrated.has(id)) {
+      const n = [...card.querySelectorAll('.datatrak-alert')].map(a => parseCelebration(a.textContent)).find(Boolean)
+      if (n) {
+        celebrated.add(id)
+        const t = card.querySelector('.title')
+        party = { n, name: t ? tidyName(t.textContent.trim()) : '' }
+      }
+    }
     const found = []
     card.querySelectorAll('.datatrak-alert').forEach(a => {
       const level = alertLevel(a)
@@ -824,6 +903,11 @@ function scanCheckinFeed() {
     })
   })
   if (worst) showAlertCue(worst, name, hits)
+  // After a red/blue cue, give its sound a moment before the fanfare.
+  if (party) {
+    if (worst) setTimeout(() => showPartyCue(party, true), 1600)
+    else showPartyCue(party, false)
+  }
 }
 
 // The ABC tab is muted (so ABC's own sounds never play), so the cue sound is
