@@ -524,6 +524,24 @@ app.post('/api/lapsed-tagging/run', requireSecret, async (req, res) => {
   }
 });
 
+// POST /api/checkin-milestones/run: on-demand check-in milestone alert pass
+// (same shape as /api/lapsed-tagging/run). Body { dryRun?: boolean }, default
+// from CHECKIN_MILESTONES_DRY_RUN (dry unless 'false'). Returns each club's
+// summary including the planned list, so a dry run shows exactly who would
+// get which alert.
+app.post('/api/checkin-milestones/run', requireSecret, async (req, res) => {
+  try {
+    const defaultDryRun = process.env.CHECKIN_MILESTONES_DRY_RUN !== 'false';
+    const dryRun = typeof req.body?.dryRun === 'boolean' ? req.body.dryRun : defaultDryRun;
+    const { runCheckinMilestonesAll } = require('./abc/checkinMilestonesJob');
+    const summary = await runCheckinMilestonesAll({ dryRun });
+    res.json({ dryRun, summary });
+  } catch (err) {
+    console.error('[API] Check-in milestones run failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/nps/run
 //
 // Run the nightly NPS job on demand. The cron fires once a day, so a night

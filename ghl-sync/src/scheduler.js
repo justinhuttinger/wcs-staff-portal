@@ -185,6 +185,19 @@ function startScheduler() {
     } catch (err) {
       console.error('[Scheduler] Check-in months refresh failed:', err.message);
       await alertSyncFailed(err).catch(() => {});
+      return;
+    }
+
+    // Check-in milestone alerts ("CELEBRATE 10TH VISIT!" show-once ABC
+    // alerts). Needs tonight's counts, so it only runs after a successful
+    // refresh. Dark until CHECKIN_MILESTONES_ENABLED=true; dry run (log only)
+    // unless CHECKIN_MILESTONES_DRY_RUN=false.
+    if (process.env.CHECKIN_MILESTONES_ENABLED !== 'true') return;
+    try {
+      const { runCheckinMilestonesAll } = require('./abc/checkinMilestonesJob');
+      await runCheckinMilestonesAll({ dryRun: process.env.CHECKIN_MILESTONES_DRY_RUN !== 'false' });
+    } catch (err) {
+      console.error('[Scheduler] Check-in milestones failed:', err.message);
     }
   });
 
