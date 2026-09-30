@@ -8,6 +8,7 @@
 // Meta's own token already carries ads_management + business_management (it is
 // a never-expiring system-user token), so there is no per-user OAuth dance.
 const { Router } = require('express')
+const { withOfflineTracking } = require('../lib/metaTracking')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { diskUpload, formPartFromFile, cleanupUploads } = require('./metaMediaUpload')
@@ -147,6 +148,22 @@ async function metaWrite(path, body, token, method = 'POST') {
   const data = await res.json()
   if (data.error) throw metaError(data)
   return data
+}
+
+// Offline-event tracking on a new ad, so ghl-sync's server-side Purchase
+// events can be credited to it (lib/metaTracking.js). Meta creates every ad
+// without it. Best-effort: a failure here is logged and never fails the ad
+// that was just created.
+async function ensureOfflineTracking(adId, token) {
+  const datasetId = process.env.META_PIXEL_ID
+  if (!adId || !datasetId) return
+  try {
+    const ad = await metaFetch(`/${adId}`, { fields: 'tracking_specs' }, token)
+    const specs = withOfflineTracking(ad.tracking_specs, datasetId)
+    if (specs) await metaWrite(`/${adId}`, { tracking_specs: specs }, token)
+  } catch (err) {
+    console.warn(`[meta-ads-manager] offline tracking not added to ad ${adId}: ${err.message}`)
+  }
 }
 
 // Graph's batch endpoint, chunked at its 50-per-request ceiling. This saves
@@ -1007,6 +1024,7 @@ async function createOneAd(variant, shared, token, accountId) {
     creative: { creative_id: creative.id },
     status: shared.status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED',
   }, token)
+  await ensureOfflineTracking(ad.id, token)
 
   return { ad_id: ad.id, creative_id: creative.id }
 }
@@ -1128,6 +1146,7 @@ router.post('/ads/flexible', async (req, res) => {
       creative: { creative_id: creative.id },
       status: status === 'ACTIVE' ? 'ACTIVE' : 'PAUSED',
     }, token)
+    await ensureOfflineTracking(ad.id, token)
 
     res.json({ ok: true, ad_id: ad.id, creative_id: creative.id, name: String(name).trim() })
   } catch (err) {
