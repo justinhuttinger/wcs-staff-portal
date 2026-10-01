@@ -16,6 +16,8 @@ app.set('trust proxy', 1)
 app.use(require('./routes/manualActionWorkflows'))
 // GHL Manual Actions "Log call" (writes to the CRM; own allowlist + rate limit).
 app.use(require('./routes/logCall'))
+// GHL call script banner: read-only, own CORS for the GHL app domains.
+app.use(require('./routes/callScript'))
 
 // CORS: whitelist known origins
 const ALLOWED_ORIGINS = [
