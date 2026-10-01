@@ -162,17 +162,19 @@ async function getWorkerDocument(workerId, documentId) {
 }
 
 /**
- * Upload a PDF document to a worker's profile.
+ * Upload a document to a worker's profile. Defaults to PDF, which is what the
+ * generated HR documents are; uploaded files pass their own content type.
  */
-async function uploadWorkerDocument(workerId, pdfBuffer, fileName) {
+async function uploadWorkerDocument(workerId, pdfBuffer, fileName, contentType = 'application/pdf') {
   const token = await getAccessToken()
 
   const resp = await fetch(`${API_BASE}/workers/${workerId}/documents`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${fileName}"`,
+      'Content-Type': contentType,
+      // Header values must be ASCII and must not contain a quote.
+      'Content-Disposition': `attachment; filename="${String(fileName).replace(/[^ -~]+/g, '_').replace(/"/g, '')}"`,
     },
     body: pdfBuffer,
   })

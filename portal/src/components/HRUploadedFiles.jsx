@@ -44,6 +44,12 @@ function FileRow({ file }) {
         </p>
         {error && <p className="text-[11px] text-red-600 mt-0.5">{error}</p>}
       </div>
+      {file.paychex_status === 'sent' && (
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200 shrink-0">Paychex</span>
+      )}
+      {file.paychex_status === 'failed' && (
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 shrink-0">Not in Paychex</span>
+      )}
       <button
         onClick={handleDownload}
         disabled={busy}
@@ -97,6 +103,9 @@ export default function HRUploadedFiles({ worker, locationSlug, files, onUploade
         title: title.trim() || undefined,
       })
       reset()
+      if (row.paychex_status === 'failed') {
+        setError('Saved in the portal, but Paychex did not accept the file. Add it in Paychex directly.')
+      }
       onUploaded?.(row)
     } catch (err) {
       setError(err.message || 'Upload failed')
@@ -162,7 +171,7 @@ export default function HRUploadedFiles({ worker, locationSlug, files, onUploade
           </>
         )}
         {error && <p className="text-xs text-red-600">{error}</p>}
-        <p className="text-[11px] text-text-muted">PDF, photo, Word, Excel, or text file, up to 15 MB. Saved to this employee's record in the portal.</p>
+        <p className="text-[11px] text-text-muted">PDF, photo, Word, Excel, or text file, up to 15 MB. Saved to this employee's record in the portal and sent to Paychex.</p>
       </div>
 
       {files.length > 0 && (
