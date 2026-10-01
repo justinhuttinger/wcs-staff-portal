@@ -291,7 +291,7 @@ router.post('/', requireRole('manager'), async (req, res) => {
           try {
             const fileName = `hr_${data.reason}_${data.employee_name.replace(/\s+/g, '_')}_${data.id}.pdf`
             const result = await uploadWorkerDocument(worker_id, pdfBuffer, fileName)
-            updates.paychex_document_id = result?.documentId || result?.id || null
+            updates.paychex_document_id = result.docId
             updates.status = 'uploaded'
           } catch (uploadErr) {
             console.error('[HRDocuments] Paychex auto-upload failed:', uploadErr.message)
@@ -625,7 +625,7 @@ router.post('/files', requireRole('manager'), uploadSingle, async (req, res) => 
       try {
         const result = await uploadWorkerDocument(worker_id, file.buffer, fileName, contentType)
         paychex.paychex_status = 'sent'
-        paychex.paychex_document_id = result?.documentId || result?.id || null
+        paychex.paychex_document_id = result.docId
       } catch (uploadErr) {
         console.error('[HRDocuments] Paychex file upload failed:', uploadErr.message)
       }
@@ -858,7 +858,7 @@ router.post('/:id/upload-paychex', requireRole('manager'), async (req, res) => {
 
     const result = await uploadWorkerDocument(workerId, pdfBuffer, fileName)
 
-    const paychexDocId = result?.documentId || result?.id || null
+    const paychexDocId = result.docId
 
     const now = new Date().toISOString()
     const { data, error } = await supabaseAdmin
