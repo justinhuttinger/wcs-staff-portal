@@ -2126,16 +2126,21 @@ export async function uploadHRFile({ file, workerId, employeeName, locationSlug,
   return api('/hr-documents/files', { method: 'POST', body: form })
 }
 
-export async function downloadHRFile(fileId, filename) {
+// The bytes of an uploaded HR file, for viewing in place or saving.
+export async function fetchHRFileBlob(fileId) {
   const res = await fetch(API_URL + '/hr-documents/files/' + encodeURIComponent(fileId) + '/download', {
     headers: authToken ? { Authorization: 'Bearer ' + authToken } : {},
   })
   if (!res.ok) {
-    let msg = `Failed to download file (HTTP ${res.status})`
+    let msg = `Failed to load file (HTTP ${res.status})`
     try { const j = await res.json(); msg = j.error || msg } catch {}
     throw new Error(msg)
   }
-  const url = URL.createObjectURL(await res.blob())
+  return res.blob()
+}
+
+export function saveBlobAs(blob, filename) {
+  const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = filename || 'hr-file'
@@ -2143,6 +2148,10 @@ export async function downloadHRFile(fileId, filename) {
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
+}
+
+export async function downloadHRFile(fileId, filename) {
+  saveBlobAs(await fetchHRFileBlob(fileId), filename)
 }
 
 // Help Center

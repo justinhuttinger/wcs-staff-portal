@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { uploadHRFile, downloadHRFile } from '../lib/api'
+import HRFileViewer, { canViewHRFile } from './HRFileViewer'
 
 const MAX_BYTES = 15 * 1024 * 1024
 const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,.doc,.docx,.xls,.xlsx,.txt'
@@ -18,6 +19,7 @@ function formatSize(bytes) {
 function FileRow({ file }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [viewing, setViewing] = useState(false)
 
   async function handleDownload() {
     setBusy(true)
@@ -32,11 +34,11 @@ function FileRow({ file }) {
   }
 
   return (
-    <div className="bg-surface border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+    <div className="bg-surface border border-border rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5 text-wcs-red shrink-0">
         <path strokeLinecap="round" strokeLinejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
       </svg>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-[9rem]">
         <p className="text-sm font-medium text-text-primary truncate">{file.title || file.file_name}</p>
         <p className="text-[11px] text-text-muted truncate">
           {[file.title ? file.file_name : null, formatSize(file.size_bytes), formatDate(file.created_at), file.uploaded_by_name]
@@ -50,6 +52,16 @@ function FileRow({ file }) {
       {file.paychex_status === 'failed' && (
         <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 shrink-0">Not in Paychex</span>
       )}
+      {canViewHRFile(file) && (
+        <button
+          type="button"
+          onClick={() => setViewing(true)}
+          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:bg-wcs-red/90 transition-colors shrink-0"
+        >
+          View
+        </button>
+      )}
+      {viewing && <HRFileViewer file={file} onClose={() => setViewing(false)} />}
       <button
         type="button"
         onClick={handleDownload}
