@@ -7,6 +7,7 @@ const referral = require('../config/referral');
 const { isEligibleCandidate, processReferralReward } = require('./referralRewards');
 const { fetchMemberInvoices, adjustInvoice } = require('./client');
 const { MEMBER_DETAIL_FIELD_KEYS, desiredMemberDetails, memberDetailUpdates, dateOfBirthUpdate } = require('./memberDetailFields');
+const { PT_FIELD_KEYS, desiredPtFields, ptFieldUpdates, loadPtSummaries, ptSummaryFor } = require('./ptFields');
 
 const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
 
@@ -126,6 +127,16 @@ async function reconcileLocation(location, runId) {
   const abcMembers = [...activeMembers, ...recentInactive];
   console.log(`[Reconcile] ${locationName}: ${activeMembers.length} active + ${recentInactive.length} recently inactive = ${abcMembers.length} to reconcile`);
 
+  // Personal Training folder (ptFields.js). If PT data can't be loaded, PT
+  // fields are left alone this run rather than marking everyone "None".
+  let ptSummaries = null;
+  try {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+    ptSummaries = await loadPtSummaries(supabase, today);
+  } catch (err) {
+    console.warn(`[Reconcile] ${locationName}: PT data unavailable, skipping PT fields: ${err.message}`);
+  }
+
   // 2. Load ALL GHL contacts for this location from Supabase (paginate past 1000 limit)
   const locContacts = [];
   const PAGE_SIZE = 1000;
@@ -174,7 +185,7 @@ async function reconcileLocation(location, runId) {
   // Also get field IDs for all our mapped fields
   const fieldKeyToId = {};
   if (Object.keys(ABC_GHL_FIELD_MAP).length > 0) {
-    const fieldKeys = [...Object.values(ABC_GHL_FIELD_MAP), ...MEMBER_DETAIL_FIELD_KEYS];
+    const fieldKeys = [...Object.values(ABC_GHL_FIELD_MAP), ...MEMBER_DETAIL_FIELD_KEYS, ...PT_FIELD_KEYS];
     const { data: allFieldDefs } = await supabase
       .from('ghl_custom_field_defs')
       .select('id, field_key')
@@ -381,6 +392,11 @@ async function reconcileLocation(location, runId) {
       for (const [key, value] of Object.entries(desiredMemberDetails(abc))) {
         if (fieldKeyToId[key]) newCustomFields[fieldKeyToId[key]] = value;
       }
+      if (ptSummaries) {
+        for (const [key, value] of Object.entries(desiredPtFields(ptSummaryFor(ptSummaries, abc.member_id)))) {
+          if (fieldKeyToId[key]) newCustomFields[fieldKeyToId[key]] = value;
+        }
+      }
 
       const createBody = {
         locationId,
@@ -543,6 +559,9 @@ async function reconcileLocation(location, runId) {
 
     // Billing / agreement / check-in detail (next billing, past due, barcode, ...)
     Object.assign(customFieldUpdates, memberDetailUpdates(abc, cf, fieldKeyToId));
+
+    // Personal Training folder: trainer, package, price, PIF sessions, ...
+    if (ptSummaries) Object.assign(customFieldUpdates, ptFieldUpdates(ptSummaryFor(ptSummaries, abc.member_id), cf, fieldKeyToId));
 
     // Standard GHL Date of Birth, not a custom field
     const dobUpdate = dateOfBirthUpdate(abc, ghlContact.date_of_birth);

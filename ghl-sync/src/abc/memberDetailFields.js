@@ -103,4 +103,5 @@ module.exports = {
   desiredMemberDetails,
   memberDetailUpdates,
   dateOfBirthUpdate,
+  NORMALIZERS,
 };
