@@ -40,6 +40,9 @@ export const PORTAL_TILE_CATALOG = [
   // Inventory is lead-tier on the API side too (requireTile('inventory')); the
   // Sales/margin views stay manager+, so a custom member gets restock/adjust.
   { key: 'inventory',       label: 'Inventory',        desc: 'Stock & Costs', group: 'tools' },
+  // The GHL custom value editor: drip SMS copy and call scripts. The API gates
+  // on this exact key (requireTile('ghlScripts') in routes/customValues.js).
+  { key: 'ghlScripts',      label: 'Workflows & Scripts (GHL)', desc: 'SMS & call scripts', group: 'tools' },
   // Capabilities on the three tiles above. Group X and Courts & Pool both gate
   // their write routes on these exact keys (requireTile in routes/groupX.js and
   // routes/facilitySchedule.js), so without them a granted member can read a

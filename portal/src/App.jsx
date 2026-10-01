@@ -14,6 +14,7 @@ import TrainerAvailabilityView from './components/TrainerAvailabilityView'
 import GroupXHub from './components/groupx/GroupXHub'
 import FacilityView from './components/facility/FacilityView'
 import TillCashView from './components/TillCashView'
+import DripCampaigns from './components/DripCampaigns'
 import LeaderboardView from './components/LeaderboardView'
 import CommunicationNotesView from './components/CommunicationNotesView'
 import HRView from './components/HRView'
@@ -85,6 +86,7 @@ export default function App() {
   const [showGroupX, setShowGroupX] = useState(false)
   const [showFacility, setShowFacility] = useState(false)
   const [showTill, setShowTill] = useState(false)
+  const [showGhlScripts, setShowGhlScripts] = useState(false)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [showCommunicationNotes, setShowCommunicationNotes] = useState(false)
   const [showHR, setShowHR] = useState(false)
@@ -196,6 +198,7 @@ export default function App() {
   useEffect(() => { if (showGroupX) logEvent('view.group_x') }, [showGroupX])
   useEffect(() => { if (showFacility) logEvent('view.facility') }, [showFacility])
   useEffect(() => { if (showTill) logEvent('view.till') }, [showTill])
+  useEffect(() => { if (showGhlScripts) logEvent('view.ghl_scripts') }, [showGhlScripts])
   useEffect(() => { if (showLeaderboard) logEvent('view.leaderboard') }, [showLeaderboard])
   useEffect(() => { if (showCommunicationNotes) logEvent('view.communication_notes') }, [showCommunicationNotes])
   useEffect(() => { if (showHR) logEvent('view.hr') }, [showHR])
@@ -483,7 +486,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showGroupX && !showFacility && !showTill && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showQuizzes && !showNps && !showAdsManager && !showAnalytics && !showProfile
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showGroupX && !showFacility && !showTill && !showGhlScripts && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showInventory && !showForms && !showQuizzes && !showNps && !showAdsManager && !showAnalytics && !showProfile
 
   function exitImpersonation() {
     setImpersonateId(null)
@@ -497,6 +500,7 @@ export default function App() {
     setShowGroupX(false)
     setShowFacility(false)
     setShowTill(false)
+    setShowGhlScripts(false)
     setShowReporting(false)
     setShowMarketingTracker(false)
     setShowInventory(false)
@@ -569,6 +573,7 @@ export default function App() {
     { key: 'tool:groupX', label: 'Group X', desc: 'Classes', show: (user?.visible_tools || []).includes('groupX'), open: () => setShowGroupX(true) },
     { key: 'tool:facility', label: 'Courts & Pool', desc: 'Schedules', show: (user?.visible_tools || []).includes('facility'), open: () => setShowFacility(true) },
     { key: 'tool:till', label: 'Till', desc: 'Cash in / out', show: (user?.visible_tools || []).includes('till'), open: () => setShowTill(true) },
+    { key: 'tool:ghlScripts', label: 'Workflows & Scripts (GHL)', desc: 'SMS & call scripts', show: (user?.visible_tools || []).includes('ghlScripts'), open: () => setShowGhlScripts(true) },
     { key: 'tool:inventory', label: 'Inventory', desc: 'Stock', show: (user?.visible_tools || []).includes('inventory'), open: () => setShowInventory(true) },
     // Both were ungated here while their board tiles were gated, so the picker
     // offered a shortcut the board would have withheld. Now that Forms lives
@@ -610,6 +615,7 @@ export default function App() {
     : showGroupX ? 'tool:groupX'
     : showFacility ? 'tool:facility'
     : showTill ? 'tool:till'
+    : showGhlScripts ? 'tool:ghlScripts'
     : showCommunicationNotes ? 'tool:commNotes'
     : showInventory ? 'tool:inventory'
     : showForms ? 'tool:forms'
@@ -768,6 +774,16 @@ export default function App() {
         </div>
       ) : showTill ? (
         <TillCashView user={user} onBack={() => setShowTill(false)} location={location} />
+      ) : showGhlScripts ? (
+        <div className="w-full max-w-[1400px] mx-auto px-8 pb-12">
+          <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border px-4 py-2.5 mb-3 flex items-center gap-3">
+            <button onClick={() => setShowGhlScripts(false)}
+              className="redundant-back text-sm text-tile-sub hover:text-text-primary shrink-0">&larr; Back</button>
+            <span className="text-border" aria-hidden="true">|</span>
+            <h2 className="text-sm font-bold text-text-primary">Workflows &amp; Scripts (GHL)</h2>
+          </div>
+          <DripCampaigns />
+        </div>
       ) : showTicketsBoard ? (
         <TicketsBoardView onBack={() => setShowTicketsBoard(false)} user={user} />
       ) : showDriveHub ? (
@@ -823,7 +839,7 @@ export default function App() {
         <AdsManagerView onBack={() => setShowAdsManager(false)} />
       ) : (
         <main className={`flex-1 flex items-start pt-1 pb-12${press ? ' press-single' : ''}`}>
-          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onQuizzes={() => setShowQuizzes(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onAdsManager={() => setShowAdsManager(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingTracker={() => setShowMarketingTracker(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onQuizzes={() => setShowQuizzes(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onGhlScripts={() => setShowGhlScripts(true)} onAdsManager={() => setShowAdsManager(true)} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} canMarketingTracker={mAccess.tracker} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>
