@@ -1436,6 +1436,13 @@ export const lapsedCheckins = {
   getDrilldown: (club, tier) => api(`/admin/lapsed-checkins/dashboard/${encodeURIComponent(club)}/${encodeURIComponent(tier)}`),
 }
 
+// Check-in Celebrations: milestone + time-based celebration settings (admin)
+export const checkinCelebrations = {
+  getSettings: () => api('/admin/checkin-celebrations/settings'),
+  saveSettings: (settings) => api('/admin/checkin-celebrations/settings', { method: 'PUT', body: JSON.stringify({ settings }) }),
+  getRecent: () => api('/admin/checkin-celebrations/recent'),
+}
+
 // Trainer Availability
 export async function getTrainerAvailability(params = {}) {
   const qs = new URLSearchParams(params).toString()

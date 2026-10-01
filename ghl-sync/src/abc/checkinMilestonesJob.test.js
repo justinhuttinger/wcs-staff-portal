@@ -17,7 +17,7 @@ function fakeDb({ tables = {}, rpcRows = [] } = {}) {
       order: () => b,
       limit: n => { out = out.slice(0, n); return b },
       range: (from, to) => { range = [from, Math.min(to, from + 999)]; return b },
-      maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      maybeSingle: () => Promise.resolve({ data: out[0] || null, error: null }),
       then: (resolve, reject) => {
         const data = range ? out.slice(range[0], range[1] + 1) : out
         return Promise.resolve({ data, error: null }).then(resolve, reject)
@@ -43,9 +43,9 @@ const member = (id, extra = {}) => ({
 const months = [{ club_number: '30935', month: '2025-01-01' }]
 const noSleep = () => Promise.resolve()
 
-function setup({ visits = 9, sent = [], members = [member('a1')], rpcRows } = {}) {
+function setup({ visits = 9, sent = [], members = [member('a1')], rpcRows, appConfig = [] } = {}) {
   return fakeDb({
-    tables: { abc_member_checkin_months: months, abc_members: members, checkin_milestone_alerts: sent },
+    tables: { abc_member_checkin_months: months, abc_members: members, checkin_milestone_alerts: sent, app_config: appConfig },
     rpcRows: rpcRows || members.map(m => ({ member_id: m.member_id, visits })),
   })
 }
@@ -131,4 +131,27 @@ test('abcOk: a 200 with a failure in the body is a failure', () => {
   assert.equal(abcOk({ status: { count: '0' } }), false)
   assert.equal(abcOk({ status: { message: 'success' } }), true)
   assert.equal(abcOk({}), true)
+})
+
+const settingsRow = (lifetime) => [{ key: 'checkin_celebration_settings', value: JSON.stringify({ lifetime, rules: [] }) }]
+
+test('uses the admin-saved milestone list', async () => {
+  const db = setup({ visits: 4, appConfig: settingsRow({ enabled: true, milestones: [5, 21], repeatEvery: 0 }) })
+  const s = await runCheckinMilestonesForClub('30935', { dryRun: true, db, sleepFn: noSleep })
+  assert.deepEqual(s.planned.map(p => [p.milestone, p.text]), [[5, 'CELEBRATE 5TH VISIT!']])
+  const db2 = setup({ visits: 9, appConfig: settingsRow({ enabled: true, milestones: [5, 21], repeatEvery: 0 }) })
+  const s2 = await runCheckinMilestonesForClub('30935', { dryRun: true, db: db2, sleepFn: noSleep })
+  assert.equal(s2.planned.length, 0) // 10 is no longer a milestone
+})
+
+test('lifetime switched off in admin: nothing planned', async () => {
+  const db = setup({ appConfig: settingsRow({ enabled: false, milestones: [10], repeatEvery: 0 }) })
+  const s = await runCheckinMilestonesForClub('30935', { dryRun: true, db, sleepFn: noSleep })
+  assert.equal(s.planned.length, 0)
+})
+
+test('unreadable settings fall back to the defaults', async () => {
+  const db = setup({ appConfig: [{ key: 'checkin_celebration_settings', value: '{oops' }] })
+  const s = await runCheckinMilestonesForClub('30935', { dryRun: true, db, sleepFn: noSleep })
+  assert.equal(s.planned[0].milestone, 10)
 })
