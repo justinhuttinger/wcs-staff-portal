@@ -15,9 +15,11 @@
 //  - GET /telephony/pending?club=30935&after=<id>  (launcher key) -- WCS ABC
 //    polls this every few seconds and shows a banner for anything new.
 //  - POST /telephony/enquiry  (launcher key) -- the banner's telephony enquiry
-//    form: name + email onto the caller's GHL contact, tagged. Only for a call
-//    this club received in the last hour (see recentCall), so this can't be
-//    used to edit arbitrary GHL contacts.
+//    form: name + email onto the caller's GHL contact, tagged. A call the
+//    desk phone reported has no GHL contact yet, so the save finds the contact
+//    by the caller's number, or creates one (Justin, 2026-10-01). Only for a
+//    call this club received in the last hour (see recentCall), so this can't
+//    be used to edit arbitrary GHL contacts.
 //
 // The queue is in memory; see lib/incomingCalls.js for why that's OK for now.
 
@@ -182,19 +184,33 @@ router.post('/enquiry', requireLauncherKey, async (req, res) => {
   const club = str(b.club, 20).replace(/^0+/, '')
   const call = club ? queue.recentCall(club, b.callId) : null
   if (!call) return res.status(404).json({ error: "Couldn't find this call (calls can be saved for an hour). Log it in GHL instead." })
-  if (!call.ghlContactId) return res.status(400).json({ error: 'This call has no GHL contact' })
+  if (!call.ghlContactId && !last10(call.phone)) return res.status(400).json({ error: 'This call has no number to save against' })
   const { value, error } = cleanEnquiry(b)
   if (error) return res.status(400).json({ error })
 
   const clubRec = clubByNumber(club)
   const apiKey = clubRec && envFor(clubRec, 'GHL_API_KEY_')
-  if (!apiKey) return res.status(503).json({ error: 'GHL is not set up for this club' })
+  const locationId = clubRec && envFor(clubRec, 'GHL_LOCATION_')
+  if (!apiKey || !locationId) return res.status(503).json({ error: 'GHL is not set up for this club' })
 
   try {
     const update = { firstName: value.firstName, lastName: value.lastName }
     if (value.email) update.email = value.email
+    if (call.ghlContactId) {
+      await ghlFetch(`/contacts/${encodeURIComponent(call.ghlContactId)}`, apiKey, { method: 'PUT', body: update })
+    } else {
+      // upsert matches the club's existing contact on phone / email and only
+      // creates one when there is none. Tags go on separately below: sent
+      // here they would replace an existing contact's tags.
+      const upserted = await ghlFetch('/contacts/upsert', apiKey, {
+        method: 'POST', body: { locationId, phone: `+1${last10(call.phone)}`, ...update },
+      })
+      const id = upserted?.contact?.id
+      if (!id) throw new Error('Contact upsert returned no id')
+      call.ghlContactId = id
+      console.log(`[telephony] call #${call.id} ${upserted.new ? 'created' : 'matched'} GHL contact ${id}`)
+    }
     const contactPath = `/contacts/${encodeURIComponent(call.ghlContactId)}`
-    await ghlFetch(contactPath, apiKey, { method: 'PUT', body: update })
     await ghlFetch(`${contactPath}/tags`, apiKey, { method: 'POST', body: { tags: [ENQUIRY_TAG] } })
     console.log(`[telephony] enquiry saved call #${call.id} club=${club} by=${str(b.staffName, 80) || '?'}`)
     res.json({ ok: true, ...value })
