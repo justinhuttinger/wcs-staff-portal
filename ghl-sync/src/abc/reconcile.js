@@ -7,7 +7,7 @@ const referral = require('../config/referral');
 const { isEligibleCandidate, processReferralReward } = require('./referralRewards');
 const { fetchMemberInvoices, adjustInvoice } = require('./client');
 const { MEMBER_DETAIL_FIELD_KEYS, desiredMemberDetails, memberDetailUpdates, dateOfBirthUpdate } = require('./memberDetailFields');
-const { PT_FIELD_KEYS, desiredPtFields, ptFieldUpdates, loadPtSummaries, ptSummaryFor } = require('./ptFields');
+const { PT_FIELD_KEYS, desiredPtFields, ptFieldUpdates, loadPtSummaries, ptSummaryFor, ptOnlyContact } = require('./ptFields');
 
 const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
 
@@ -234,6 +234,43 @@ async function reconcileLocation(location, runId) {
     // Skip non-member membership types
     if (abc.membership_type && skipMembershipTypes.has(abc.membership_type.toLowerCase())) {
       skipped++;
+      // A PT client on a skipped type (NON-MEMBER, PT ONLY, ...): fill only
+      // the Personal Training folder on their existing GHL contact. No tags,
+      // no other fields, never a new contact.
+      const ptOnly = ptSummaries && ptSummaries.has(abc.member_id)
+        ? ptOnlyContact(matchContact(contactIndex, {
+          member_id: abc.member_id, email: abc.email, primary_phone: abc.primary_phone,
+          mobile_phone: abc.mobile_phone, first_name: abc.first_name, last_name: abc.last_name,
+        }))
+        : null;
+      const ptUpdates = ptOnly ? ptFieldUpdates(ptSummaries.get(abc.member_id), ptOnly.custom_fields || {}, fieldKeyToId) : {};
+      if (Object.keys(ptUpdates).length) {
+        const contactName = `${ptOnly.first_name || ''} ${ptOnly.last_name || ''}`.trim();
+        const entries = Object.entries(ptUpdates).map(([fieldId, value]) => ({
+          run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
+          ghl_contact_id: ptOnly.id, ghl_contact_name: contactName, ghl_contact_email: ptOnly.email,
+          abc_member_id: abc.member_id, action: 'update_field',
+          detail: {
+            field: Object.entries(fieldKeyToId).find(([, v]) => v === fieldId)?.[0] || fieldId,
+            from: (ptOnly.custom_fields || {})[fieldId] || null, to: value, reason: 'pt_only_skipped_type',
+          },
+          applied: false, error: null,
+        }));
+        logEntries.push(...entries);
+        fieldUpdates += entries.length;
+        if (!DRY_RUN) {
+          try {
+            await put(`/contacts/${ptOnly.id}`, { customFields: Object.entries(ptUpdates).map(([id, value]) => ({ id, value })) }, apiKey);
+            for (const e of entries) e.applied = true;
+            await sleep(650);
+          } catch (err) {
+            const errDetail = err.response?.data?.message || err.response?.data || err.message;
+            const errMsg = typeof errDetail === 'string' ? errDetail : JSON.stringify(errDetail);
+            for (const e of entries) e.error = errMsg;
+            console.warn(`[Reconcile] PT-only update failed for ${contactName}: ${errMsg}`);
+          }
+        }
+      }
       continue;
     }
 

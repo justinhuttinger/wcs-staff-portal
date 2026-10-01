@@ -218,11 +218,21 @@ async function loadPtSummaries(supabase, today) {
   return summaries;
 }
 
+/**
+ * Members on a skipped membership type (NON-MEMBER, PT ONLY, ...) still get
+ * their Personal Training folder filled when they have PT, but only on an
+ * existing GHL contact found by ABC member id, email or phone. A name-only
+ * match is too loose to write to for someone the sync otherwise ignores.
+ */
+function ptOnlyContact(match) {
+  return match && match.matchMethod !== 'name_review' ? match.contact : null;
+}
+
 function ptSummaryFor(summaries, memberId) {
   return (summaries && summaries.get(memberId)) || { status: 'None' };
 }
 
 module.exports = {
   PT_FIELDS, PT_FIELD_KEYS, isSessionEvent, summarizePt, desiredPtFields, ptFieldUpdates,
-  loadPtSummaries, ptSummaryFor,
+  loadPtSummaries, ptSummaryFor, ptOnlyContact,
 };
