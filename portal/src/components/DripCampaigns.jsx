@@ -42,27 +42,26 @@ const DRIP_ORDER = [
   'custom_values.vip_sms_5',
 ]
 
-// The drip sequences, for the flow filter. Each flow owns a set of keys; a
-// custom value outside every flow (something added later) still shows under
-// "All" rather than disappearing from the tool.
+// The drip sequences, for the flow filter. A flow owns every custom value whose
+// key starts with one of its prefixes, so a message or call script added to a
+// sequence later (new_lead_call_2_script) lands in its flow with no change
+// here. A custom value outside every flow still shows under "All" rather than
+// disappearing from the tool.
 const FLOWS = [
-  { key: 'all', label: 'All flows', keys: null },
-  { key: 'new-lead', label: 'New Lead', keys: [
-    'custom_values.new_lead_sms_1', 'custom_values.new_lead_sms_2', 'custom_values.new_lead_sms_3',
-    'custom_values.new_lead_sms_4', 'custom_values.new_lead_sms_5',
-  ] },
-  { key: 'vip', label: 'VIP', keys: [
-    'custom_values.vip_sms_1', 'custom_values.vip_sms_2', 'custom_values.vip_sms_3',
-    'custom_values.vip_sms_4', 'custom_values.vip_sms_5',
-  ] },
-  { key: 'missed-tour', label: 'Missed Tour', keys: ['custom_values.missed_tour_sms'] },
-  { key: 'trial', label: 'Trial', keys: [
-    'custom_values.trial_begin_sms', 'custom_values.trial_check_in_sms',
-    'custom_values.trial_end_sms_1', 'custom_values.trial_end_sms_2', 'custom_values.trial_end_sms_3',
-  ] },
-  { key: 'sale', label: 'Sale', keys: [
-    'custom_values.new_member_sms_1', 'custom_values.new_member_sms_2',
-  ] },
+  { key: 'all', label: 'All flows' },
+  { key: 'new-lead', label: 'New Lead', prefixes: ['new_lead_'] },
+  { key: 'vip', label: 'VIP', prefixes: ['vip_'] },
+  { key: 'missed-tour', label: 'Missed Tour', prefixes: ['missed_tour_'] },
+  { key: 'trial', label: 'Trial', prefixes: ['trial_'] },
+  { key: 'sale', label: 'Sale', prefixes: ['new_member_'] },
+  { key: 'abandoned-cart', label: 'Abandoned Cart', prefixes: ['abandoned_cart_'] },
+  { key: 'check-in-worry', label: 'Check In Worry', prefixes: ['check_in_worr'] },
+  { key: 'reprogram', label: 'Reprogram', prefixes: ['reprogram_'] },
+  { key: 'past-due', label: 'Past Due', prefixes: ['past_due_'] },
+  { key: 'alumni', label: 'Alumni', prefixes: ['alumni_'] },
+  // Cuts across the sequences: what staff read on the call, shown in GHL by
+  // the call script banner.
+  { key: 'call-scripts', label: 'Call Scripts', suffix: '_script' },
 ]
 
 const FLOW_BY_KEY = Object.fromEntries(FLOWS.map(f => [f.key, f]))
@@ -80,8 +79,10 @@ function dripRank(cv) {
 
 function inFlow(cv, flowKey) {
   const flow = FLOW_BY_KEY[flowKey]
-  if (!flow || !flow.keys) return true
-  return flow.keys.includes(normalizeKey(cv))
+  if (!flow || !(flow.prefixes || flow.suffix)) return true
+  const key = normalizeKey(cv).replace(/^custom_values\./, '')
+  if (flow.suffix) return key.endsWith(flow.suffix)
+  return flow.prefixes.some(p => key.startsWith(p))
 }
 
 function byDripOrder(a, b) {
