@@ -161,22 +161,40 @@ async function getWorkerDocument(workerId, documentId) {
   return paychexGet(`/workers/${workerId}/documents/${documentId}`)
 }
 
+// Paychex document category ids are the same at every club
+// (GET /companies/{id}/documentcategories). HR documents file under Performance.
+const DOC_CATEGORY_PERFORMANCE = '15'
+
 /**
- * Upload a document to a worker's profile. Defaults to PDF, which is what the
- * generated HR documents are; uploaded files pass their own content type.
+ * Upload a document to a worker's profile.
+ *
+ * Paychex only accepts multipart/form-data here: a `file` part and a JSON
+ * `metadata` part. A raw-bytes POST is refused with 415 (API-18), which is
+ * what this function sent until October 2026, so nothing reached Paychex.
+ *
+ * Documents are filed hidden from the worker (workerVisible: false): these are
+ * write-ups and manager uploads, not forms the employee should see in Flex.
+ *
+ * Returns { docId } — Paychex's id for the new document.
  */
-async function uploadWorkerDocument(workerId, pdfBuffer, fileName, contentType = 'application/pdf') {
+async function uploadWorkerDocument(workerId, buffer, fileName, contentType = 'application/pdf') {
   const token = await getAccessToken()
 
+  const form = new FormData()
+  form.append('file', new Blob([buffer], { type: contentType }), fileName)
+  form.append('metadata', new Blob(
+    [JSON.stringify({ category: DOC_CATEGORY_PERFORMANCE, workerVisible: false })],
+    { type: 'application/json' },
+  ))
+
+  // No Content-Type header: fetch sets the multipart boundary itself.
   const resp = await fetch(`${API_BASE}/workers/${workerId}/documents`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': contentType,
-      // Header values must be ASCII and must not contain a quote.
-      'Content-Disposition': `attachment; filename="${String(fileName).replace(/[^ -~]+/g, '_').replace(/"/g, '')}"`,
+      Accept: 'application/json',
     },
-    body: pdfBuffer,
+    body: form,
   })
 
   if (!resp.ok) {
@@ -184,7 +202,8 @@ async function uploadWorkerDocument(workerId, pdfBuffer, fileName, contentType =
     throw new Error(`Paychex upload error ${resp.status}: ${text}`)
   }
 
-  return resp.json()
+  const data = await resp.json()
+  return { docId: data?.content?.[0]?.docId || null }
 }
 
 module.exports = {
