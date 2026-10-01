@@ -55,6 +55,7 @@ import MemberAppBroadcasts from './admin/memberapp/MemberAppBroadcasts'
 import FormsAdmin from './admin/FormsAdmin'
 import TillSettingsAdmin from './admin/TillSettingsAdmin'
 import LapsedCheckins from './admin/LapsedCheckins'
+import CheckinCelebrations from './admin/CheckinCelebrations'
 import AppearanceAdmin from './admin/AppearanceAdmin'
 import NpsView from './nps/NpsView'
 
@@ -87,6 +88,7 @@ const SETUP_TILES = [
   { key: 'print-devices', label: 'Print Devices', desc: 'Receipt Printers per Gym', icon: 'M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z' },
   { key: 'print-automations', label: 'Print Automations', desc: 'Till-Close Print Triggers', icon: 'M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z' },
   { key: 'lapsed-checkins', label: 'Lapsed Check-Ins', desc: 'Win-Back Tagging + At-Risk Dashboard', icon: 'M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-8.25 3.375h.008v.008h-.008v-.008Z' },
+  { key: 'checkin-celebrations', label: 'Check-in Celebrations', desc: 'Visit Milestones + Party Alerts', icon: 'M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z' },
 ]
 
 const TECHNICAL_TILES = [
@@ -138,7 +140,7 @@ const CATEGORIES = [
   { title: 'Staff & HR', keys: ['staff', 'import', 'employee-roster', 'roles-v2', 'paychex'] },
   { title: 'Portal Setup', keys: ['clubs', 'tiles', 'appearance', 'layouts', 'config', 'drive-folders', 'forms', 'ticketing', 'action-links', 'references', 'portal-refresh'] },
   { title: 'Reports & KPIs', keys: ['kpi-goals', 'report-visibility', 'trends-12mo', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
-  { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'membership-categories', 'referral-rewards', 'save-offers', 'audit-toggles', 'vendor-price-list', 'till-settings', 'lapsed-checkins', 'member-app', 'member-notifications'] },
+  { title: 'Members & Sales', keys: ['online-join', 'vip-referrals', 'tour-checkin', 'membership-skip', 'membership-categories', 'referral-rewards', 'save-offers', 'audit-toggles', 'vendor-price-list', 'till-settings', 'lapsed-checkins', 'checkin-celebrations', 'member-app', 'member-notifications'] },
   { title: 'Integrations & Sync', keys: ['sync', 'abc-sync', 'club-integrations', 'club-info', 'custom-fields', 'google-connections', 'shared-credentials'] },
   { title: 'Logs & Messaging', keys: ['webhooks', 'sms', 'audit-log'] },
   { title: 'Kiosk & Devices', keys: ['kiosk-installs', 'launcher-version', 'print-devices', 'print-automations'] },
@@ -243,6 +245,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'vendor-price-list' && <VendorPriceListAdmin />}
         {activeSection === 'till-settings' && <TillSettingsAdmin />}
         {activeSection === 'lapsed-checkins' && <LapsedCheckins />}
+        {activeSection === 'checkin-celebrations' && <CheckinCelebrations />}
         {activeSection === 'trends-12mo' && <Trends12moExportTab />}
         {activeSection === 'blog' && <BlogAutomationView onBack={() => setActiveSection(null)} userRole={userRole} />}
         {/* Survey setup, which is configuration — the same reason Audits and

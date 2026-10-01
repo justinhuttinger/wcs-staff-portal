@@ -14,6 +14,7 @@
 const axios = require('axios')
 const { planAlert } = require('./checkinMilestones')
 const { loadExcludedTypes } = require('./lapsedConfig')
+const { CONFIG_KEY, parseSettings } = require('./celebrationSettings')
 
 // Lazy default client: db/supabase.js connects at import time (see
 // lapsedTaggingJob.js), and tests inject their own.
@@ -57,6 +58,19 @@ async function postAbcAlert(clubNumber, memberId, payload) {
   }
 }
 
+// Admin-editable settings (Portal Admin -> Check-in Celebrations). A missing
+// or unreadable row means the defaults; this never throws.
+async function loadCelebrationSettings(db) {
+  try {
+    const { data, error } = await db.from('app_config').select('value').eq('key', CONFIG_KEY).maybeSingle()
+    if (error) throw error
+    return parseSettings(data ? data.value : null)
+  } catch (err) {
+    console.warn(`[Milestones] settings unreadable, using defaults: ${err.message}`)
+    return parseSettings(null)
+  }
+}
+
 // PostgREST caps responses at 1000 rows; page until a short page.
 async function pageAll(makeQuery, label) {
   const rows = []
@@ -77,6 +91,7 @@ async function runCheckinMilestonesForClub(clubNumber, options = {}) {
     postAlert = postAbcAlert,
     sleepFn = ms => new Promise(r => setTimeout(r, ms)),
   } = options
+  const settings = options.settings || await loadCelebrationSettings(db)
   const summary = { club: clubNumber, backfillStart: null, members: 0, candidates: 0, alreadySent: 0, posted: 0, failed: 0, planned: [] }
 
   // The club's first month of check-in history. Members who joined before it
@@ -85,7 +100,7 @@ async function runCheckinMilestonesForClub(clubNumber, options = {}) {
     .select('month').eq('club_number', clubNumber).order('month', { ascending: true }).limit(1)
   if (firstErr) throw new Error(`[Milestones] ${clubNumber}: backfill start: ${firstErr.message}`)
   summary.backfillStart = first && first[0] ? String(first[0].month).slice(0, 10) : null
-  if (!summary.backfillStart) return summary
+  if (!summary.backfillStart || !settings.lifetime.enabled) return summary
 
   const excludedTypes = await loadExcludedTypes(db)
   const members = await pageAll(() => db.from('abc_members')
@@ -99,7 +114,7 @@ async function runCheckinMilestonesForClub(clubNumber, options = {}) {
   const candidates = []
   for (const member of members) {
     const visits = visitsById.get(member.member_id) || 0
-    const plan = planAlert({ member, visits, excludedTypes, backfillStart: summary.backfillStart })
+    const plan = planAlert({ member, visits, excludedTypes, backfillStart: summary.backfillStart, lifetime: settings.lifetime })
     if (plan) candidates.push({ member, visits, ...plan })
   }
   summary.candidates = candidates.length
@@ -146,10 +161,11 @@ async function runCheckinMilestonesForClub(clubNumber, options = {}) {
 
 async function runCheckinMilestonesAll({ dryRun = true } = {}) {
   const clubs = require('../config/clubs.json').clubs.filter(c => c.active).map(c => c.clubNumber)
+  const settings = await loadCelebrationSettings(getDefaultDb())
   const out = []
   for (const club of clubs) {
     try {
-      const s = await runCheckinMilestonesForClub(club, { dryRun })
+      const s = await runCheckinMilestonesForClub(club, { dryRun, settings })
       console.log(`[Milestones] ${club}${dryRun ? ' (dry run)' : ''}: ${s.candidates} candidates, ${s.alreadySent} already sent, ${s.posted} posted, ${s.failed} failed`)
       for (const p of s.planned) console.log(`[Milestones]   ${club} ${p.name} (${p.member_id}) ${p.visits} visits -> ${p.text}`)
       out.push(s)
@@ -161,4 +177,4 @@ async function runCheckinMilestonesAll({ dryRun = true } = {}) {
   return out
 }
 
-module.exports = { runCheckinMilestonesForClub, runCheckinMilestonesAll, postAbcAlert, abcOk }
+module.exports = { runCheckinMilestonesForClub, runCheckinMilestonesAll, postAbcAlert, abcOk, loadCelebrationSettings, pageAll }

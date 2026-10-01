@@ -3,23 +3,17 @@
 // milestone visit. Pure; the job that reads the DB and writes to ABC is
 // checkinMilestonesJob.js.
 
-// Justin's list (2026-09-30): these, then every 100 after 300.
-const FIXED = [10, 25, 50, 100, 150, 200, 250, 300]
+// Which numbers are milestones now lives in the admin-editable settings
+// (Portal Admin -> Check-in Celebrations; celebrationSettings.js). The
+// defaults are Justin's original list: 10, 25, 50, 100, 150, 200, 250, 300,
+// then every 100.
+const { DEFAULT_SETTINGS, isLifetimeMilestone, lifetimeText, MAX_TEXT } = require('./celebrationSettings')
 
-function isMilestone(n) {
-  return Number.isInteger(n) && (FIXED.includes(n) || (n > 300 && n % 100 === 0))
+function isMilestone(n, lifetime = DEFAULT_SETTINGS.lifetime) {
+  return isLifetimeMilestone(n, lifetime)
 }
 
-// ABC caps alert text at 22 chars (alpha, numeric, spaces and ,_!%+-@^; a "/"
-// is rejected outright). Every milestone ends in 0 or 5, so the suffix is
-// always TH. "CELEBRATE 1000TH VISIT" only fits without the "!".
-const MAX_TEXT = 22
-function alertText(n) {
-  const full = `CELEBRATE ${n}TH VISIT!`
-  if (full.length <= MAX_TEXT) return full
-  const bare = full.slice(0, -1)
-  return bare.length <= MAX_TEXT ? bare : null
-}
+const alertText = lifetimeText
 
 function ymd(v) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '').trim())
@@ -43,9 +37,9 @@ function isEligible(member, excludedTypes, backfillStart) {
   return Boolean(join && backfillStart && join >= backfillStart)
 }
 
-function planAlert({ member, visits, excludedTypes, backfillStart }) {
+function planAlert({ member, visits, excludedTypes, backfillStart, lifetime = DEFAULT_SETTINGS.lifetime }) {
   const next = Number(visits) + 1
-  if (!isMilestone(next) || !isEligible(member, excludedTypes, backfillStart)) return null
+  if (!isMilestone(next, lifetime) || !isEligible(member, excludedTypes, backfillStart)) return null
   const text = alertText(next)
   return text ? { milestone: next, text } : null
 }
