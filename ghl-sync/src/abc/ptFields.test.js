@@ -134,3 +134,14 @@ test('ptFieldUpdates: fields the location does not have are skipped', () => {
   const u = ptFieldUpdates(summarizePt([], [], TODAY), {}, {})
   assert.deepEqual(u, {})
 })
+
+const { ptOnlyContact } = require('./ptFields')
+
+test('ptOnlyContact: PT-only updates for skipped types trust id/email/phone matches, never name-only', () => {
+  const c = { id: 'x' }
+  assert.equal(ptOnlyContact({ contact: c, matchMethod: 'member_id' }), c)
+  assert.equal(ptOnlyContact({ contact: c, matchMethod: 'email' }), c)
+  assert.equal(ptOnlyContact({ contact: c, matchMethod: 'phone' }), c)
+  assert.equal(ptOnlyContact({ contact: c, matchMethod: 'name_review' }), null)
+  assert.equal(ptOnlyContact(null), null)
+})
