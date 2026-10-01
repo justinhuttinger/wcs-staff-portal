@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { last10, createCallQueue, summarizeMatches, cleanEnquiry } = require('./incomingCalls')
+const { last10, callerNumber, createCallQueue, summarizeMatches, cleanEnquiry } = require('./incomingCalls')
 
 test('last10 normalizes GHL and ABC phone formats', () => {
   assert.strictEqual(last10('(425) 954-9854'), '4259549854')
@@ -79,4 +79,27 @@ test('cleanEnquiry trims, lowercases email, and rejects bad input', () => {
   assert.ok(cleanEnquiry({ firstName: '', email: '' }).error)
   assert.ok(cleanEnquiry({ firstName: 'Ann', email: 'nope' }).error)
   assert.ok(cleanEnquiry({ firstName: 'Ann', email: '' }).value)
+})
+
+test('callerNumber reads the number out of whatever a desk phone sends', () => {
+  assert.strictEqual(callerNumber('5035551212'), '5035551212')
+  assert.strictEqual(callerNumber('+15035551212'), '5035551212')
+  assert.strictEqual(callerNumber('sip:5035551212@10.0.0.5'), '5035551212')
+  assert.strictEqual(callerNumber('"Jane" <sip:+15035551212@pbx.example.com:5060>'), '5035551212')
+  assert.strictEqual(callerNumber('5035551212@192.168.10.200'), '5035551212')
+  assert.strictEqual(callerNumber('sip:204@192.168.10.200'), null)
+  assert.strictEqual(callerNumber('anonymous'), null)
+  assert.strictEqual(callerNumber(undefined), null)
+})
+
+test('findByPhone finds the same caller at the same club only inside the window', () => {
+  let t = 1000
+  const q = createCallQueue({ now: () => t })
+  const a = q.push('30935', { phone: '+15035551212' })
+  q.push('30935', { phone: '+15035550000' })
+  assert.strictEqual(q.findByPhone('30935', '5035551212', 500).id, a.id)
+  assert.strictEqual(q.findByPhone('31599', '5035551212', 500), null)
+  assert.strictEqual(q.findByPhone('30935', null, 500), null)
+  t += 600
+  assert.strictEqual(q.findByPhone('30935', '5035551212', 500), null)
 })
