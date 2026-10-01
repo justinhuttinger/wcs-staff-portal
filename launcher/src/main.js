@@ -753,9 +753,9 @@ app.on('ready', async () => {
 
   tabManager.onNewWindow = (url) => {
     const abcUrl = getAbcUrl()
-    // ABC-only: there are no tabs. Cross-host ABC links (abcfinancial <->
-    // abcfitness) navigate the one ABC view (same-host ones already do, in
-    // TabManager); anything else goes to the default browser.
+    // ABC-only: there are no tabs. ABC's own new-window links (reports, PDFs)
+    // get their own window in TabManager and never reach here; anything else
+    // goes to the default browser.
     if (IS_ABC_ONLY) {
       if (url.includes('abcfinancial.com') || url.includes('abcfitness.com')) {
         const abcTab = tabManager.tabs.get(abcTabId)

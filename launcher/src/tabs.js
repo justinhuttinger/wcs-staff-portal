@@ -1,6 +1,56 @@
-const { BrowserView, session } = require('electron')
+const { BrowserView, session, shell } = require('electron')
 const path = require('path')
 const { attachContextMenu } = require('./context-menu')
+const { FREE_WINDOW, addWindowKeys } = require('./window-controls')
+
+// ---- WCS ABC: new-window links open in their own window ----
+
+// Blank / blob windows are ones ABC writes a report into itself; anything on
+// an ABC host keeps the signed-in session. Other sites still go through
+// onNewWindow (default browser).
+function opensInAbcWindow(url) {
+  if (!url || url === 'about:blank' || url.startsWith('blob:')) return true
+  try {
+    const host = new URL(url).hostname
+    return /(^|\.)abcfinancial\.com$|(^|\.)abcfitness\.com$/i.test(host)
+  } catch {
+    return false
+  }
+}
+
+// `allow` (rather than loading the URL ourselves) keeps form POSTs and
+// window.opener working. No preload: abc-scraper must only run in the main
+// ABC view, or the toolbar and check-in cues would double up.
+const ABC_CHILD_WINDOW = {
+  action: 'allow',
+  overrideBrowserWindowOptions: {
+    ...FREE_WINDOW,
+    width: 1200,
+    height: 860,
+    center: true,
+    webPreferences: {
+      preload: undefined,
+      contextIsolation: true,
+      nodeIntegration: false,
+      partition: 'persist:wcs-portal',
+    },
+  },
+}
+
+function setupAbcChildWindow(win, userAgent) {
+  win.setMenu(null)
+  win.webContents.setUserAgent(userAgent)
+  addWindowKeys(win)
+  attachContextMenu(win.webContents)
+  // Links inside a report: more ABC pages get another window, anything else
+  // goes to the default browser.
+  win.webContents.on('did-create-window', (child) => setupAbcChildWindow(child, userAgent))
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (opensInAbcWindow(url)) return ABC_CHILD_WINDOW
+    if (/^https?:/i.test(url)) shell.openExternal(url).catch(() => {})
+    return { action: 'deny' }
+  })
+}
 
 class TabManager {
   constructor(parentWindow, tabBarHeight) {
@@ -93,7 +143,14 @@ class TabManager {
     // ends up on my-coke.com still running abc-scraper, and credential
     // auto-fill never fires.
     const tabManager = this
+    // WCS ABC has no tab bar, so ABC's own new-window links (reports, PDFs,
+    // print previews) get a window of their own instead of replacing the one
+    // ABC view, which left staff with no way back.
+    if (isAbcPreload) {
+      view.webContents.on('did-create-window', (win) => setupAbcChildWindow(win, chromeUA))
+    }
     view.webContents.setWindowOpenHandler(({ url }) => {
+      if (isAbcPreload && opensInAbcWindow(url)) return ABC_CHILD_WINDOW
       // The portal's report viewer (QA/Audit "View Report") opens a blank
       // window and writes styled HTML into it via window.open('', '_blank').
       // Denying about:blank made that button silently do nothing in the kiosk.
