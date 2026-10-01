@@ -1,10 +1,40 @@
 const { Router } = require('express')
+const crypto = require('crypto')
+const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireRole, canSeeAllLocations } = require('../middleware/role')
 const { getCompanies, getWorkers, getWorkerDocuments, getWorkerDocument, uploadWorkerDocument } = require('../services/paychex')
 const { getPaychexBySlug, PAYCHEX_LOCATIONS } = require('../config/paychexLocations')
 const memoryCache = require('../services/memoryCache')
+const {
+  MAX_UPLOAD_BYTES, isAllowedFile, contentTypeFor, cleanFileName, storagePath, contentDisposition,
+} = require('./hrFilesHelpers')
+
+// Uploaded HR files live in a private bucket and are only ever streamed back
+// through this route, after the same club check the rest of HR applies.
+const HR_FILES_BUCKET = 'hr-files'
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } })
+
+let bucketReady = false
+async function ensureBucket() {
+  if (bucketReady) return
+  const { error } = await supabaseAdmin.storage.createBucket(HR_FILES_BUCKET, { public: false })
+  if (error && !/exist/i.test(error.message || '')) throw error
+  bucketReady = true
+}
+
+// multer runs as middleware before the handler, so its errors (e.g. too-large)
+// bypass the handler try/catch — translate them into clean responses here.
+function uploadSingle(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      const tooBig = err.code === 'LIMIT_FILE_SIZE'
+      return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'File exceeds the 15 MB limit' : 'Upload failed' })
+    }
+    next()
+  })
+}
 
 // Cache the full Paychex worker roster per company for 5 minutes. Status
 // filtering (ACTIVE/INACTIVE) runs on top of the cached list, so toggling
@@ -453,7 +483,22 @@ router.get('/paychex-workers/:workerId/documents', requireRole('manager'), async
       localDocs = data || []
     }
 
-    res.json({ paychexDocuments: paychexDocs, localDocuments: localDocs })
+    // Files uploaded to this worker's record, limited to the caller's clubs.
+    let uploadedFiles = []
+    let filesQuery = supabaseAdmin
+      .from('hr_uploaded_files')
+      .select('id, title, file_name, content_type, size_bytes, location_slug, uploaded_by_name, created_at')
+      .eq('worker_id', workerId)
+      .order('created_at', { ascending: false })
+    const mine = canSeeAllLocations(req.staff.role) ? null : await myLocationSlugs(req.staff)
+    if (mine) filesQuery = filesQuery.in('location_slug', mine)
+    if (!mine || mine.length > 0) {
+      const { data, error } = await filesQuery
+      if (error) console.error('[HRDocuments] Uploaded files fetch failed:', error.message)
+      uploadedFiles = data || []
+    }
+
+    res.json({ paychexDocuments: paychexDocs, localDocuments: localDocs, uploadedFiles })
   } catch (err) {
     console.error('[HRDocuments] Worker documents fetch failed:', err.message)
     res.status(500).json({ error: 'Failed to fetch worker documents: ' + err.message })
@@ -496,6 +541,115 @@ router.get('/paychex-companies', requireRole('admin'), async (req, res) => {
   } catch (err) {
     console.error('[HRDocuments] Paychex companies fetch failed:', err.message)
     res.status(500).json({ error: 'Failed to fetch companies: ' + err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// POST /hr-documents/files  (manager+)
+// Multipart upload of one file onto an employee's HR record. Fields: file,
+// worker_id, employee_name, location_slug, title (optional).
+// ---------------------------------------------------------------------------
+router.post('/files', requireRole('manager'), uploadSingle, async (req, res) => {
+  const { worker_id, employee_name, title } = req.body || {}
+  const file = req.file
+
+  if (!file) return res.status(400).json({ error: 'No file provided' })
+  if (!worker_id || !employee_name) {
+    return res.status(400).json({ error: 'worker_id and employee_name are required' })
+  }
+  if (!isAllowedFile(file.originalname)) {
+    return res.status(400).json({ error: 'That file type is not supported. Upload a PDF, photo, Word, Excel, or text file.' })
+  }
+
+  try {
+    // Same rule as creating a document: the file belongs to the club the
+    // employee was picked from, and the caller must be assigned to it.
+    let locationSlug = req.body.location_slug || null
+    if (locationSlug && !canSeeAllLocations(req.staff.role)) {
+      const mine = await myLocationSlugs(req.staff)
+      if (!mine.includes(locationSlug)) {
+        return res.status(403).json({ error: 'You do not have access to that location' })
+      }
+    }
+    if (!locationSlug) locationSlug = await resolveLocationSlug(req.staff)
+    if (!locationSlug) return res.status(400).json({ error: 'Could not determine location' })
+
+    await ensureBucket()
+
+    const id = crypto.randomUUID()
+    const fileName = cleanFileName(file.originalname)
+    const path = storagePath({ locationSlug, workerId: worker_id, id, fileName })
+    const contentType = contentTypeFor(fileName)
+
+    const { error: upErr } = await supabaseAdmin.storage.from(HR_FILES_BUCKET)
+      .upload(path, file.buffer, { contentType, upsert: false })
+    if (upErr) throw upErr
+
+    const { data, error } = await supabaseAdmin
+      .from('hr_uploaded_files')
+      .insert({
+        id,
+        worker_id,
+        employee_name,
+        location_slug: locationSlug,
+        title: (title || '').trim().slice(0, 200) || null,
+        file_name: fileName,
+        content_type: contentType,
+        size_bytes: file.size,
+        storage_path: path,
+        uploaded_by: req.staff.id,
+        uploaded_by_name: req.staff.display_name || [req.staff.first_name, req.staff.last_name].filter(Boolean).join(' '),
+      })
+      .select('id, title, file_name, content_type, size_bytes, location_slug, uploaded_by_name, created_at')
+      .single()
+
+    if (error) {
+      // Don't leave bytes in the bucket that no row points at.
+      await supabaseAdmin.storage.from(HR_FILES_BUCKET).remove([path])
+      throw error
+    }
+
+    res.status(201).json(data)
+  } catch (err) {
+    console.error('[HRDocuments] File upload failed:', err.message)
+    res.status(500).json({ error: 'Failed to upload file: ' + err.message })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// GET /hr-documents/files/:id/download  (manager+)
+// Streams an uploaded file back as an attachment.
+// ---------------------------------------------------------------------------
+router.get('/files/:id/download', requireRole('manager'), async (req, res) => {
+  try {
+    const { data: row, error } = await supabaseAdmin
+      .from('hr_uploaded_files')
+      .select('file_name, content_type, storage_path, location_slug')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!row) return res.status(404).json({ error: 'File not found' })
+
+    if (!canSeeAllLocations(req.staff.role)) {
+      const mine = await myLocationSlugs(req.staff)
+      if (!mine.includes(row.location_slug)) {
+        return res.status(403).json({ error: 'You do not have access to that location' })
+      }
+    }
+
+    const { data: blob, error: dlErr } = await supabaseAdmin.storage.from(HR_FILES_BUCKET).download(row.storage_path)
+    if (dlErr) throw dlErr
+    const buffer = Buffer.from(await blob.arrayBuffer())
+
+    res.setHeader('Content-Type', row.content_type)
+    res.setHeader('Content-Disposition', contentDisposition(row.file_name))
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Content-Length', buffer.length)
+    res.send(buffer)
+  } catch (err) {
+    console.error('[HRDocuments] File download failed:', err.message)
+    res.status(500).json({ error: 'Failed to download file: ' + err.message })
   }
 })
 

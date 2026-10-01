@@ -7,6 +7,7 @@ import {
   downloadHRDocumentPdf,
 } from '../lib/api'
 import SignaturePad from './SignaturePad'
+import HRUploadedFiles from './HRUploadedFiles'
 
 const REASONS = [
   { value: 'coaching_conversation', label: 'Coaching Conversation' },
@@ -542,11 +543,12 @@ function SubmitDocumentForm({ worker, user, locationSlug, onBack, onSuccess }) {
 }
 
 // ---------------------------------------------------------------------------
-// Worker Document Detail — VIEW ONLY, no editing/signing/uploading
+// Worker Document Detail — documents are view only; files can be uploaded
 // ---------------------------------------------------------------------------
-function WorkerDocuments({ worker }) {
+function WorkerDocuments({ worker, locationSlug }) {
   const [paychexDocs, setPaychexDocs] = useState([])
   const [localDocs, setLocalDocs] = useState([])
+  const [uploadedFiles, setUploadedFiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
@@ -558,6 +560,7 @@ function WorkerDocuments({ worker }) {
       const res = await getPaychexWorkerDocuments(worker.workerId, worker.displayName)
       setPaychexDocs(res.paychexDocuments || [])
       setLocalDocs(res.localDocuments || [])
+      setUploadedFiles(res.uploadedFiles || [])
     } catch (err) {
       setError(err.message || 'Failed to load documents')
     } finally {
@@ -680,7 +683,14 @@ function WorkerDocuments({ worker }) {
             )}
           </div>
 
-          {paychexDocs.length === 0 && localDocs.length === 0 && (
+          <HRUploadedFiles
+            worker={worker}
+            locationSlug={locationSlug}
+            files={uploadedFiles}
+            onUploaded={row => setUploadedFiles(prev => [row, ...prev])}
+          />
+
+          {paychexDocs.length === 0 && localDocs.length === 0 && uploadedFiles.length === 0 && (
             <p className="empty-card mx-auto block my-6">No documents found for this employee</p>
           )}
         </>
@@ -805,7 +815,7 @@ export default function HRView({ user, onBack }) {
 
       {/* View Docs — Worker detail */}
       {view === 'worker-detail' && selectedWorker && (
-        <WorkerDocuments worker={selectedWorker} />
+        <WorkerDocuments worker={selectedWorker} locationSlug={currentLocation} />
       )}
     </div>
   )
