@@ -2114,6 +2114,37 @@ export async function downloadHRDocumentPdf(docId, filename) {
   URL.revokeObjectURL(url)
 }
 
+// Upload a file onto an employee's HR record. `locationSlug` is the club the
+// employee was picked from.
+export async function uploadHRFile({ file, workerId, employeeName, locationSlug, title }) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('worker_id', workerId)
+  form.append('employee_name', employeeName)
+  if (locationSlug) form.append('location_slug', locationSlug)
+  if (title) form.append('title', title)
+  return api('/hr-documents/files', { method: 'POST', body: form })
+}
+
+export async function downloadHRFile(fileId, filename) {
+  const res = await fetch(API_URL + '/hr-documents/files/' + encodeURIComponent(fileId) + '/download', {
+    headers: authToken ? { Authorization: 'Bearer ' + authToken } : {},
+  })
+  if (!res.ok) {
+    let msg = `Failed to download file (HTTP ${res.status})`
+    try { const j = await res.json(); msg = j.error || msg } catch {}
+    throw new Error(msg)
+  }
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename || 'hr-file'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 // Help Center
 export async function getHelpCategories() {
   return api('/help-center/categories')

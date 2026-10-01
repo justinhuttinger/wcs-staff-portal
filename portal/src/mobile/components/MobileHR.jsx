@@ -7,6 +7,7 @@ import {
   downloadHRDocumentPdf,
 } from '../../lib/api'
 import SignaturePad from '../../components/SignaturePad'
+import HRUploadedFiles from '../../components/HRUploadedFiles'
 import MobileLoading from './MobileLoading'
 import MobileEmptyState from './MobileEmptyState'
 
@@ -308,9 +309,10 @@ function WorkerList({ user, onSelectWorker, onLocationChange, actionLabel }) {
 }
 
 // --- Worker Detail: show docs + submit new doc ---
-function WorkerDetail({ worker, user, onBack }) {
+function WorkerDetail({ worker, user, locationSlug, onBack }) {
   const [paychexDocs, setPaychexDocs] = useState([])
   const [localDocs, setLocalDocs] = useState([])
+  const [uploadedFiles, setUploadedFiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showSubmit, setShowSubmit] = useState(false)
@@ -324,6 +326,7 @@ function WorkerDetail({ worker, user, onBack }) {
       const res = await getPaychexWorkerDocuments(worker.workerId, worker.displayName)
       setPaychexDocs(res.paychexDocuments || [])
       setLocalDocs(res.localDocuments || [])
+      setUploadedFiles(res.uploadedFiles || [])
     } catch (err) {
       setError(err.message || 'Failed to load documents')
     } finally {
@@ -491,7 +494,16 @@ function WorkerDetail({ worker, user, onBack }) {
             )}
           </div>
 
-          {paychexDocs.length === 0 && localDocs.length === 0 && (
+          <div className="mt-4">
+            <HRUploadedFiles
+              worker={worker}
+              locationSlug={locationSlug}
+              files={uploadedFiles}
+              onUploaded={row => { setUploadedFiles(prev => [row, ...prev]); setToast('File uploaded') }}
+            />
+          </div>
+
+          {paychexDocs.length === 0 && localDocs.length === 0 && uploadedFiles.length === 0 && (
             <MobileEmptyState>No documents found for this employee</MobileEmptyState>
           )}
         </>
@@ -728,6 +740,7 @@ export default function MobileHR({ user }) {
       <WorkerDetail
         worker={selectedWorker}
         user={user}
+        locationSlug={currentLocation}
         onBack={() => { setView('view-pick'); setSelectedWorker(null) }}
       />
     )
