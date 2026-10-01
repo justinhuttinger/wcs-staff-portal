@@ -542,6 +542,23 @@ app.post('/api/checkin-milestones/run', requireSecret, async (req, res) => {
   }
 });
 
+// POST /api/checkin-days/backfill: one-time backfill of per-day check-ins
+// (abc_member_checkin_days) for the "X visits in Y days" celebration rules.
+// Body { days?: number } (default 365, max 400). ~2.5k ABC requests for a
+// year, so it runs in the background; progress and the result go to the log.
+let checkinDaysBackfillRunning = false;
+app.post('/api/checkin-days/backfill', requireSecret, (req, res) => {
+  if (checkinDaysBackfillRunning) return res.status(409).json({ error: 'Backfill already running' });
+  const days = Math.min(Math.max(parseInt(req.body?.days, 10) || 365, 1), 400);
+  checkinDaysBackfillRunning = true;
+  res.json({ status: 'started', days });
+  const { refreshCheckinDays } = require('./abc/checkinDays');
+  refreshCheckinDays({ days })
+    .then(s => console.log(`[API] Check-in days backfill done: ${s.rows} rows, ${s.visits} check-ins, ${s.failed.length} club-days failed`, s.failed))
+    .catch(err => console.error('[API] Check-in days backfill failed:', err.message))
+    .finally(() => { checkinDaysBackfillRunning = false; });
+});
+
 // POST /api/nps/run
 //
 // Run the nightly NPS job on demand. The cron fires once a day, so a night
