@@ -43,6 +43,7 @@ const CUSTOM_TILE_KEYS = new Set([
   'grow', 'abc', 'paychex', 'gmail', 'drive', 'insights', 'notifications',
   'calendar', 'leaderboard', 'helpCenter', 'ordering', 'ticketing',
   'trainerAvail', 'reporting', 'forms', 'quizzes', 'groupX', 'facility', 'till', 'inventory',
+  'ghlScripts',
   // Capabilities on the tiles above rather than tiles themselves — the write
   // routes gate on these exact keys. Keep in sync with PORTAL_TILE_CATALOG.
   'groupX:schedule-edit', 'groupX:attendance', 'facility:schedule-edit',

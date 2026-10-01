@@ -12,7 +12,7 @@
 // pass):
 //   minRole : tier floor — 'lead' | 'manager' | 'corporate' | 'admin'
 //   tool    : must have this tool visible — 'inventory' | 'forms' | 'quizzes' | 'admin' |
-//             'trainerAvail' | 'groupX' | 'facility'
+//             'trainerAvail' | 'groupX' | 'facility' | 'ghlScripts'
 //   report  : must be able to see this report key — e.g. 'till', 'pos-sales'
 
 // Role ladder (mirrors ToolGrid.jsx ROLE_LEVELS). Higher = more access.
@@ -48,6 +48,7 @@ function canSeeTool(tool, { role, visibleTools }) {
     case 'till': return (visibleTools || []).includes('till')
     case 'groupX': return (visibleTools || []).includes('groupX')
     case 'facility': return (visibleTools || []).includes('facility')
+    case 'ghlScripts': return (visibleTools || []).includes('ghlScripts')
     case 'admin': return role === 'admin'
     default: return true
   }
@@ -70,6 +71,12 @@ export function visibleChangelog(ctx) {
 }
 
 export const CHANGELOG = [
+  {
+    id: 18, date: '2026-10-01',
+    title: 'Workflows & Scripts (GHL)',
+    body: 'Drip Campaigns moved out of Marketing into its own Tools tile, Workflows & Scripts (GHL). Edit each club’s workflow texts and the new call scripts there. Call scripts show across the top of GHL while you are on a call from that workflow. Use the flow filter to jump to a sequence, or pick Call Scripts to see them all.',
+    audience: { tool: 'ghlScripts' },
+  },
   {
     id: 17, date: '2026-09-25',
     title: 'Quiz Funnels',

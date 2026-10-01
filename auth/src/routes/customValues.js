@@ -5,8 +5,8 @@
 // its own settings UI, one sub-account at a time, so this route gives the
 // portal a single place to read and update them per club.
 //
-// Gated on marketing access (the same gate as the Marketing tile) rather than
-// admin: anyone who can open the tile can edit the drip copy.
+// Gated on the "Workflows & Scripts (GHL)" tile (ghlScripts): anyone who can
+// see the tile can edit the copy, and nobody else can reach the API.
 //
 // GHL API (version 2021-07-28):
 //   GET  /locations/:locationId/customValues
@@ -14,7 +14,7 @@
 const { Router } = require('express')
 const multer = require('multer')
 const authenticate = require('../middleware/auth')
-const { requireMarketing } = require('../middleware/role')
+const { requireTile } = require('../middleware/tile')
 const { LOCATIONS } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 const { supabaseAdmin } = require('../services/supabase')
@@ -70,7 +70,7 @@ function parseSaved(raw) {
 
 // A test send costs money and texts a real handset, so it is rate limited per
 // staff member. In-memory is enough: the cap exists to stop a stuck finger or a
-// loop, not a determined attacker (the route is already behind marketing auth).
+// loop, not a determined attacker (the route is already behind the tile gate).
 const SEND_WINDOW_MS = 60_000
 const SEND_MAX_PER_WINDOW = 10
 const recentSends = new Map()
@@ -102,7 +102,7 @@ async function readSettings() {
 
 const router = Router()
 router.use(authenticate)
-router.use(requireMarketing)
+router.use(requireTile('ghlScripts'))
 
 function findLocation(slug) {
   const norm = String(slug || '').trim().toLowerCase()

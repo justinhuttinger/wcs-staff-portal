@@ -22,6 +22,7 @@ const TILE_ICONS = {
   marketing: 'M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6',
   tickets: 'M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z',
   availability: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+  ghlScripts: 'M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z',
   dayOneCalendar: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z',
   leaderboard: 'M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-4.5A3.375 3.375 0 0 0 13.125 10.875h-2.25A3.375 3.375 0 0 0 7.5 14.25v4.5m6-15V3.375c0-.621-.504-1.125-1.125-1.125h-.75a1.125 1.125 0 0 0-1.125 1.125V3.75m3 0h-3',
   commNotes: 'M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.399-.49c1.583-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z',
@@ -112,7 +113,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onQuizzes, onNps, onAdsManager, onGroupX, onFacility, onTill, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
+export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingTracker, onInventory, onForms, onQuizzes, onNps, onAdsManager, onGroupX, onFacility, onTill, onGhlScripts, userRole, userName, marketingAddon, canMarketingTracker, customReports }) {
   // DECLARED HERE, ABOVE EVERY READER. It used to sit ~200 lines further down,
   // next to the leaderboard score card that first needed it, which was fine
   // until marketingCells started reading it from further up: a `const` is in
@@ -439,6 +440,8 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           return onInventory && <SvgTileButton key={key} onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />
         case 'till':
           return onTill && <SvgTileButton key={key} onClick={onTill} iconPath={TILE_ICONS.till} label="Till" desc="Cash in / out" />
+        case 'ghlScripts':
+          return onGhlScripts && <SvgTileButton key={key} onClick={onGhlScripts} iconPath={TILE_ICONS.ghlScripts} label="Workflows & Scripts (GHL)" desc="SMS & call scripts" />
         case 'nps':
           return onNps && <SvgTileButton key={key} onClick={onNps} iconPath={TILE_ICONS.nps} label="Feedback" desc="Member surveys" />
         case 'marketingTracker':
@@ -736,6 +739,8 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability — role/override-driven (seeded manager+ in migration 086) */}
           {onTrainerAvail && (visibleTools || []).includes('trainerAvail') && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
+          {/* 6.2. Workflows & Scripts (GHL) — role/override-driven via 'ghlScripts' (seeded corporate+ in migration 228) */}
+          {onGhlScripts && (visibleTools || []).includes('ghlScripts') && <SvgTileButton onClick={onGhlScripts} iconPath={TILE_ICONS.ghlScripts} label="Workflows & Scripts (GHL)" desc="SMS & call scripts" />}
           {/* 6.4. Group X — role/override-driven via 'groupX' (seeded for every
               built-in role in migration 174). What the tile can DO inside is
               gated separately by groupX:schedule-edit / groupX:attendance. */}
