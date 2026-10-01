@@ -14,11 +14,24 @@ const MAX_PER_CLUB = 20
 // How long after a call staff can still save an enquiry against it.
 const ENQUIRY_WINDOW_MS = 60 * 60 * 1000
 const MAX_RECENT = 500
+// Reports of the same number at the same club this close together are one call.
+const DEDUPE_MS = 90 * 1000
 
 // Last 10 digits: "(425) 954-9854", "+14259549854" and "4259549854" all match.
 function last10(phone) {
   const d = String(phone || '').replace(/\D+/g, '')
   return d.length >= 10 ? d.slice(-10) : null
+}
+
+// A desk phone's action URL reports the caller however its firmware feels like:
+// "5035551212", "+15035551212", "sip:5035551212@10.0.0.5" or
+// '"Jane" <sip:+15035551212@pbx.example.com>'. The host part can hold digits
+// (an IP), so cut it off before counting. Extensions and anonymous callers
+// come back null.
+function callerNumber(raw) {
+  const s = String(raw || '')
+  const sip = s.match(/sips?:([^@>;]+)/i)
+  return last10(sip ? sip[1] : s.split('@')[0])
 }
 
 function createCallQueue({ ttlMs = TTL_MS, now = () => Date.now() } = {}) {
@@ -56,6 +69,18 @@ function createCallQueue({ ttlMs = TTL_MS, now = () => Date.now() } = {}) {
       if (!r || r.club !== String(club)) return null
       if (r.at < now() - ENQUIRY_WINDOW_MS) return null
       return r.call
+    },
+    // This club's latest call from this number in the last withinMs, if any.
+    // One call reaches us several times (every handset in the ring group, then
+    // GHL once it connects), and should only make one banner.
+    findByPhone(club, phone10, withinMs = DEDUPE_MS) {
+      const list = byClub.get(String(club))
+      if (!list || !phone10) return null
+      const cutoff = now() - withinMs
+      for (let i = list.length - 1; i >= 0 && list[i].at >= cutoff; i--) {
+        if (last10(list[i].phone) === phone10) return list[i]
+      }
+      return null
     },
     // Calls for a club newer than afterId. The poller passes back the last id
     // it saw; a fresh app (afterId 0) gets whatever is still inside the TTL.
@@ -123,4 +148,4 @@ function cleanEnquiry(b) {
   return { value: out }
 }
 
-module.exports = { last10, createCallQueue, summarizeMatches, cleanEnquiry, TTL_MS, ENQUIRY_WINDOW_MS }
+module.exports = { last10, callerNumber, createCallQueue, summarizeMatches, cleanEnquiry, TTL_MS, ENQUIRY_WINDOW_MS, DEDUPE_MS }

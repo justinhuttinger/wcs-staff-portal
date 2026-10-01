@@ -4,6 +4,11 @@
 //    an inbound call with { id, name, email, phone, club } where club is the
 //    ABC club number ("30935"). We look the caller up in abc_members and queue
 //    the result for that club.
+//  - GET /telephony/phone-ring?club=30935&phone=<caller>&key=<secret> -- the
+//    desk phone's own "incoming call" action URL. It fires the moment the
+//    phone rings, well before GHL's workflow does, so this is what puts the
+//    banner up. It knows nothing but the number; when GHL's webhook for the
+//    same call turns up later it only adds the GHL contact (for enquiries).
 //  - GET /telephony/pending?club=30935&after=<id>  (launcher key) -- WCS ABC
 //    polls this every few seconds and shows a banner for anything new.
 //  - POST /telephony/enquiry  (launcher key) -- the banner's telephony enquiry
@@ -17,7 +22,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const { clubByNumber, envFor } = require('../config/clubs')
 const { ghlFetch } = require('../services/ghlClient')
-const { last10, createCallQueue, summarizeMatches, cleanEnquiry } = require('../lib/incomingCalls')
+const { last10, callerNumber, createCallQueue, summarizeMatches, cleanEnquiry } = require('../lib/incomingCalls')
 
 const ENQUIRY_TAG = 'telephony enquiry'
 
@@ -32,6 +37,16 @@ function verifyWebhookSecret(req, res, next) {
   if (!secret) return res.status(503).json({ error: 'webhook not configured' })
   const provided = req.headers['x-webhook-secret'] || req.query.secret
   if (provided !== secret) return res.status(401).json({ error: 'Invalid webhook secret' })
+  next()
+}
+
+// Desk phones can only do a plain GET, so their secret rides in the URL and
+// sits in every handset's config. It gets its own value so a phone never
+// holds the GHL webhook secret. Fail closed when unset.
+function verifyPhoneKey(req, res, next) {
+  const secret = process.env.PHONE_ACTION_SECRET
+  if (!secret) return res.status(503).json({ error: 'phone action URL not configured' })
+  if (req.query.key !== secret) return res.status(401).json({ error: 'Invalid key' })
   next()
 }
 
@@ -83,17 +98,18 @@ async function findPt(members) {
   return data || []
 }
 
-router.post('/ghl-call', verifyWebhookSecret, async (req, res) => {
-  const b = req.body || {}
-  const club = str(b.club, 20).replace(/^0+/, '')
-  if (!club) return res.status(400).json({ error: 'club required' })
-  const phone = str(b.phone, 40)
-  const email = str(b.email, 200).toLowerCase()
+// Look the caller up and queue a banner for the club, unless this call is
+// already queued (see findByPhone), in which case the existing entry comes
+// back with created: false.
+async function queueCall(club, { phone, email = '', name = '', ghlContactId = null }) {
+  const phone10 = last10(phone)
+  let existing = queue.findByPhone(club, phone10)
+  if (existing) return { entry: existing, created: false }
 
   let matches = []
   let lookupError = null
   try {
-    const members = await findMembers(last10(phone), email)
+    const members = await findMembers(phone10, email)
     matches = summarizeMatches(members, await findPt(members), club)
   } catch (err) {
     // Still show the banner, just without member info.
@@ -101,18 +117,54 @@ router.post('/ghl-call', verifyWebhookSecret, async (req, res) => {
     console.error('[telephony] lookup failed:', lookupError)
   }
 
+  // Every handset in a ring group reports at once, so another report of this
+  // call may have been queued while we were looking the caller up.
+  existing = queue.findByPhone(club, phone10)
+  if (existing) return { entry: existing, created: false }
+
   const clubName = n => clubByNumber(n)?.name || n
   const entry = queue.push(club, {
-    ghlContactId: str(b.id, 100) || null,
-    name: str(b.name, 200),
+    ghlContactId,
+    name,
     email,
     phone,
     clubName: clubName(club),
     matches: matches.slice(0, 5).map(m => ({ ...m, clubName: clubName(m.clubNumber) })),
     lookupError: !!lookupError,
   })
-  console.log(`[telephony] call #${entry.id} club=${club} matches=${matches.length}`)
-  res.json({ ok: true, id: entry.id, matches: matches.length })
+  return { entry, created: true }
+}
+
+router.post('/ghl-call', verifyWebhookSecret, async (req, res) => {
+  const b = req.body || {}
+  const club = str(b.club, 20).replace(/^0+/, '')
+  if (!club) return res.status(400).json({ error: 'club required' })
+  const call = {
+    ghlContactId: str(b.id, 100) || null,
+    name: str(b.name, 200),
+    email: str(b.email, 200).toLowerCase(),
+    phone: str(b.phone, 40),
+  }
+  const { entry, created } = await queueCall(club, call)
+  if (!created) {
+    // The phone already put this banner up. Give it the GHL contact so the
+    // enquiry form can save.
+    for (const k of ['ghlContactId', 'name', 'email']) if (!entry[k] && call[k]) entry[k] = call[k]
+  }
+  console.log(`[telephony] call #${entry.id} club=${club} matches=${entry.matches.length}${created ? '' : ' (already queued)'}`)
+  res.json({ ok: true, id: entry.id, matches: entry.matches.length, duplicate: !created })
+})
+
+// Always 200 for a call we choose to ignore, so the phone doesn't log errors
+// for every extension-to-extension call.
+router.get('/phone-ring', verifyPhoneKey, async (req, res) => {
+  const club = str(req.query.club, 20).replace(/^0+/, '')
+  if (!clubByNumber(club)) return res.status(400).json({ error: 'unknown club' })
+  const phone10 = callerNumber(str(req.query.phone, 200))
+  if (!phone10) return res.json({ ok: true, ignored: 'not an outside number' })
+  const { entry, created } = await queueCall(club, { phone: `+1${phone10}` })
+  if (created) console.log(`[telephony] ring #${entry.id} club=${club} matches=${entry.matches.length}`)
+  res.json({ ok: true, id: entry.id, duplicate: !created })
 })
 
 router.get('/pending', requireLauncherKey, (req, res) => {
