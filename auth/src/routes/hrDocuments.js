@@ -16,6 +16,14 @@ const {
 const HR_FILES_BUCKET = 'hr-files'
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } })
 
+// What the client sees of an uploaded file. select('*') plus this mapper
+// rather than a column list, so the route keeps working if it deploys before
+// migration 227 adds the paychex columns.
+function publicFile(row) {
+  const { storage_path, uploaded_by, worker_id, employee_name, ...rest } = row
+  return rest
+}
+
 let bucketReady = false
 async function ensureBucket() {
   if (bucketReady) return
@@ -487,7 +495,7 @@ router.get('/paychex-workers/:workerId/documents', requireRole('manager'), async
     let uploadedFiles = []
     let filesQuery = supabaseAdmin
       .from('hr_uploaded_files')
-      .select('id, title, file_name, content_type, size_bytes, location_slug, uploaded_by_name, created_at')
+      .select('*')
       .eq('worker_id', workerId)
       .order('created_at', { ascending: false })
     const mine = canSeeAllLocations(req.staff.role) ? null : await myLocationSlugs(req.staff)
@@ -495,7 +503,7 @@ router.get('/paychex-workers/:workerId/documents', requireRole('manager'), async
     if (!mine || mine.length > 0) {
       const { data, error } = await filesQuery
       if (error) console.error('[HRDocuments] Uploaded files fetch failed:', error.message)
-      uploadedFiles = data || []
+      uploadedFiles = (data || []).map(publicFile)
     }
 
     res.json({ paychexDocuments: paychexDocs, localDocuments: localDocs, uploadedFiles })
@@ -546,8 +554,9 @@ router.get('/paychex-companies', requireRole('admin'), async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // POST /hr-documents/files  (manager+)
-// Multipart upload of one file onto an employee's HR record. Fields: file,
-// worker_id, employee_name, location_slug, title (optional).
+// Multipart upload of one file onto an employee's HR record, with a copy sent
+// to Paychex. Fields: file, worker_id, employee_name, location_slug, title
+// (optional).
 // ---------------------------------------------------------------------------
 router.post('/files', requireRole('manager'), uploadSingle, async (req, res) => {
   const { worker_id, employee_name, title } = req.body || {}
@@ -600,7 +609,7 @@ router.post('/files', requireRole('manager'), uploadSingle, async (req, res) => 
         uploaded_by: req.staff.id,
         uploaded_by_name: req.staff.display_name || [req.staff.first_name, req.staff.last_name].filter(Boolean).join(' '),
       })
-      .select('id, title, file_name, content_type, size_bytes, location_slug, uploaded_by_name, created_at')
+      .select('*')
       .single()
 
     if (error) {
@@ -609,7 +618,25 @@ router.post('/files', requireRole('manager'), uploadSingle, async (req, res) => 
       throw error
     }
 
-    res.status(201).json(data)
+    // Send a copy to the employee's Paychex record. The portal copy is already
+    // saved, so a Paychex failure is reported to the caller, not thrown.
+    const paychex = { paychex_status: 'failed', paychex_document_id: null }
+    if (process.env.PAYCHEX_API_KEY && process.env.PAYCHEX_API_SECRET) {
+      try {
+        const result = await uploadWorkerDocument(worker_id, file.buffer, fileName, contentType)
+        paychex.paychex_status = 'sent'
+        paychex.paychex_document_id = result?.documentId || result?.id || null
+      } catch (uploadErr) {
+        console.error('[HRDocuments] Paychex file upload failed:', uploadErr.message)
+      }
+    }
+    const { error: updateErr } = await supabaseAdmin
+      .from('hr_uploaded_files')
+      .update(paychex)
+      .eq('id', id)
+    if (updateErr) console.error('[HRDocuments] Failed to record Paychex status:', updateErr.message)
+
+    res.status(201).json(publicFile({ ...data, ...paychex }))
   } catch (err) {
     console.error('[HRDocuments] File upload failed:', err.message)
     res.status(500).json({ error: 'Failed to upload file: ' + err.message })
