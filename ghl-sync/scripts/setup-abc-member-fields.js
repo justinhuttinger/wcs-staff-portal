@@ -19,6 +19,7 @@ const NEW=[
   ['Agreement Term','TEXT','contact.agreement_term'],
   ['Member Relationship','SINGLE_OPTIONS','contact.member_relationship',['Primary','Add-on']],
   ['Last Check-In','DATE','contact.last_checkin'],
+  ['Last Check-In Time','TEXT','contact.last_checkin_time'],
   ['Total Check-Ins','NUMERICAL','contact.total_checkins'],
   ['ABC Barcode','TEXT','contact.abc_barcode'],
 ];

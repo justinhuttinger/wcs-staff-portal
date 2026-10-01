@@ -23,9 +23,19 @@ const MEMBER_DETAIL_FIELDS = {
   },
   // ABC timestamps are club-local "YYYY-MM-DD HH:MM:SS.ffffff"; the date part is the visit day.
   'contact.last_checkin':        { kind: 'date',   from: (m) => (m.last_check_in_timestamp ? String(m.last_check_in_timestamp).slice(0, 10) : null) },
+  'contact.last_checkin_time':   { kind: 'text',   from: (m) => checkinClockTime(m.last_check_in_timestamp) },
   'contact.total_checkins':      { kind: 'number', from: (m) => m.total_check_in_count },
   'contact.abc_barcode':         { kind: 'text',   from: (m) => m.barcode },
 };
+
+// "2026-09-18 09:49:09.912" -> "9:49 AM". Already club-local (Pacific), so the
+// digits are read as-is. Midnight is how ABC stores a date with no time: skip it.
+function checkinClockTime(ts) {
+  const m = /^\d{4}-\d{2}-\d{2}[ T](\d{2}):(\d{2}):(\d{2})/.exec(String(ts || ''));
+  if (!m || (m[1] === '00' && m[2] === '00' && m[3] === '00')) return null;
+  const h = Number(m[1]);
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
+}
 
 function normText(v) {
   return v == null ? '' : String(v).trim();
