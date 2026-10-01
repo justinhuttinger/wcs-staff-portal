@@ -559,6 +559,25 @@ app.post('/api/checkin-days/backfill', requireSecret, (req, res) => {
     .finally(() => { checkinDaysBackfillRunning = false; });
 });
 
+// POST /api/prospect-checkins/run: on-demand pass writing Last Check-In /
+// Total Check-Ins to GHL for non-member (prospect) contacts who checked in.
+// Body { days?: number (default 4, max 400), dryRun?: boolean (default true) }.
+// A large `days` is the backfill: it is one ABC request per matched prospect,
+// so it runs in the background and reports to the log.
+let prospectCheckinsRunning = false;
+app.post('/api/prospect-checkins/run', requireSecret, (req, res) => {
+  if (prospectCheckinsRunning) return res.status(409).json({ error: 'Prospect check-ins already running' });
+  const days = Math.min(Math.max(parseInt(req.body?.days, 10) || 4, 1), 400);
+  const dryRun = req.body?.dryRun !== false;
+  prospectCheckinsRunning = true;
+  res.json({ status: 'started', days, dryRun });
+  const { runProspectCheckinsAll } = require('./abc/prospectCheckinsJob');
+  runProspectCheckinsAll({ days, dryRun })
+    .then(s => console.log('[API] Prospect check-ins done:', JSON.stringify(s)))
+    .catch(err => console.error('[API] Prospect check-ins failed:', err.message))
+    .finally(() => { prospectCheckinsRunning = false; });
+});
+
 // POST /api/nps/run
 //
 // Run the nightly NPS job on demand. The cron fires once a day, so a night

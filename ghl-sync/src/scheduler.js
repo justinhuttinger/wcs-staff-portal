@@ -200,6 +200,18 @@ function startScheduler() {
       console.error('[Scheduler] Check-in days refresh failed:', err.message);
     }
 
+    // Last Check-In / Total Check-Ins on GHL for trial and tour prospects, who
+    // have no abc_members row for reconcile to read. Reads the per-day rows
+    // just refreshed. PROSPECT_CHECKINS_ENABLED=false turns it off.
+    if (process.env.PROSPECT_CHECKINS_ENABLED !== 'false') {
+      try {
+        const { runProspectCheckinsAll } = require('./abc/prospectCheckinsJob');
+        await runProspectCheckinsAll({ days: 4 });
+      } catch (err) {
+        console.error('[Scheduler] Prospect check-ins failed:', err.message);
+      }
+    }
+
     // Check-in milestone alerts ("CELEBRATE 10TH VISIT!" show-once ABC
     // alerts). Needs tonight's counts, so it only runs after a successful
     // refresh. Dark until CHECKIN_MILESTONES_ENABLED=true; dry run (log only)
