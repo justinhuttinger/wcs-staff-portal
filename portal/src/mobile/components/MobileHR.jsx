@@ -7,7 +7,7 @@ import {
   downloadHRDocumentPdf,
 } from '../../lib/api'
 import SignaturePad from '../../components/SignaturePad'
-import HRUploadedFiles from '../../components/HRUploadedFiles'
+import HRUploadedFiles, { HRFileUploader, HRFileList } from '../../components/HRUploadedFiles'
 import MobileLoading from './MobileLoading'
 import MobileEmptyState from './MobileEmptyState'
 
@@ -19,6 +19,10 @@ const REASON_OPTIONS = [
   { key: 'written_warning', label: 'Written' },
   { key: 'termination', label: 'Termination' },
 ]
+
+// Not a document type the server knows: picking it swaps the written form for
+// a file upload.
+const CUSTOM_UPLOAD = 'custom_upload'
 
 const REASON_COLORS = {
   coaching_conversation: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -523,13 +527,15 @@ function SubmitDocumentForm({ worker, user, locationSlug, onBack, onSuccess }) {
   const [employeeSignature, setEmployeeSignature] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  const [uploadedNow, setUploadedNow] = useState([])
+  const isUpload = reason === CUSTOM_UPLOAD
 
   // Employee signature is optional and only offered for the more formal doc types.
   const offerEmployeeSignature = reason === 'written_warning' || reason === 'termination'
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!description.trim() || !managerSignature) return
+    if (isUpload || !description.trim() || !managerSignature) return
     setSubmitting(true)
     setError(null)
     try {
@@ -593,9 +599,40 @@ function SubmitDocumentForm({ worker, user, locationSlug, onBack, onSuccess }) {
                 {opt.label}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setReason(CUSTOM_UPLOAD)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                isUpload
+                  ? 'bg-gray-100 text-gray-700 border-gray-300'
+                  : 'bg-surface border-border text-text-muted'
+              }`}
+            >
+              Upload Files
+            </button>
           </div>
         </div>
 
+        {isUpload ? (
+          <div className="space-y-3">
+            <HRFileUploader
+              worker={worker}
+              locationSlug={locationSlug}
+              onUploaded={row => setUploadedNow(prev => [row, ...prev])}
+            />
+            <HRFileList files={uploadedNow} />
+            {uploadedNow.length > 0 && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="w-full py-3 rounded-xl border border-border bg-surface text-text-primary font-semibold text-sm active:scale-[0.98] transition-transform"
+              >
+                Done
+              </button>
+            )}
+          </div>
+        ) : (
+        <>
         <div>
           <label className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-1.5 bg-surface/95 backdrop-blur-sm rounded-lg px-2.5 py-1 inline-block">Description</label>
           <textarea
@@ -644,6 +681,8 @@ function SubmitDocumentForm({ worker, user, locationSlug, onBack, onSuccess }) {
         >
           {submitting ? 'Submitting...' : 'Submit Document'}
         </button>
+        </>
+        )}
       </form>
     </div>
   )

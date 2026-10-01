@@ -7,7 +7,7 @@ import {
   downloadHRDocumentPdf,
 } from '../lib/api'
 import SignaturePad from './SignaturePad'
-import HRUploadedFiles from './HRUploadedFiles'
+import HRUploadedFiles, { HRFileUploader, HRFileList } from './HRUploadedFiles'
 
 const REASONS = [
   { value: 'coaching_conversation', label: 'Coaching Conversation' },
@@ -15,6 +15,10 @@ const REASONS = [
   { value: 'written_warning', label: 'Written Warning' },
   { value: 'termination', label: 'Termination' },
 ]
+
+// Not a document type the server knows: picking it in the Document Type
+// dropdown swaps the written form for a file upload.
+const CUSTOM_UPLOAD = 'custom_upload'
 
 const REASON_LABELS = {
   coaching_conversation: 'Coaching Conversation',
@@ -371,10 +375,12 @@ function SubmitDocumentForm({ worker, user, locationSlug, onBack, onSuccess }) {
   const [showPreview, setShowPreview] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitMsg, setSubmitMsg] = useState(null)
+  const [uploadedNow, setUploadedNow] = useState([])
+  const isUpload = reason === CUSTOM_UPLOAD
 
   async function handleSubmit(e) {
     if (e) e.preventDefault()
-    if (!description.trim() || !managerSignature) return
+    if (isUpload || !description.trim() || !managerSignature) return
     setSubmitting(true)
     setSubmitMsg(null)
     try {
@@ -446,8 +452,27 @@ function SubmitDocumentForm({ worker, user, locationSlug, onBack, onSuccess }) {
               {REASONS.map(r => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
+              <option value={CUSTOM_UPLOAD}>Upload Custom Documents</option>
             </select>
           </div>
+
+          {isUpload ? (
+            <div className="space-y-3">
+              <HRFileUploader
+                worker={worker}
+                locationSlug={locationSlug}
+                onUploaded={row => setUploadedNow(prev => [row, ...prev])}
+              />
+              <HRFileList files={uploadedNow} />
+              {uploadedNow.length > 0 && (
+                <div className="flex gap-3 text-xs text-text-primary">
+                  <button type="button" onClick={onBack} className="underline hover:no-underline">Back to HR</button>
+                  {onSuccess && <button type="button" onClick={onSuccess} className="underline hover:no-underline">Upload for Another Employee</button>}
+                </div>
+              )}
+            </div>
+          ) : (
+          <>
 
           <div>
             <label className="text-sm font-semibold text-text-primary mb-1 bg-bg/80 rounded-md px-2 py-0.5 inline-block">Reason</label>
@@ -512,6 +537,8 @@ function SubmitDocumentForm({ worker, user, locationSlug, onBack, onSuccess }) {
               {submitting ? 'Submitting...' : 'Submit & Send to Paychex'}
             </button>
           </div>
+          </>
+          )}
         </form>
       )}
 
