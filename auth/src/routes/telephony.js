@@ -9,6 +9,9 @@
 //    phone rings, well before GHL's workflow does, so this is what puts the
 //    banner up. It knows nothing but the number; when GHL's webhook for the
 //    same call turns up later it only adds the GHL contact (for enquiries).
+//    Grandstream phones cut a long action URL short (the key arrived as its
+//    first 8 characters), so there is a short form of the same thing:
+//    GET /telephony/ring?c=30935&p=<caller>&k=<secret>
 //  - GET /telephony/pending?club=30935&after=<id>  (launcher key) -- WCS ABC
 //    polls this every few seconds and shows a banner for anything new.
 //  - POST /telephony/enquiry  (launcher key) -- the banner's telephony enquiry
@@ -46,7 +49,7 @@ function verifyWebhookSecret(req, res, next) {
 function verifyPhoneKey(req, res, next) {
   const secret = process.env.PHONE_ACTION_SECRET
   if (!secret) return res.status(503).json({ error: 'phone action URL not configured' })
-  if (req.query.key !== secret) return res.status(401).json({ error: 'Invalid key' })
+  if ((req.query.key || req.query.k) !== secret) return res.status(401).json({ error: 'Invalid key' })
   next()
 }
 
@@ -157,10 +160,10 @@ router.post('/ghl-call', verifyWebhookSecret, async (req, res) => {
 
 // Always 200 for a call we choose to ignore, so the phone doesn't log errors
 // for every extension-to-extension call.
-router.get('/phone-ring', verifyPhoneKey, async (req, res) => {
-  const club = str(req.query.club, 20).replace(/^0+/, '')
+router.get(['/phone-ring', '/ring'], verifyPhoneKey, async (req, res) => {
+  const club = str(req.query.club || req.query.c, 20).replace(/^0+/, '')
   if (!clubByNumber(club)) return res.status(400).json({ error: 'unknown club' })
-  const phone10 = callerNumber(str(req.query.phone, 200))
+  const phone10 = callerNumber(str(req.query.phone || req.query.p, 200))
   if (!phone10) return res.json({ ok: true, ignored: 'not an outside number' })
   const { entry, created } = await queueCall(club, { phone: `+1${phone10}` })
   if (created) console.log(`[telephony] ring #${entry.id} club=${club} matches=${entry.matches.length}`)
