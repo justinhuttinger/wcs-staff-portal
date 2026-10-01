@@ -30,9 +30,20 @@ test('maps an abc_members row to GHL values', () => {
     'contact.agreement_term': 'Open',
     'contact.member_relationship': 'Add-on',
     'contact.last_checkin': '2026-09-20',
+    'contact.last_checkin_time': '6:34 PM',
     'contact.total_checkins': 7,
     'contact.abc_barcode': '238509',
   });
+});
+
+test('last check-in time: club-local clock, 12-hour', () => {
+  const t = (ts) => desiredMemberDetails({ last_check_in_timestamp: ts })['contact.last_checkin_time'];
+  assert.strictEqual(t('2026-09-18 09:49:09.912000'), '9:49 AM');
+  assert.strictEqual(t('2026-09-18 12:05:00.000000'), '12:05 PM');
+  assert.strictEqual(t('2026-09-18 00:30:00.000000'), '12:30 AM');
+  // Legacy rows carry a bare date as midnight; that is not a real visit time.
+  assert.strictEqual(t('2017-10-17 00:00:00.000000'), undefined);
+  assert.strictEqual(t('2017-10-17'), undefined);
 });
 
 test('missing ABC values are omitted, never written as blanks', () => {
@@ -42,7 +53,7 @@ test('missing ABC values are omitted, never written as blanks', () => {
 
 test('empty cache → every present field is an update', () => {
   const u = memberDetailUpdates(member, {}, ids);
-  assert.strictEqual(Object.keys(u).length, 10);
+  assert.strictEqual(Object.keys(u).length, 11);
   assert.strictEqual(u['id:contact.past_due_balance'], 0);
 });
 
@@ -56,6 +67,7 @@ test('values GHL already holds in its own shapes are not re-written', () => {
     'id:contact.agreement_term': 'Open',
     'id:contact.member_relationship': 'Add-on',
     'id:contact.last_checkin': '2026-09-20',
+    'id:contact.last_checkin_time': '6:34 PM',
     'id:contact.total_checkins': '7',
     'id:contact.abc_barcode': 238509,
   };
