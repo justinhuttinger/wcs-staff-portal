@@ -188,6 +188,18 @@ function startScheduler() {
       return;
     }
 
+    // Per-day check-ins for the "X visits in Y days" celebration rules: the
+    // last 3 days plus today so far, then drop anything past 400 days. Its own
+    // try so a failure here never blocks the lifetime milestone alerts.
+    try {
+      const { refreshCheckinDays, pruneCheckinDays } = require('./abc/checkinDays');
+      const days = await refreshCheckinDays({ days: 4 });
+      await pruneCheckinDays();
+      console.log(`[Scheduler] Check-in days refreshed: ${days.rows} rows, ${days.visits} check-ins${days.failed.length ? `, ${days.failed.length} club-days failed` : ''}`);
+    } catch (err) {
+      console.error('[Scheduler] Check-in days refresh failed:', err.message);
+    }
+
     // Check-in milestone alerts ("CELEBRATE 10TH VISIT!" show-once ABC
     // alerts). Needs tonight's counts, so it only runs after a successful
     // refresh. Dark until CHECKIN_MILESTONES_ENABLED=true; dry run (log only)
