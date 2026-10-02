@@ -20,9 +20,12 @@ function spawn() {
   const { app, utilityProcess } = require('electron')
   clearTimeout(restartTimer)
   Object.assign(state, { receiver: 'starting', error: null })
-  child = utilityProcess.fork(path.join(__dirname, 'zigbee-worker.js'), [], { serviceName: 'WCS call button receiver', stdio: 'ignore' })
-  child.on('message', (m) => {
+  const proc = utilityProcess.fork(path.join(__dirname, 'zigbee-worker.js'), [], { serviceName: 'WCS call button receiver', stdio: 'ignore' })
+  child = proc
+  proc.on('message', (m) => {
+    if (proc !== child) return
     if (m.type === 'status') {
+      if (m.receiver !== state.receiver || m.error !== state.error) opts.log('[zigbee] receiver ' + m.receiver + (m.port ? ' ' + m.port : '') + (m.error ? ': ' + m.error : ''))
       Object.assign(state, { receiver: m.receiver, port: m.port, error: m.error })
       if (m.receiver === 'ready') failures = 0
     } else if (m.type === 'ports') state.ports = m.ports
@@ -33,7 +36,9 @@ function spawn() {
     } else if (m.type === 'button') opts.onButton(m)
     else if (m.type === 'log') opts.log('[zigbee] ' + m.msg)
   })
-  child.on('exit', (code) => {
+  proc.on('exit', (code) => {
+    // A worker we stopped or replaced (restart): nothing to recover.
+    if (proc !== child) return
     child = null
     if (stopped) return
     failures++
