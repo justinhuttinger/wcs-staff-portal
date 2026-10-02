@@ -12,6 +12,8 @@
     "electron-builder": "^25.0.0"
   },
   "dependencies": {
-    "electron-updater": "^6.8.3"
+    "electron-updater": "^6.8.3",
+    "zigbee-herdsman": "10.10.0",
+    "zigbee-herdsman-converters": "26.115.1"
   }
 }

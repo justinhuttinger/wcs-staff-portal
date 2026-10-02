@@ -652,6 +652,7 @@ app.on('ready', async () => {
     // Call button pager (phone base settings + Test page in this window).
     require('./pager').setup({
       log, readConfig, writeConfig, playSound: () => require('./alert-sound').play('blue'),
+      getClub: require('./call-poller').clubNumber,
     })
     const volumeGuard = require('./volume-guard')
     ipcMain.handle('abc-admin:get', () => ({

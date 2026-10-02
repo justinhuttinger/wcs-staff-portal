@@ -85,4 +85,4 @@ function start({ getAbcWebContents, playSound, logger } = {}) {
   timer = setInterval(tick, POLL_MS)
 }
 
-module.exports = { start }
+module.exports = { start, clubNumber }
