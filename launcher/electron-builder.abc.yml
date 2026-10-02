@@ -23,6 +23,10 @@ extraMetadata:
 #   WCS_APP_MODE=abc npx electron@42.11.10 .
 electronVersion: 42.11.10
 
+# The serial port module (call button receiver) ships prebuilt binaries, so
+# nothing needs compiling at build time.
+npmRebuild: false
+
 # Update feed: private downloads host (see #1014), GitHub as fallback.
 # `channel: abc` makes this app read abc.yml, so it can never pick up
 # Portal's latest.yml / installer.

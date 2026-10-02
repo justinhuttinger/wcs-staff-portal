@@ -10,4 +10,9 @@ contextBridge.exposeInMainWorld('abcAdminIPC', {
   pagerSave: (settings) => ipcRenderer.invoke('abc-admin:pager-save', settings),
   pagerStatus: () => ipcRenderer.invoke('abc-admin:pager-status'),
   pagerTest: (handsets) => ipcRenderer.invoke('abc-admin:pager-test', handsets),
+  buttonState: () => ipcRenderer.invoke('abc-admin:button-state'),
+  buttonPorts: () => ipcRenderer.invoke('abc-admin:button-ports'),
+  buttonPair: (on) => ipcRenderer.invoke('abc-admin:button-pair', on),
+  buttonRemove: (ieee) => ipcRenderer.invoke('abc-admin:button-remove', ieee),
+  buttonRename: (ieee, name) => ipcRenderer.invoke('abc-admin:button-rename', ieee, name),
 })

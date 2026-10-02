@@ -21,6 +21,14 @@ publish:
     owner: justinhuttinger
     repo: wcs-staff-portal
 
+# The call button's Zigbee libraries are WCS ABC only (see pager.js); keep
+# them out of the Portal installer.
+files:
+  - "!node_modules/zigbee-herdsman/**"
+  - "!node_modules/zigbee-herdsman-converters/**"
+  - "!node_modules/zigbee-on-host/**"
+  - "!node_modules/@serialport/**"
+
 # wcsportal:// one-time location deep links. electron-builder registers the
 # scheme in the Windows NSIS installer (registry) and the macOS Info.plist.
 protocols:
