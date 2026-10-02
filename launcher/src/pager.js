@@ -56,7 +56,7 @@ class Pager {
     this.lastPageAt = 0
   }
 
-  async page(source, action, handsets) {
+  async page(source, action, handsets, button = null) {
     // Start the cooldown before the base answers (a page takes a second or
     // two), and give it back if nothing rang.
     const before = this.lastPageAt
@@ -64,22 +64,23 @@ class Pager {
     const results = await Promise.all(handsets.map((h) => this.client.pageHandset(h)))
     const result = overall(results)
     if (result === 'failed' && source === 'button') this.lastPageAt = before
-    const event = { source, action, targets: handsets, results, result, ts: new Date(this.now()).toISOString() }
+    const event = { source, action, targets: handsets, results, result, button, ts: new Date(this.now()).toISOString() }
     this.onEvent(event)
     return event
   }
 
   // A press from the call button. Only a single press pages; a mashed button
   // pages once per cooldown.
-  async handleButton(action) {
+  // `button` ({ ieee, name, battery, linkquality }) only travels to the log.
+  async handleButton(action, button = null) {
     const s = this.getSettings()
     if (!s.enabled || action !== 'single' || !s.handsets.length) return null
     if (this.lastPageAt && this.now() - this.lastPageAt < s.cooldown_seconds * 1000) {
-      const event = { source: 'button', action, targets: s.handsets, results: [], result: 'suppressed', ts: new Date(this.now()).toISOString() }
+      const event = { source: 'button', action, targets: s.handsets, results: [], result: 'suppressed', button, ts: new Date(this.now()).toISOString() }
       this.onEvent(event)
       return event
     }
-    return this.page('button', action, s.handsets)
+    return this.page('button', action, s.handsets, button)
   }
 
   // Admin "Test page": no cooldown, and never starts one.
@@ -94,7 +95,7 @@ let pager = null
 let client = null
 const zigbee = require('./zigbee')
 
-function setup({ log, readConfig, writeConfig, playSound }) {
+function setup({ log, readConfig, writeConfig, playSound, getClub }) {
   const { app, ipcMain, safeStorage } = require('electron')
   const credFile = path.join(app.getPath('userData'), 'pager-credential')
 
@@ -108,10 +109,13 @@ function setup({ log, readConfig, writeConfig, playSound }) {
     const s = getSettings()
     return { baseUrl: s.base_url, username: s.username, password: readPassword() }
   })
+  // Page log: reported to the API after the fact, never in the paging path.
+  const reportEvent = require('./page-reporter').setup({ log, getClub })
   pager = new Pager({
     getSettings,
     client,
     onEvent: (ev) => {
+      reportEvent(ev)
       log(`[pager] ${ev.source} ${ev.result} targets=${ev.targets.join(',')}` +
         ev.results.filter((r) => !r.ok).map((r) => ` hs${r.handset}: ${r.error}`).join(''))
       if (ev.source === 'button' && ev.result !== 'suppressed') playSound()
@@ -128,7 +132,11 @@ function setup({ log, readConfig, writeConfig, playSound }) {
       getPort: () => getSettings().zigbee_port,
       onButton: (m) => {
         log('[pager] button ' + m.ieee + ' ' + m.action + ' lqi=' + m.linkquality)
-        pager.handleButton(m.action)
+        const dev = zigbee.getState().devices.find((d) => d.ieee === m.ieee) || {}
+        pager.handleButton(m.action, {
+          ieee: m.ieee, name: getSettings().buttons[String(m.ieee).toLowerCase()] || '',
+          battery: dev.battery == null ? null : Math.round(dev.battery), linkquality: m.linkquality == null ? null : m.linkquality,
+        })
       },
     })
   }
@@ -193,8 +201,8 @@ function setup({ log, readConfig, writeConfig, playSound }) {
 }
 
 // Entry point for a button press (the receiver calls it; see syncReceiver).
-function handleButton(action) {
-  return pager ? pager.handleButton(action) : Promise.resolve(null)
+function handleButton(action, button) {
+  return pager ? pager.handleButton(action, button) : Promise.resolve(null)
 }
 
 module.exports = { Pager, normalizeSettings, setup, handleButton }
