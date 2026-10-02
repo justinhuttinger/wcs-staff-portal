@@ -9,6 +9,8 @@
 const https = require('https')
 
 const TIMEOUT_MS = 5000
+// Logging in is the slow call on this base (several seconds).
+const LOGIN_TIMEOUT_MS = 10000
 const MAX_HANDSETS = 5
 
 class DP752Client {
@@ -22,7 +24,7 @@ class DP752Client {
     if (request) this.request = request
   }
 
-  request(pathname, body, { contentType = 'application/x-www-form-urlencoded' } = {}) {
+  request(pathname, body, { contentType = 'application/x-www-form-urlencoded', timeout = TIMEOUT_MS } = {}) {
     const { baseUrl } = this.getCredentials()
     let base
     try { base = new URL(baseUrl) } catch { return Promise.reject(new Error('Phone base address is not set')) }
@@ -31,7 +33,7 @@ class DP752Client {
     return new Promise((resolve, reject) => {
       const req = https.request({
         host: base.hostname, port: base.port || 443, path: pathname, method: 'POST',
-        headers, agent: this.agent, timeout: TIMEOUT_MS,
+        headers, agent: this.agent, timeout,
       }, (res) => {
         let text = ''
         res.setEncoding('utf8')
@@ -49,12 +51,22 @@ class DP752Client {
     })
   }
 
-  async login() {
+  // One login at a time: paging two handsets at once must not log in twice
+  // (a second login can invalidate the first session).
+  login() {
+    if (!this.loggingIn) {
+      this.loggingIn = this.doLogin().finally(() => { this.loggingIn = null })
+    }
+    return this.loggingIn
+  }
+
+  async doLogin() {
     const { username, password } = this.getCredentials()
     if (!password) throw new Error('Phone base password is not set')
     this.sid = null
     const r = await this.request('/cgi-bin/dologin',
-      `username=${encodeURIComponent(username || 'admin')}&password=${encodeURIComponent(password)}`)
+      `username=${encodeURIComponent(username || 'admin')}&password=${encodeURIComponent(password)}`,
+      { timeout: LOGIN_TIMEOUT_MS })
     const sid = r.json && r.json.body && r.json.body.sid
     if (!r.json || r.json.response !== 'success' || !sid) throw new Error('Phone base login failed, check password')
     this.sid = String(sid)
@@ -64,9 +76,12 @@ class DP752Client {
   // one retry. `rejected(result)` says whether the base refused the session.
   async withSession(call, rejected) {
     if (!this.sid) await this.login()
+    const used = this.sid
     let r = await call()
     if (rejected(r)) {
-      await this.login()
+      // Another call may already have replaced the session; only log in again
+      // if the one we used is still the current one.
+      if (this.sid === used || !this.sid) await this.login()
       r = await call()
     }
     return r
