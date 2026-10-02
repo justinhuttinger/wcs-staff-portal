@@ -630,7 +630,7 @@ app.on('ready', async () => {
       if (adminWin && !adminWin.isDestroyed()) { adminWin.focus(); return }
       adminWin = new BrowserWindow({
         width: 520,
-        height: 560,
+        height: 760,
         title: 'WCS ABC Admin',
         parent: mainWindow,
         modal: true,
@@ -648,6 +648,10 @@ app.on('ready', async () => {
       adminWin.loadFile(path.join(__dirname, '..', 'ui', 'abc-admin.html'))
       adminWin.on('closed', () => { adminWin = null })
       log('[abc-admin] opened')
+    })
+    // Call button pager (phone base settings + Test page in this window).
+    require('./pager').setup({
+      log, readConfig, writeConfig, playSound: () => require('./alert-sound').play('blue'),
     })
     const volumeGuard = require('./volume-guard')
     ipcMain.handle('abc-admin:get', () => ({
