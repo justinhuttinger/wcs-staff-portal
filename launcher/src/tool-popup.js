@@ -9,7 +9,7 @@ const { FREE_WINDOW, addWindowKeys } = require('./window-controls')
 const popups = new Map()          // key -> BrowserWindow
 const prefills = new Map()        // webContents.id -> prefill object
 
-const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+const CHROME_UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome.split('.')[0]}.0.0.0 Safari/537.36`
 
 ipcMain.handle('popup-prefill', (e) => prefills.get(e.sender.id) || null)
 

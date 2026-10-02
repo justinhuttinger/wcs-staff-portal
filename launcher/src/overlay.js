@@ -61,7 +61,10 @@ function showOverlay(memberData, mainWindow, tabManager, options = {}) {
   })
 
   // Listen for close from welcome.html
-  overlayWindow.webContents.on('console-message', (e, level, msg) => {
+  // Electron 35+ passes the text on the event (and warns about extra
+  // listener arguments); Electron 33 passes it as the 3rd argument.
+  overlayWindow.webContents.on('console-message', (e, ...legacy) => {
+    const msg = typeof legacy[1] === 'string' ? legacy[1] : String((e && e.message) || '')
     if (msg.includes('WCS_CLOSE_OVERLAY')) closeOverlay()
   })
 

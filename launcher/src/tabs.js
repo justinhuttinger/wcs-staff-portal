@@ -95,8 +95,9 @@ class TabManager {
       },
     })
 
-    // Set Chrome user agent so sites like GHL don't block Electron
-    const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+    // Set Chrome user agent so sites like GHL don't block Electron. The major
+    // version follows the bundled Chromium so it never looks out of date.
+    const chromeUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome.split('.')[0]}.0.0.0 Safari/537.36`
     view.webContents.setUserAgent(chromeUA)
     // WCS ABC: mute ABC's own sounds (all of them: media, Web Audio, frames).
     // The check-in alert cues play from alert-sound.js instead.
@@ -109,7 +110,10 @@ class TabManager {
     // Pipe console.log from renderer to main process AND to C:\WCS\app.log
     // (for debugging preload scripts on machines without DevTools open).
     if (preload) {
-      view.webContents.on('console-message', (e, level, msg) => {
+      // Electron 35+ passes the text on the event (and warns about extra
+      // listener arguments); Electron 33 passes it as the 3rd argument.
+      view.webContents.on('console-message', (e, ...legacy) => {
+        const msg = typeof legacy[1] === 'string' ? legacy[1] : String((e && e.message) || '')
         if (msg.includes('[WCS')) {
           console.log(msg)
           if (this.logger) this.logger(msg)

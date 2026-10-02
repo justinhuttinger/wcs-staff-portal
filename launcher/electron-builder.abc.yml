@@ -17,6 +17,12 @@ extraMetadata:
   wcsAppMode: abc
   version: 0.0.12
 
+# WCS ABC is packaged with a newer Electron than Portal (package.json's
+# devDependency, used by Portal builds and `npm start`). The call button's
+# Zigbee library needs Node 22+. To run this version in dev:
+#   WCS_APP_MODE=abc npx electron@42.11.10 .
+electronVersion: 42.11.10
+
 # Update feed: private downloads host (see #1014), GitHub as fallback.
 # `channel: abc` makes this app read abc.yml, so it can never pick up
 # Portal's latest.yml / installer.
