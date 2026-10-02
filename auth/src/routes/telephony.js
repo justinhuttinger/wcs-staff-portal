@@ -28,6 +28,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { clubByNumber, envFor } = require('../config/clubs')
 const { ghlFetch } = require('../services/ghlClient')
 const { last10, callerNumber, createCallQueue, summarizeMatches, cleanEnquiry } = require('../lib/incomingCalls')
+const { cleanPageEvent } = require('../lib/pageEvents')
 
 const ENQUIRY_TAG = 'telephony enquiry'
 
@@ -221,6 +222,20 @@ router.post('/enquiry', requireLauncherKey, async (req, res) => {
     const dup = /duplicat|already exist/i.test(msg)
     res.status(502).json({ error: dup ? 'Another GHL contact already has that email' : 'Could not save to GHL' })
   }
+})
+
+// Call button page log. WCS ABC rings the handsets on its own and reports
+// here afterwards (fire-and-forget, with a retry queue), so nothing about
+// paging depends on this route.
+router.post('/page-events', requireLauncherKey, async (req, res) => {
+  const { row, error } = cleanPageEvent(req.body)
+  if (error) return res.status(400).json({ error })
+  const { error: dbError } = await supabaseAdmin.from('page_events').insert(row)
+  if (dbError) {
+    console.error('[telephony] page event insert failed:', dbError.message)
+    return res.status(500).json({ error: 'Could not save page event' })
+  }
+  res.json({ ok: true })
 })
 
 module.exports = router
