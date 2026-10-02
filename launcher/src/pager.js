@@ -141,6 +141,14 @@ function setup({ log, readConfig, writeConfig, playSound, getClub }) {
     })
   }
   syncReceiver()
+
+  // Keep the phone base session warm on the pager PC, so a press doesn't
+  // have to wait for a login (several seconds on this base).
+  const keepWarm = () => {
+    if (getSettings().enabled) client.handsetStatus().catch((err) => log('[pager] phone base check failed: ' + err.message))
+  }
+  keepWarm()
+  setInterval(keepWarm, 4 * 60 * 1000).unref()
   app.on('before-quit', () => zigbee.stop())
 
   ipcMain.handle('abc-admin:pager-get', () => ({ settings: getSettings(), hasPassword: !!readPassword() }))

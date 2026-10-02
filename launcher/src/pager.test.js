@@ -84,3 +84,29 @@ test('client logs in again once when the base rejects the session', async () => 
   assert.equal(r.ok, true)
   assert.deepEqual(calls, ['/cgi-bin/dect', '/cgi-bin/dologin', '/cgi-bin/dect'])
 })
+
+test('paging two handsets with no session logs in only once', async () => {
+  const calls = []
+  let valid = null
+  let logins = 0
+  const client = new DP752Client(() => ({ baseUrl: 'https://base', username: 'admin', password: 'pw' }), {
+    request: async function (p, body) {
+      calls.push(p)
+      await new Promise((r) => setTimeout(r, 5))
+      if (p === '/cgi-bin/dologin') { valid = 's' + (++logins); return { status: 200, json: { response: 'success', body: { sid: valid } } } }
+      return body.includes('sid=' + valid + '&')
+        ? { status: 200, json: { response: 'success', body: 'true' } }
+        : { status: 200, json: { response: 'error', body: 'false' } }
+    },
+  })
+  const results = await Promise.all([client.pageHandset(1), client.pageHandset(2)])
+  assert.deepEqual(results.map((r) => r.ok), [true, true])
+  assert.equal(calls.filter((c) => c === '/cgi-bin/dologin').length, 1)
+
+  // Session dies: both retry, still a single fresh login.
+  client.sid = 'stale'
+  calls.length = 0
+  const again = await Promise.all([client.pageHandset(1), client.pageHandset(2)])
+  assert.deepEqual(again.map((r) => r.ok), [true, true])
+  assert.equal(calls.filter((c) => c === '/cgi-bin/dologin').length, 1)
+})
