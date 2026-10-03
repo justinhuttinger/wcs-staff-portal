@@ -73,8 +73,13 @@ function ensureWindow() {
 
 let logFn = () => {}
 function setup(log = () => {}, mainWindow = null) {
-  // Create it up front so the first alert plays without a load delay.
-  ensureWindow()
+  // Create it up front so the first alert plays without a load delay. The
+  // AudioContext is opened right away too, so this app's Volume Mixer channel
+  // exists before the first alert and volume-guard can unmute it in time.
+  const w = ensureWindow()
+  w.webContents.once('did-finish-load', () => {
+    w.webContents.executeJavaScript('ctx = ctx || new AudioContext(); ctx.state').catch(() => {})
+  })
   // A hidden window would keep the app alive after the main window closes
   // (window-all-closed never fires), so it goes when the main window does.
   if (mainWindow) mainWindow.on('closed', () => { if (win && !win.isDestroyed()) win.destroy() })

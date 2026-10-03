@@ -15,7 +15,7 @@ directories:
 # version: bump it here for each ABC release.
 extraMetadata:
   wcsAppMode: abc
-  version: 0.0.17
+  version: 0.0.18
 
 # WCS ABC is packaged with a newer Electron than Portal (package.json's
 # devDependency, used by Portal builds and `npm start`). The call button's
