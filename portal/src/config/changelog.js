@@ -72,6 +72,12 @@ export function visibleChangelog(ctx) {
 
 export const CHANGELOG = [
   {
+    id: 19, date: '2026-10-05',
+    title: 'Day One: First Visit and Total Conversion',
+    body: 'Day One sales now show two ways everywhere you see them. First Visit Sales is what the trainer marked Sale on the Day One form (the old Sold / Close Rate). Total Conversion Sales also counts members who said no on the day but bought PT in ABC within 30 days, credited to the Day One trainer. Later buyers show as "Bought Later" in the Day One lists.',
+    audience: { minRole: 'manager' },
+  },
+  {
     id: 18, date: '2026-10-01',
     title: 'Workflows & Scripts (GHL)',
     body: 'Drip Campaigns moved out of Marketing into its own Tools tile, Workflows & Scripts (GHL). Edit each club’s workflow texts and the new call scripts there. Call scripts show across the top of GHL while you are on a call from that workflow. Use the flow filter to jump to a sequence, or pick Call Scripts to see them all.',
