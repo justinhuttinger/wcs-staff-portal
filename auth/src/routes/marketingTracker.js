@@ -731,3 +731,6 @@ router.delete('/research/:id', async (req, res) => {
 })
 
 module.exports = router
+// Shared with routes/eventCalendar.js, which writes the same rows.
+module.exports.diffEffort = diffEffort
+module.exports.recordActivity = recordActivity
