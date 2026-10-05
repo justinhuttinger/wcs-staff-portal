@@ -177,17 +177,19 @@ export default function HelpPublicApp({ token }) {
       {/* Header */}
       <header className="sticky top-0 z-20 bg-surface/95 backdrop-blur border-b border-border" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
-          {showBack ? (
+          {showBack && (
             <button onClick={back} aria-label="Back"
               className="shrink-0 w-12 h-12 rounded-full border border-border bg-bg text-text-primary flex items-center justify-center active:scale-95 transition-transform">
               <Chevron dir="left" className="w-6 h-6" />
             </button>
-          ) : (
-            <img src="/wcs-logo.png" alt="" className="shrink-0 w-12 h-12 object-contain" />
           )}
-          <button onClick={goHome} className="shrink-0 text-left">
+          {/* Logo + title always show; tapping them goes home. */}
+          <button onClick={goHome} className="shrink-0 flex items-center gap-3 text-left">
+            <img src="/wcs-logo.png" alt="West Coast Strength" className="w-14 h-14 object-contain" />
+            <span>
             <p className="text-xl font-extrabold text-text-primary leading-tight">Help Center</p>
             <p className="text-xs font-semibold uppercase tracking-widest text-text-muted">Front Desk</p>
+            </span>
           </button>
           <div className="flex-1 relative">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6 absolute left-4 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
