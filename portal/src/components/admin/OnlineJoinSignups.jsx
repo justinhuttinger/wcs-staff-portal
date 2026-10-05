@@ -20,6 +20,22 @@ function StatusBadge({ status }) {
   return <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${meta.cls}`}>{meta.label}</span>
 }
 
+function money(n) {
+  return n == null ? null : `$${Number(n).toFixed(2)}`
+}
+
+// "Single · Month-to-Month · Card" with the ABC plan name under it. From the
+// server's plan_summary (prospects services/online-join/signup-summary.js).
+function PlanCell({ summary }) {
+  if (!summary?.headline) return <span className="text-xs text-text-muted">—</span>
+  return (
+    <div>
+      <div className="text-xs font-semibold text-text-primary">{summary.headline}</div>
+      {summary.abc_plan_name && <div className="text-[10px] text-text-muted font-mono">{summary.abc_plan_name}</div>}
+    </div>
+  )
+}
+
 function formatDate(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -79,11 +95,31 @@ function SignupDetail({ id, onClose }) {
                 <StatusBadge status={s.status} />
               </section>
 
+              {s.plan_summary?.headline && (
+                <section>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Signed up for</p>
+                  <div className="bg-bg border border-border rounded-lg px-3 py-2 space-y-1">
+                    <div className="text-sm font-semibold text-text-primary">{s.plan_summary.headline}</div>
+                    {(s.plan_summary.today_amount != null || s.plan_summary.monthly_amount != null) && (
+                      <div className="text-xs text-text-primary">
+                        {[s.plan_summary.today_amount != null && `${money(s.plan_summary.today_amount)} due today`,
+                          s.plan_summary.monthly_amount != null && `then ${money(s.plan_summary.monthly_amount)}/month`].filter(Boolean).join(', ')}
+                      </div>
+                    )}
+                    {s.plan_summary.household_members > 0 && (
+                      <div className="text-xs text-text-muted">Plus {s.plan_summary.household_members} household member{s.plan_summary.household_members === 1 ? '' : 's'}</div>
+                    )}
+                    <div className="text-[10px] text-text-muted">
+                      ABC plan: <span className="font-mono">{s.plan_summary.abc_plan_name || '(name unavailable)'}</span>
+                      {s.payment_plan_id && <span className="font-mono"> · {s.payment_plan_id}</span>}
+                    </div>
+                  </div>
+                </section>
+              )}
+
               <section className="grid grid-cols-2 gap-3 text-xs">
                 <div><span className="text-text-muted">Location:</span> <span className="font-semibold">{s.wcs_location_id}</span></div>
                 <div><span className="text-text-muted">Club #:</span> <span className="font-mono">{s.abc_club_number}</span></div>
-                <div><span className="text-text-muted">Plan:</span> <span className="font-mono">{s.payment_plan_id}</span></div>
-                <div><span className="text-text-muted">Pay method:</span> <span>{s.payment_method_choice || '—'}</span></div>
                 <div><span className="text-text-muted">Started:</span> {formatDate(s.started_at)}</div>
                 <div><span className="text-text-muted">Completed:</span> {formatDate(s.completed_at)}</div>
                 <div><span className="text-text-muted">ABC member ID:</span> <span className="font-mono">{s.abc_member_id || '—'}</span></div>
@@ -267,6 +303,7 @@ export default function OnlineJoinSignups() {
               <th className="text-left px-3 py-2 text-xs font-semibold text-text-muted">Started</th>
               <th className="text-left px-3 py-2 text-xs font-semibold text-text-muted">Location</th>
               <th className="text-left px-3 py-2 text-xs font-semibold text-text-muted">Customer</th>
+              <th className="text-left px-3 py-2 text-xs font-semibold text-text-muted">Signed up for</th>
               <th className="text-left px-3 py-2 text-xs font-semibold text-text-muted">Status</th>
               <th className="text-left px-3 py-2 text-xs font-semibold text-text-muted">Member #</th>
               <th className="px-3 py-2"></th>
@@ -274,7 +311,7 @@ export default function OnlineJoinSignups() {
           </thead>
           <tbody>
             {signups.length === 0 && !loading && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-text-muted">No signups yet.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-text-muted">No signups yet.</td></tr>
             )}
             {signups.map(s => (
               <tr key={s.id} className="border-b border-border last:border-0 hover:bg-bg/30 cursor-pointer" onClick={() => setDetailId(s.id)}>
@@ -284,6 +321,7 @@ export default function OnlineJoinSignups() {
                   <div className="text-xs font-semibold text-text-primary">{[s.first_name, s.last_name].filter(Boolean).join(' ') || '—'}</div>
                   <div className="text-[10px] text-text-muted">{s.email || ''}</div>
                 </td>
+                <td className="px-3 py-2"><PlanCell summary={s.plan_summary} /></td>
                 <td className="px-3 py-2"><StatusBadge status={s.status} /></td>
                 <td className="px-3 py-2 text-xs font-mono text-text-muted">{s.abc_member_id || '—'}</td>
                 <td className="px-3 py-2 text-right">
