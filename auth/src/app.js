@@ -43,6 +43,8 @@ app.use('/public/ticket-file', cors({ origin: '*', methods: ['GET'] }))
 app.use('/public/action-links', cors({ origin: '*', methods: ['GET'] }))
 // The club list for the portal, launcher and satellite apps; see routes/publicClubs.js.
 app.use('/public/clubs', cors({ origin: '*', methods: ['GET'] }))
+// Login-free, read-only Help Center for the front desk iPads; see routes/publicHelpCenter.js.
+app.use('/public/help-center', cors({ origin: '*', methods: ['GET'] }))
 
 app.use(cors({
   origin: (origin, cb) => {
@@ -129,6 +131,7 @@ app.use('/public/facility', require('./routes/publicFacility'))
 app.use('/public/ticket-file', require('./routes/publicTicketFile'))
 app.use('/public/action-links', require('./routes/publicActionLinks'))
 app.use('/public/clubs', require('./routes/publicClubs'))
+app.use('/public/help-center', require('./routes/publicHelpCenter'))
 app.use('/oidc', require('./routes/oidc'))
 
 // OIDC discovery at root level (some providers look here)

@@ -11,6 +11,7 @@ import {
   updateHelpArticle,
   deleteHelpArticle,
   uploadHelpImage,
+  helpCenterFrontDeskLink,
 } from '../lib/api'
 
 // Configure marked for safe rendering
@@ -54,6 +55,85 @@ function EditorModal({ title, children, onClose }) {
 }
 
 // ---------------------------------------------------------------------------
+// Front desk link — the login-free, read-only Help Center for the desk iPads
+// (help.html?token=...). Admin only. Shows Team Member+ articles only.
+// ---------------------------------------------------------------------------
+function FrontDeskLinkModal({ onClose }) {
+  const [token, setToken] = useState(undefined) // undefined = loading, null = none yet
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    helpCenterFrontDeskLink.get()
+      .then(r => setToken(r.token))
+      .catch(e => { setErr(e.message); setToken(null) })
+  }, [])
+
+  const url = token ? `${window.location.origin}/help.html?token=${encodeURIComponent(token)}` : ''
+
+  async function regenerate() {
+    if (token && !window.confirm('Reset the link? Every iPad using the current link will stop working until it gets the new one.')) return
+    setBusy(true); setErr('')
+    try {
+      const r = await helpCenterFrontDeskLink.regenerate()
+      setToken(r.token)
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function copy() {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {})
+  }
+
+  return (
+    <EditorModal title="Front desk iPad link" onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-sm text-text-muted">
+          Open this link on the front desk iPads (Share → Add to Home Screen) for a touch-friendly Help Center that needs no login.
+          It only shows articles visible to all staff — anything marked Lead+ or higher stays in the portal.
+        </p>
+        {err && <p className="text-sm text-wcs-red">{err}</p>}
+        {token === undefined ? (
+          <p className="text-sm text-text-muted">Loading…</p>
+        ) : token ? (
+          <div className="flex items-center gap-2">
+            <input readOnly value={url} onFocus={e => e.target.select()}
+              className="flex-1 min-w-0 px-3 py-2 bg-bg border border-border rounded-lg text-xs text-text-primary font-mono" />
+            <button onClick={copy}
+              className={`relative shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${copied ? 'bg-green-100 text-green-700 border-green-300' : 'border-border bg-surface text-text-primary hover:bg-bg'}`}>
+              <span className={copied ? 'opacity-0' : 'opacity-100'}>Copy</span>
+              {copied && (
+                <span className="absolute inset-0 flex items-center justify-center gap-1 text-green-700">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                  Copied!
+                </span>
+              )}
+            </button>
+            <a href={url} target="_blank" rel="noopener noreferrer"
+              className="shrink-0 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-semibold text-text-primary hover:bg-bg">Open</a>
+          </div>
+        ) : (
+          <p className="text-sm text-text-muted">No link yet. Create one below.</p>
+        )}
+        <div className="flex justify-end">
+          <button onClick={regenerate} disabled={busy || token === undefined}
+            className={`px-3 py-2 text-xs font-semibold rounded-lg transition-colors disabled:opacity-50 ${token ? 'border border-wcs-red/30 text-wcs-red hover:bg-wcs-red/10' : 'bg-wcs-red text-white hover:bg-wcs-red/90'}`}>
+            {busy ? 'Working…' : token ? 'Reset link' : 'Create link'}
+          </button>
+        </div>
+      </div>
+    </EditorModal>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main Help Center View
 // ---------------------------------------------------------------------------
 export default function HelpCenterView({ user, onBack }) {
@@ -65,6 +145,7 @@ export default function HelpCenterView({ user, onBack }) {
   const [selectedArticle, setSelectedArticle] = useState(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [showFrontDeskLink, setShowFrontDeskLink] = useState(false)
 
   // Modal state
   const [modal, setModal] = useState(null) // null | 'add-category' | 'edit-category' | 'add-article' | 'edit-article'
@@ -291,6 +372,9 @@ export default function HelpCenterView({ user, onBack }) {
           <h2 className="text-lg font-bold text-text-primary">Help Center</h2>
           {isAdmin && (
             <div className="flex gap-2">
+              <button onClick={() => setShowFrontDeskLink(true)} className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary transition-colors">
+                Front desk link
+              </button>
               <button onClick={openAddCategory} className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text-muted hover:text-text-primary transition-colors">
                 + Category
               </button>
@@ -422,6 +506,7 @@ export default function HelpCenterView({ user, onBack }) {
       )}
 
       {/* Modals */}
+      {showFrontDeskLink && <FrontDeskLinkModal onClose={() => setShowFrontDeskLink(false)} />}
       {(modal === 'add-category' || modal === 'edit-category') && (
         <EditorModal title={modal === 'edit-category' ? 'Edit Category' : 'Add Category'} onClose={() => setModal(null)}>
           <div className="space-y-4">
