@@ -268,4 +268,38 @@ router.delete('/articles/:id', requireRole('admin'), async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Front desk link (login-free, read-only Help Center for the desk iPads)
+// ---------------------------------------------------------------------------
+// The token lives in app_config; routes/publicHelpCenter.js serves it.
+const crypto = require('crypto')
+const { HELP_TOKEN_KEY } = require('../lib/helpCenterPublic')
+
+// GET /help-center/front-desk-link — admin only. Null until first minted.
+router.get('/front-desk-link', requireRole('admin'), async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('app_config').select('value').eq('key', HELP_TOKEN_KEY).maybeSingle()
+    if (error) throw error
+    res.json({ token: data?.value || null })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load front desk link: ' + err.message })
+  }
+})
+
+// POST /help-center/front-desk-link/regenerate — admin only. Mints the first
+// token, or replaces it so the old link stops working.
+router.post('/front-desk-link/regenerate', requireRole('admin'), async (req, res) => {
+  try {
+    const token = crypto.randomBytes(24).toString('base64url')
+    const { error } = await supabaseAdmin
+      .from('app_config')
+      .upsert({ key: HELP_TOKEN_KEY, value: token, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    if (error) throw error
+    res.json({ token })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to reset front desk link: ' + err.message })
+  }
+})
+
 module.exports = router

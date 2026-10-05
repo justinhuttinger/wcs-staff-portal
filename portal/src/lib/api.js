@@ -1257,6 +1257,17 @@ async function publicFetch(path, options = {}) {
   return res.json()
 }
 
+// Login-free, read-only Help Center for the front desk iPads (help.html?token=...).
+export const publicHelpCenter = {
+  get: (token) => publicFetch(`/public/help-center/${encodeURIComponent(token)}`),
+}
+
+// Admin: the front desk Help Center link.
+export const helpCenterFrontDeskLink = {
+  get: () => api('/help-center/front-desk-link'),
+  regenerate: () => api('/help-center/front-desk-link/regenerate', { method: 'POST' }),
+}
+
 // Login-free Group X headcount link (groupx.html?token=...).
 export const publicGroupXAttendance = {
   get: (token) => publicFetch(`/public/group-x-attendance/${encodeURIComponent(token)}`),
