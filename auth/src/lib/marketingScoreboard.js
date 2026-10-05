@@ -51,11 +51,13 @@ function goalBlock(pace, goal) {
  * @param {string} opts.month        'YYYY-MM'
  * @param {string} opts.today        'YYYY-MM-DD' (Pacific)
  * @param {Array}  opts.daily        [{ day, channel, leads, carts, joins }] from marketing_scoreboard_daily
- * @param {Map}    [opts.metaByDay]  day -> { spend, impressions, clicks }
+ * @param {Map}    [opts.metaByDay]  day -> { spend, impressions, clicks, instantLeads }
  * @param {Map}    [opts.sessionsByDay] day -> organic website sessions (null when unavailable)
  * @param {object} [opts.goals]      { meta: {leads,carts,joins,target_cpl}, organic: {...} }
+ * @param {boolean} [opts.instantFromMeta] take Instant Form leads from Meta
+ *   (metaByDay.instantLeads) in place of the ones GHL received (instant_leads)
  */
-function buildScoreboard({ month, today, daily, metaByDay = new Map(), sessionsByDay = null, goals = {} }) {
+function buildScoreboard({ month, today, daily, metaByDay = new Map(), sessionsByDay = null, goals = {}, instantFromMeta = false }) {
   const monthLength = daysInMonth(month)
   const lastDay = `${month}-${String(monthLength).padStart(2, '0')}`
   const through = today < lastDay ? today : lastDay
@@ -66,8 +68,13 @@ function buildScoreboard({ month, today, daily, metaByDay = new Map(), sessionsB
   for (const r of daily || []) {
     const day = String(r.day).slice(0, 10)
     if (!counts[r.channel]) continue
+    let leads = Number(r.leads) || 0
+    if (instantFromMeta && r.channel === 'meta') {
+      const m = metaByDay.get(day)
+      leads = leads - (Number(r.instant_leads) || 0) + ((m && m.instantLeads) || 0)
+    }
     counts[r.channel].set(day, {
-      leads: Number(r.leads) || 0,
+      leads,
       carts: Number(r.carts) || 0,
       joins: Number(r.joins) || 0,
     })

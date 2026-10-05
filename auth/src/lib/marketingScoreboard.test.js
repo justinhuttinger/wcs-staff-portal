@@ -82,3 +82,21 @@ test('paid GA4 channels are excluded from organic', () => {
   assert.equal(isPaidChannel('Organic Social'), false)
   assert.equal(isPaidChannel('Direct'), false)
 })
+
+test('Instant Form leads come from Meta when instantFromMeta, GHL otherwise', () => {
+  // Oct 3 2026: GHL got 1 paid website lead and no Instant Form leads (its
+  // Facebook integration was down); Meta reported 9 Instant Form leads.
+  const rows = [
+    { day: '2026-10-02', channel: 'meta', leads: 14, carts: 0, joins: 0, instant_leads: 12 },
+    { day: '2026-10-03', channel: 'meta', leads: 1, carts: 0, joins: 0, instant_leads: 0 },
+  ]
+  const byDay = new Map([
+    ['2026-10-02', { spend: 100, impressions: 0, clicks: 0, instantLeads: 13 }],
+    ['2026-10-03', { spend: 100, impressions: 0, clicks: 0, instantLeads: 9 }],
+  ])
+  const fromMeta = buildScoreboard({ month: '2026-10', today: '2026-10-03', daily: rows, metaByDay: byDay, instantFromMeta: true })
+  assert.deepEqual(fromMeta.meta.rows.map(r => r.leads), [0, 15, 10])
+  assert.equal(fromMeta.meta.totals.leads, 25)
+  const fromGhl = buildScoreboard({ month: '2026-10', today: '2026-10-03', daily: rows, metaByDay: byDay })
+  assert.deepEqual(fromGhl.meta.rows.map(r => r.leads), [0, 14, 1])
+})
