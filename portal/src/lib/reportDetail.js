@@ -113,6 +113,7 @@ export const REPORT_DETAIL = {
       { key: 'sale', label: 'Sale' },
       { key: 'pt_sale_type', label: 'PT Sale Type' },
       { key: 'why_no_sale', label: 'Why No Sale' },
+      { key: 'bought_later', label: 'Bought PT Later' },
     ],
     flatten: data => (data?.contacts || []).map(c => ({
       name: titleCase(`${c.first_name || ''} ${c.last_name || ''}`),
@@ -122,6 +123,7 @@ export const REPORT_DETAIL = {
       trainer: c.day_one_trainer || '',
       status: c.day_one_status || '',
       sale: c.day_one_sale || '',
+      bought_later: c.pt_bought_later_date || '',
       pt_sale_type: c.pt_sale_type || '',
       why_no_sale: c.why_no_sale || '',
     })),

@@ -55,10 +55,14 @@ const STATS = [
   // separate population. Down is better: this one is a chase list, not an
   // outcome.
   { key: 'dayOnesPending', label: 'Pending Outcome', format: 'int', betterWhen: 'down' },
-  { key: 'dayOnesSold', label: 'Sold', format: 'int', betterWhen: 'up' },
+  // First Visit = marked Sale on the outcome form. Total adds members who
+  // bought PT in ABC within 30 days of the Day One (migration 229).
+  { key: 'dayOnesSold', label: 'First Visit Sales', format: 'int', betterWhen: 'up' },
+  { key: 'dayOnesTotalSold', label: 'Total Conversion Sales', format: 'int', betterWhen: 'up' },
   { key: 'dayOnesNoSale', label: 'No Sale', format: 'int', betterWhen: 'down' },
   { key: 'showRate', label: 'Show Rate', format: 'pct', betterWhen: 'up' },
-  { key: 'closeRate', label: 'Close Rate', format: 'pct', betterWhen: 'up' },
+  { key: 'closeRate', label: 'First Visit Conversion', format: 'pct', betterWhen: 'up' },
+  { key: 'totalCloseRate', label: 'Total Conversion', format: 'pct', betterWhen: 'up' },
   { key: 'newClients', label: 'New Clients', format: 'int', betterWhen: 'up' },
   { key: 'resigns', label: 'Resigns', format: 'int', betterWhen: 'up' },
   { key: 'newValue', label: 'New Revenue', format: 'money', betterWhen: 'up' },
@@ -74,6 +78,7 @@ function shapeTotals(r) {
   const dayOnes = num(row.day_ones)
   const completed = num(row.day_ones_completed)
   const sold = num(row.day_ones_sold)
+  const totalSold = num(row.day_ones_total_sold)
   const newSales = num(row.new_sales)
   const newValue = money(row.new_value)
   const lostClients = num(row.lost_count)
@@ -86,6 +91,7 @@ function shapeTotals(r) {
     dayOnesCancelled: num(row.day_ones_cancelled),
     dayOnesScheduled: num(row.day_ones_scheduled),
     dayOnesSold: sold,
+    dayOnesTotalSold: totalSold,
     dayOnesNoSale: num(row.day_ones_no_sale),
     // Of the ones that were meant to happen, how many did. Cancelled and
     // no-show both count against it; still-scheduled does not, because a Day One
@@ -93,6 +99,7 @@ function shapeTotals(r) {
     showRate: rate(completed, completed + num(row.day_ones_no_show) + num(row.day_ones_cancelled)),
     // Of the ones that happened, how many closed.
     closeRate: rate(sold, completed),
+    totalCloseRate: rate(totalSold, completed),
 
     newSales,
     newClients: num(row.new_clients),
@@ -151,6 +158,8 @@ function seriesRow(r) {
     dayOnesCompleted: completed,
     dayOnesSold: sold,
     closeRate: rate(sold, completed),
+    dayOnesTotalSold: num(r.day_ones_total_sold),
+    totalCloseRate: rate(num(r.day_ones_total_sold), completed),
     newSales: num(r.new_sales),
     newClients: num(r.new_clients),
     newValue,

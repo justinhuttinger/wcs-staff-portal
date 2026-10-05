@@ -152,3 +152,13 @@ test('a pure closer with no sessions still ranks on money', () => {
   assert.equal(sortRows(rows, 'close_amount_desc')[0].trainer, 'Closer')
   assert.equal(sortRows(rows, 'sessions_desc')[0].trainer, 'Deliverer')
 })
+
+test('Total Conversion is credited to the Day One trainer beside First Visit', () => {
+  const r = buildRow(row({ day_ones_completed: 11, day_ones_sold: 8, day_ones_total_sold: 10 }), opts.clubNameFor)
+  assert.equal(r.closeRate, 72.7)
+  assert.equal(r.dayOnesTotalSold, 10)
+  assert.equal(r.totalCloseRate, 90.9)
+  const out = buildTrainerPerformance([row()], totals({ day_ones_total_sold: 50 }), opts)
+  assert.equal(out.tiles.find(t => t.key === 'dayOnesTotalSold').value, 50)
+  assert.equal(out.tiles.find(t => t.key === 'totalCloseRate').value, 39.4)
+})

@@ -89,6 +89,7 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
       completed: stats.completed || 0,
       no_show: stats.no_show || 0,
       sales: stats.sales || 0,
+      total_sales: stats.total_sales || 0,
       no_sales: stats.no_sales || 0,
     })).sort((a, b) => b.total - a.total)
   }, [data?.by_trainer])
@@ -114,8 +115,9 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
       completed: acc.completed + t.completed,
       no_show: acc.no_show + t.no_show,
       sales: acc.sales + t.sales,
+      total_sales: acc.total_sales + t.total_sales,
       no_sales: acc.no_sales + t.no_sales,
-    }), { total: 0, completed: 0, no_show: 0, sales: 0, no_sales: 0 })
+    }), { total: 0, completed: 0, no_show: 0, sales: 0, total_sales: 0, no_sales: 0 })
   }, [trainers])
 
 
@@ -144,8 +146,14 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
         </div>
         <div className="bg-surface rounded-2xl border border-border p-4 text-center">
           <p className="text-3xl font-bold text-text-primary">{totals.sales}</p>
-          <p className="text-xs text-text-muted uppercase mt-1">Close</p>
+          <p className="text-xs text-text-muted uppercase mt-1">First Visit Sales</p>
           <p className="text-[10px] text-text-secondary">{closeRate}% of shown</p>
+        </div>
+        {/* First Visit plus shows who bought PT in ABC within 30 days. */}
+        <div className="bg-surface rounded-2xl border border-border p-4 text-center">
+          <p className="text-3xl font-bold text-text-primary">{data?.total_conversion_sales ?? totals.total_sales}</p>
+          <p className="text-xs text-text-muted uppercase mt-1">Total Conv. Sales</p>
+          <p className="text-[10px] text-text-secondary">{data?.total_close_rate ?? 0}% of shown</p>
         </div>
         {/* The card that says how far to trust the two above it: a Day One
             whose date has passed with nothing recorded is neither held nor
@@ -163,6 +171,7 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
         {trainers.map(trainer => {
           const tShowPct = trainer.total > 0 ? Math.round((trainer.completed / trainer.total) * 100) : 0
           const tClosePct = trainer.completed > 0 ? Math.round((trainer.sales / trainer.completed) * 100) : 0
+          const tTotalPct = trainer.completed > 0 ? Math.round((trainer.total_sales / trainer.completed) * 100) : 0
           const tPending = pendingByTrainer[normaliseName(trainer.name)] || 0
           const tPendingRows = (data?.pending?.list || [])
             .filter(r => normaliseName(r.trainer) === normaliseName(trainer.name))
@@ -174,14 +183,18 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
                 <span>Set: <strong className="text-text-primary">{trainer.total}</strong></span>
                 <span>Completed: <strong className="text-text-primary">{trainer.completed}</strong></span>
                 <span>No Show: <strong className="text-text-primary">{trainer.no_show}</strong></span>
-                <span>Sales: <strong className="text-text-primary">{trainer.sales}</strong></span>
+                <span>First Visit: <strong className="text-text-primary">{trainer.sales}</strong></span>
+                <span>Total Conv.: <strong className="text-text-primary">{trainer.total_sales}</strong></span>
               </div>
               <div className="flex gap-2 mt-2">
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
                   Show {tShowPct}%
                 </span>
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
-                  Close {tClosePct}%
+                  First Visit {tClosePct}%
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
+                  Total {tTotalPct}%
                 </span>
                 {tPending > 0 && (
                   <button
@@ -236,6 +249,11 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
                       No Sale
                     </span>
                   )}
+                  {c.pt_bought_later_date && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                      Bought Later
+                    </span>
+                  )}
                 </div>
               </button>
             ))}
@@ -259,6 +277,7 @@ export default function MobilePTReport({ startDate, endDate, locationSlug }) {
               <Detail label="Trainer" value={selectedContact.day_one_trainer} />
               <Detail label="Status" value={selectedContact.day_one_status || 'Scheduled'} />
               <Detail label="Sale" value={selectedContact.day_one_sale || '\u2014'} />
+              {selectedContact.pt_bought_later_date && <Detail label="Bought PT Later" value={formatDate(selectedContact.pt_bought_later_date)} />}
               {selectedContact.pt_sale_type && <Detail label="Sale Type" value={selectedContact.pt_sale_type} />}
               {selectedContact.why_no_sale && <Detail label="Why No Sale" value={selectedContact.why_no_sale} />}
             </div>

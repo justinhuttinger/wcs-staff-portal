@@ -60,8 +60,12 @@ const COLUMNS = [
   { key: 'adminHours', label: 'Admin Hours', format: 'num', bar: true, barTone: 'slate' },
   { key: 'dayOnesBooked', label: 'Day Ones Booked', format: 'int', group: true, bar: true, barTone: 'amber' },
   { key: 'dayOnesCompleted', label: 'Completed', format: 'int', bar: true, barTone: 'amber' },
-  { key: 'dayOnesSold', label: 'Sold', format: 'int', bar: true, barTone: 'amber' },
-  { key: 'closeRate', label: 'Close Rate', format: 'pct', bar: true, barTone: 'amber' },
+  // First Visit = marked Sale on the outcome form. Total adds intros who
+  // bought PT in ABC within 30 days, credited to the same trainer.
+  { key: 'dayOnesSold', label: 'First Visit Sales', format: 'int', bar: true, barTone: 'amber' },
+  { key: 'closeRate', label: 'First Visit Conv.', format: 'pct', bar: true, barTone: 'amber' },
+  { key: 'dayOnesTotalSold', label: 'Total Conv. Sales', format: 'int', bar: true, barTone: 'amber' },
+  { key: 'totalCloseRate', label: 'Total Conv.', format: 'pct', bar: true, barTone: 'amber' },
   // Red, not amber: the rest of that block is what happened to the intros, and
   // this one is what has NOT happened to them. Counted on the appointment date
   // rather than the booking date the three columns before it use.

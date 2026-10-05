@@ -44,8 +44,12 @@ const STATS = [
   { key: 'memberMonths', label: 'Months w/ Trainer', format: 'num', betterWhen: 'up' },
   { key: 'dayOnesBooked', label: 'Day Ones', format: 'int', betterWhen: 'up' },
   { key: 'dayOnesCompleted', label: 'Day Ones Completed', format: 'int', betterWhen: 'up' },
-  { key: 'dayOnesSold', label: 'Day Ones Sold', format: 'int', betterWhen: 'up' },
-  { key: 'closeRate', label: 'Close Rate', format: 'pct', betterWhen: 'up' },
+  // First Visit = marked Sale on the outcome form; Total adds intros who
+  // bought PT in ABC within 30 days (migration 229).
+  { key: 'dayOnesSold', label: 'First Visit Sales', format: 'int', betterWhen: 'up' },
+  { key: 'closeRate', label: 'First Visit Conversion', format: 'pct', betterWhen: 'up' },
+  { key: 'dayOnesTotalSold', label: 'Total Conversion Sales', format: 'int', betterWhen: 'up' },
+  { key: 'totalCloseRate', label: 'Total Conversion', format: 'pct', betterWhen: 'up' },
   // The intros this trainer was given that passed with no outcome recorded.
   // Counted on the appointment date, unlike the three Day One cards above it,
   // which count what was booked in the window. Down is better — this is the
@@ -94,6 +98,8 @@ function seriesRow(r) {
     // on the appointment month, not the booking month the rest of this row uses.
     dayOnesPending: num(r.day_ones_pending),
     closeRate: rate(num(r.day_ones_sold), dayOnesCompleted),
+    dayOnesTotalSold: num(r.day_ones_total_sold),
+    totalCloseRate: rate(num(r.day_ones_total_sold), dayOnesCompleted),
     closeAmount: Math.round(num(r.close_amount) * 100) / 100,
     closeAmountRs: Math.round(num(r.close_amount_rs) * 100) / 100,
     closeAmountPif: Math.round(num(r.close_amount_pif) * 100) / 100,

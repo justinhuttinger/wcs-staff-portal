@@ -241,7 +241,7 @@ const SETS = {
         .from('day_one_appointments')
         // ghl_contact_id so a missing contact_name can be recovered — see
         // withContactNames. It is missing on most rows.
-        .select('contact_name, ghl_contact_id, scheduled_date, status, outcome, trainer_name, booked_by_name, booked_at, location_slug')
+        .select('contact_name, ghl_contact_id, scheduled_date, status, outcome, abc_pt_sale_date, trainer_name, booked_by_name, booked_at, location_slug')
         .in('location_slug', slugs)
       // WHICH DATE THE WINDOW APPLIES TO IS THE CALLER'S TO SAY, because the
       // reports disagree on purpose. Day Ones Booked counts when it went in the
@@ -261,6 +261,8 @@ const SETS = {
           switch (filter) {
             case 'completed': return r.status === 'completed'
             case 'sold': return r.outcome === 'Sale'
+            // Same rule as day_one_total_sale() in migration 229.
+            case 'total-sold': return r.status === 'completed' && (r.outcome === 'Sale' || !!r.abc_pt_sale_date)
             case 'no-sale': return r.outcome === 'No Sale'
             case 'no-show': return r.status === 'no_show'
             case 'cancelled': return r.status === 'cancelled'
@@ -273,7 +275,9 @@ const SETS = {
           member: r.resolvedName,
           date: String(r.scheduled_date).slice(0, 10),
           status: DISPLAY_STATUS[r.status] || r.status,
-          outcome: r.outcome || '—',
+          outcome: r.outcome === 'Sale' || !r.abc_pt_sale_date
+            ? (r.outcome || '—')
+            : `Bought later (${String(r.abc_pt_sale_date).slice(0, 10)})`,
           trainer: r.trainer_name || 'Unassigned',
           bookedBy: r.booked_by_name || '—',
         }))

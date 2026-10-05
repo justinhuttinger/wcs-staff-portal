@@ -153,8 +153,12 @@ const STATS = [
   // across clubs of different sizes.
   { key: 'dayOnesShowed', label: 'Day Ones Showed', format: 'int', betterWhen: 'up', group: 'dayone' },
   { key: 'dayOneShowRate', label: 'Day One Show Rate', format: 'pct', betterWhen: 'up', group: 'dayone' },
-  { key: 'dayOnesSold', label: 'Day Ones Sold', format: 'int', betterWhen: 'up', group: 'dayone' },
-  { key: 'dayOneCloseRate', label: 'Day One Close Rate', format: 'pct', betterWhen: 'up', group: 'dayone' },
+  // First Visit = marked Sale on the Day One outcome form. Total adds members
+  // who said no on the day but bought PT in ABC within 30 days (migration 229).
+  { key: 'dayOnesSold', label: 'First Visit Sales', format: 'int', betterWhen: 'up', group: 'dayone' },
+  { key: 'dayOneCloseRate', label: 'First Visit Conversion', format: 'pct', betterWhen: 'up', group: 'dayone' },
+  { key: 'dayOnesTotalSold', label: 'Total Conversion Sales', format: 'int', betterWhen: 'up', group: 'dayone' },
+  { key: 'dayOneTotalCloseRate', label: 'Total Conversion', format: 'pct', betterWhen: 'up', group: 'dayone' },
   // Of the Day Ones on Calendar above, the ones whose date has passed with
   // nobody recording an outcome. Same cohort, same key (appointment date), so
   // it reads as a subset of the line above it rather than a new population.
@@ -220,6 +224,7 @@ function shapeTotals(window, summary, pt) {
     // The count behind the show rate, and the count behind the close rate.
     dayOnesShowed: num(p.day_ones_completed),
     dayOnesSold: num(p.day_ones_sold),
+    dayOnesTotalSold: num(p.day_ones_total_sold),
     // Members who did not have a recurring service before this window and do
     // now. The same field PT Snapshot's New Clients reads, so the two reports
     // cannot disagree about what a new PT client is.
@@ -233,6 +238,7 @@ function shapeTotals(window, summary, pt) {
     ),
     // Of the ones that happened, how many closed.
     dayOneCloseRate: rate(num(p.day_ones_sold), num(p.day_ones_completed)),
+    dayOneTotalCloseRate: rate(num(p.day_ones_total_sold), num(p.day_ones_completed)),
     newPtRevenue: money(p.new_value),
     lostPtRevenue: money(p.lost_value),
     netPtRevenue: money(num(p.new_value) - num(p.lost_value)),
@@ -267,6 +273,8 @@ function seriesRow(r) {
     dayOnesCompleted: num(r.day_ones_completed),
     dayOnesSold: num(r.day_ones_sold),
     dayOneCloseRate: rate(num(r.day_ones_sold), num(r.day_ones_completed)),
+    dayOnesTotalSold: num(r.day_ones_total_sold),
+    dayOneTotalCloseRate: rate(num(r.day_ones_total_sold), num(r.day_ones_completed)),
     // Both POSITIVE: TrendPanel scales from zero and would draw a negative
     // point below its own plot area, where it would simply vanish. The net
     // keeps its sign on the stat card.

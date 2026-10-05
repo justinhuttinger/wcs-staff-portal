@@ -40,7 +40,8 @@ const SORTS = [
   { key: 'sessions_desc', label: 'Most Sessions' },
   { key: 'members_desc', label: 'Most Members' },
   { key: 'close_amount_desc', label: 'Most Closed' },
-  { key: 'close_rate_desc', label: 'Best Close Rate' },
+  { key: 'close_rate_desc', label: 'Best First Visit Conversion' },
+  { key: 'total_close_rate_desc', label: 'Best Total Conversion' },
   { key: 'day_ones_desc', label: 'Most Day Ones' },
   { key: 'pending_desc', label: 'Most Pending Outcomes' },
   { key: 'name', label: 'Name' },
@@ -70,6 +71,7 @@ function sortRows(rows, key) {
     case 'members_desc': return out.sort(byDesc(r => r.uniqueClients))
     case 'close_amount_desc': return out.sort(byDesc(r => r.closeAmount))
     case 'close_rate_desc': return out.sort(byDesc(r => r.closeRate))
+    case 'total_close_rate_desc': return out.sort(byDesc(r => r.totalCloseRate))
     case 'day_ones_desc': return out.sort(byDesc(r => r.dayOnesBooked))
     case 'pending_desc': return out.sort(byDesc(r => r.dayOnesPending))
     case 'name': return out.sort((a, b) => String(a.trainer).localeCompare(String(b.trainer)))
@@ -107,6 +109,10 @@ function buildRow(r, clubNameFor) {
     dayOnesCompleted,
     dayOnesSold: num(r.day_ones_sold),
     closeRate: rate(num(r.day_ones_sold), dayOnesCompleted),
+    // Total adds intros that said no on the day but bought PT in ABC within
+    // 30 days. Credited to the Day One trainer, like First Visit.
+    dayOnesTotalSold: num(r.day_ones_total_sold),
+    totalCloseRate: rate(num(r.day_ones_total_sold), dayOnesCompleted),
     // Merged in from analytics_day_one_pending, not off this row. The other Day
     // One columns count intros BOOKED in the window; pending counts the ones DUE
     // in it, so it cannot come from the same key. Defaults to 0, so a trainer
@@ -203,8 +209,12 @@ function buildTrainerPerformance(rows, totals, opts = {}) {
       // read as "every intro has been closed out".
       { key: 'dayOnesPending', label: 'Pending Outcome', format: 'int',
         value: pending ? pending.total : null },
-      { key: 'closeRate', label: 'Close Rate', format: 'pct',
+      { key: 'dayOnesSold', label: 'First Visit Sales', format: 'int', value: num(t.day_ones_sold) },
+      { key: 'closeRate', label: 'First Visit Conversion', format: 'pct',
         value: rate(num(t.day_ones_sold), totalDayOnesCompleted) },
+      { key: 'dayOnesTotalSold', label: 'Total Conversion Sales', format: 'int', value: num(t.day_ones_total_sold) },
+      { key: 'totalCloseRate', label: 'Total Conversion', format: 'pct',
+        value: rate(num(t.day_ones_total_sold), totalDayOnesCompleted) },
       { key: 'closeAmount', label: 'Close Amount', format: 'money', value: num(t.close_amount) },
     ],
   }

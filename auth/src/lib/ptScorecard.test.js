@@ -125,3 +125,15 @@ test('no rows yields an empty Overall rather than throwing', () => {
   assert.equal(overall.bookPct, null)
   assert.equal(overall.bookGoal, null)
 })
+
+test('Total Conversion is pooled on the show count, beside First Visit close', () => {
+  const rows = [
+    row({ club_number: '31598', show_count: 30, close_count: 9, total_close_count: 12 }),
+    row({ club_number: '31599', show_count: 10, close_count: 1, total_close_count: 2 }),
+  ]
+  const { overall, clubs } = buildScorecard(rows, opts())
+  assert.equal(clubs.find(c => c.clubNumber === '31598').totalClosePct, 40)
+  assert.equal(overall.totalCloseCount, 14)
+  assert.equal(overall.totalClosePct, 35)   // 14/40
+  assert.equal(overall.closeCount, 10)
+})

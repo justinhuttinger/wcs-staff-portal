@@ -135,7 +135,8 @@ export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
       <TrendPanel title="Day Ones on Calendar" months={months} series={[
         line('On Calendar', 'dayOnes'),
         line('Completed', 'dayOnesCompleted'),
-        line('Sold', 'dayOnesSold'),
+        line('First Visit Sales', 'dayOnesSold'),
+        line('Total Conversion Sales', 'dayOnesTotalSold'),
       ]} />
 
       {/* A rate never shares a panel with a count: on one axis a percentage
@@ -143,8 +144,9 @@ export default function ClubSnapshot({ startDate, endDate, locationSlug }) {
       {/* Who is sitting on the un-closed intros behind the card above. */}
       <PendingOutcomePanel pending={data?.pending} title="Day Ones Pending Outcome" />
 
-      <TrendPanel title="Day One Close Rate" kind="rate" months={months} series={[
-        line('Close Rate', 'dayOneCloseRate'),
+      <TrendPanel title="Day One Conversion" kind="rate" months={months} series={[
+        line('First Visit', 'dayOneCloseRate'),
+        line('Total', 'dayOneTotalCloseRate'),
       ]} />
 
       {/* The VALUE OF PT SOLD against PT lost. Both positive; the net is on the

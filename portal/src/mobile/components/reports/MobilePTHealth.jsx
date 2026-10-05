@@ -129,12 +129,14 @@ function LocationRow({ c }) {
             <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1.5">Day Ones</p>
             <div className="space-y-1.5">
               <PctStrip label="Set → Show" numerator={c.dayOnes.show} denominator={c.dayOnes.set} />
-              <PctStrip label="Show → Close" numerator={c.dayOnes.close} denominator={c.dayOnes.show} />
+              <PctStrip label="Show → First Visit Sale" numerator={c.dayOnes.close} denominator={c.dayOnes.show} />
+              <PctStrip label="Show → Total Conv. Sale" numerator={c.dayOnes.totalClose} denominator={c.dayOnes.show} />
             </div>
             <div className="flex gap-4 mt-2 text-xs">
               <span className="text-text-muted">Set <span className="font-semibold text-text-primary">{c.dayOnes.set}</span></span>
               <span className="text-text-muted">Show <span className="font-semibold text-text-primary">{c.dayOnes.show}</span></span>
-              <span className="text-text-muted">Close <span className="font-semibold text-text-primary">{c.dayOnes.close}</span></span>
+              <span className="text-text-muted">First Visit <span className="font-semibold text-text-primary">{c.dayOnes.close}</span></span>
+              <span className="text-text-muted">Total <span className="font-semibold text-text-primary">{c.dayOnes.totalClose}</span></span>
             </div>
           </div>
           {/* New PT */}
@@ -234,7 +236,8 @@ export default function MobilePTHealth({ startDate, endDate, locationSlug }) {
         rows={[
           ['Set', t.dayOnes.set],
           [`Show (${pct(t.dayOnes.show, t.dayOnes.set)})`, t.dayOnes.show],
-          [`Close (${pct(t.dayOnes.close, t.dayOnes.show)} of show)`, t.dayOnes.close],
+          [`First Visit Sales (${pct(t.dayOnes.close, t.dayOnes.show)} of show)`, t.dayOnes.close],
+          [`Total Conv. Sales (${pct(t.dayOnes.totalClose, t.dayOnes.show)} of show)`, t.dayOnes.totalClose],
           // Last, and only when there are any: a caveat on the two rates above
           // rather than a step in the funnel.
           ...(t.dayOnes.pending ? [['Pending outcome', t.dayOnes.pending]] : []),
@@ -249,12 +252,17 @@ export default function MobilePTHealth({ startDate, endDate, locationSlug }) {
           denominator={t.dayOnes.set}
         />
         <PctStrip
-          label="Show → Close rate"
+          label="Show → First Visit Conversion"
           numerator={t.dayOnes.close}
           denominator={t.dayOnes.show}
         />
         <PctStrip
-          label="Set → Close rate"
+          label="Show → Total Conversion"
+          numerator={t.dayOnes.totalClose}
+          denominator={t.dayOnes.show}
+        />
+        <PctStrip
+          label="Set → First Visit Sale"
           numerator={t.dayOnes.close}
           denominator={t.dayOnes.set}
         />
@@ -306,7 +314,8 @@ export default function MobilePTHealth({ startDate, endDate, locationSlug }) {
               {[
                 ['Day Ones Set', t.dayOnes.set],
                 ['Day Ones Show', t.dayOnes.show],
-                ['Day Ones Close', t.dayOnes.close],
+                ['First Visit Sales', t.dayOnes.close],
+                ['Total Conv. Sales', t.dayOnes.totalClose],
                 ['New PT', t.newPT.count],
                 ['New Revenue', fmtMoney(t.newPT.revenue)],
                 ['Deactivated', t.deactivated.count],
@@ -340,7 +349,8 @@ export default function MobilePTHealth({ startDate, endDate, locationSlug }) {
       <div className="bg-surface border border-border rounded-2xl px-4 py-3 text-xs text-text-primary leading-relaxed">
         <span className="font-semibold">Set</span> = Day One booked in the range.{' '}
         <span className="font-semibold">Show</span> = day_one_status is <em>Completed</em>.{' '}
-        <span className="font-semibold">Close</span> = Show ∩ day_one_sale is <em>Sale</em>.{' '}
+        <span className="font-semibold">First Visit</span> = Show ∩ day_one_sale is <em>Sale</em>.{' '}
+        <span className="font-semibold">Total Conv.</span> = First Visit, plus shows who bought PT in ABC within 30 days.{' '}
         Net = (new − deactivated) for both counts and dollars.
       </div>
     </div>

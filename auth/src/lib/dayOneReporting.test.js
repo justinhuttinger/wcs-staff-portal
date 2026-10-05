@@ -187,7 +187,28 @@ test('funnel counts set, show and close', async () => {
   ], async (mod) => {
     const out = await mod.funnel({ startDate: '2026-08-01', endDate: '2026-08-31' })
     // Set includes cancellations, exactly as the legacy version did.
-    assert.deepEqual(out, { set: 6, show: 3, close: 1 })
+    assert.deepEqual(out, { set: 6, show: 3, close: 1, totalClose: 1 })
+  })
+})
+
+test('funnel totalClose adds shows who bought PT in ABC later, never no-shows', async () => {
+  await withRows([
+    { status: 'completed', outcome: 'Sale', abc_pt_sale_date: '2026-08-03' },
+    { status: 'completed', outcome: 'No Sale', abc_pt_sale_date: '2026-08-09' },
+    { status: 'completed', outcome: 'No Sale', abc_pt_sale_date: null },
+    { status: 'no_show', outcome: null, abc_pt_sale_date: '2026-08-09' },
+  ], async (mod) => {
+    const out = await mod.funnel({ startDate: '2026-08-01', endDate: '2026-08-31' })
+    assert.deepEqual(out, { set: 4, show: 3, close: 1, totalClose: 2 })
+  })
+})
+
+test('isTotalSale: a show that sold on the day or bought within the window', async () => {
+  await withRows([], async ({ isTotalSale }) => {
+    assert.equal(isTotalSale({ status: 'completed', outcome: 'Sale' }), true)
+    assert.equal(isTotalSale({ status: 'completed', outcome: 'No Sale', abc_pt_sale_date: '2026-08-09' }), true)
+    assert.equal(isTotalSale({ status: 'completed', outcome: 'No Sale', abc_pt_sale_date: null }), false)
+    assert.equal(isTotalSale({ status: 'no_show', outcome: null, abc_pt_sale_date: '2026-08-09' }), false)
   })
 })
 
