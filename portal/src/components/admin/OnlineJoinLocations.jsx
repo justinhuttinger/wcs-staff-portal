@@ -30,7 +30,93 @@ function Field({ label, value, onChange, type = 'text', placeholder, hint, requi
   )
 }
 
-function LocationEditor({ location, onClose, onSaved }) {
+// Phone photos run 5-10 MB; shrink to a 1600px-wide JPEG before upload. The
+// card shows it at most ~400px wide, so this stays sharp on retina screens.
+const PHOTO_MAX_W = 1600
+function downscalePhoto(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, PHOTO_MAX_W / img.naturalWidth)
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.naturalWidth * scale)
+      canvas.height = Math.round(img.naturalHeight * scale)
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#fff' // a transparent PNG would turn black as JPEG
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', 0.85))
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file could not be read as an image.')) }
+    img.src = url
+  })
+}
+
+function PhotoSection({ locationId, photoUrl, onChange }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function pick(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true); setError(null)
+    try {
+      const dataUrl = await downscalePhoto(file)
+      const r = await onlineJoin.uploadLocationPhoto(locationId, dataUrl)
+      onChange(r.location.photo_url)
+    } catch (err) {
+      setError(err.message || 'Upload failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    if (!confirm('Remove this photo? The location card will show text only.')) return
+    setBusy(true); setError(null)
+    try {
+      await onlineJoin.removeLocationPhoto(locationId)
+      onChange(null)
+    } catch (err) {
+      setError(err.message || 'Remove failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section>
+      <p className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2">Location photo</p>
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm mb-2">{error}</div>}
+      {!locationId ? (
+        <p className="text-xs text-text-muted">Create the location first, then add its photo.</p>
+      ) : (
+        <div className="flex items-start gap-4">
+          <div className="w-48 aspect-video rounded-lg border border-border bg-bg overflow-hidden flex items-center justify-center shrink-0">
+            {photoUrl
+              ? <img src={photoUrl} alt="" className="w-full h-full object-cover" />
+              : <span className="text-[10px] text-text-muted">No photo</span>}
+          </div>
+          <div className="space-y-2">
+            <label className={`inline-block px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-text-primary cursor-pointer hover:border-wcs-red ${busy ? 'opacity-60 pointer-events-none' : ''}`}>
+              {busy ? 'Working…' : (photoUrl ? 'Replace photo' : 'Upload photo')}
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={pick} className="hidden" />
+            </label>
+            {photoUrl && !busy && (
+              <button type="button" onClick={remove} className="block text-xs text-text-muted hover:text-wcs-red">Remove photo</button>
+            )}
+            <p className="text-[10px] text-text-muted max-w-xs">Shown on this club's card in step 1 of the online join, cropped to 16:9. Saves right away. Landscape photos work best.</p>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function LocationEditor({ location, onClose, onSaved, onPhotoChanged }) {
   const isNew = !location.wcs_location_id || location._isNew
   const [draft, setDraft] = useState({ ...EMPTY_LOCATION, ...location })
   const [saving, setSaving] = useState(false)
@@ -95,6 +181,12 @@ function LocationEditor({ location, onClose, onSaved }) {
               <Field label="Phone" value={draft.phone} onChange={v => update('phone', v)} placeholder="541-555-0123" />
             </div>
           </section>
+
+          <PhotoSection
+            locationId={isNew ? null : draft.wcs_location_id}
+            photoUrl={draft.photo_url}
+            onChange={url => { update('photo_url', url); onPhotoChanged() }}
+          />
 
           <section>
             <p className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2">Public-facing copy</p>
@@ -196,8 +288,15 @@ export default function OnlineJoinLocations() {
             {locations.map(l => (
               <tr key={l.wcs_location_id} className="border-b border-border last:border-0 hover:bg-bg/30">
                 <td className="px-4 py-2">
-                  <div className="text-sm font-semibold text-text-primary">{l.display_name || l.wcs_location_id}</div>
-                  <div className="text-[10px] text-text-muted font-mono">{l.wcs_location_id}</div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-14 aspect-video rounded border border-border bg-bg overflow-hidden shrink-0">
+                      {l.photo_url && <img src={l.photo_url} alt="" className="w-full h-full object-cover" />}
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-text-primary">{l.display_name || l.wcs_location_id}</div>
+                      <div className="text-[10px] text-text-muted font-mono">{l.wcs_location_id}</div>
+                    </div>
+                  </div>
                 </td>
                 <td className="px-3 py-2 text-xs text-text-muted">{l.city || '—'}</td>
                 <td className="px-3 py-2 text-xs text-text-muted">{l.phone || '—'}</td>
@@ -223,6 +322,7 @@ export default function OnlineJoinLocations() {
           location={editing}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load() }}
+          onPhotoChanged={load}
         />
       )}
     </div>

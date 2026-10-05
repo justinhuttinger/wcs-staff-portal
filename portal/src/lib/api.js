@@ -279,6 +279,8 @@ export const onlineJoin = {
   createLocation: (body) => prospectsApi('/api/admin/online-join/locations', { method: 'POST', body: JSON.stringify(body) }),
   updateLocation: (id, body) => prospectsApi(`/api/admin/online-join/locations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deactivateLocation: (id) => prospectsApi(`/api/admin/online-join/locations/${id}`, { method: 'DELETE' }),
+  uploadLocationPhoto: (id, dataUrl) => prospectsApi(`/api/admin/online-join/locations/${id}/photo`, { method: 'POST', body: JSON.stringify({ data_url: dataUrl }) }),
+  removeLocationPhoto: (id) => prospectsApi(`/api/admin/online-join/locations/${id}/photo`, { method: 'DELETE' }),
 
   // Membership types (parent of plans)
   listTypes: (location) => prospectsApi('/api/admin/online-join/types' + (location ? `?location=${encodeURIComponent(location)}` : '')),
