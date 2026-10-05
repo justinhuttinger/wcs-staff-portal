@@ -3,6 +3,8 @@ import {
   getMarketingEfforts, createMarketingEffort, updateMarketingEffort, deleteMarketingEffort,
   updateMarketingEffortStatus, getMarketingEffortComments, addMarketingEffortComment,
   getMarketingDriveFolder, uploadMarketingAsset,
+  getEventCalendar, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
+  getCalendarEventComments, addCalendarEventComment,
 } from '../lib/api'
 import { LOCATION_NAMES, LOCATION_OPTIONS } from '../config/locations'
 import LocationMultiSelect from './LocationMultiSelect'
@@ -11,6 +13,39 @@ import MarketingResearch from './MarketingResearch'
 import {
   MARKETING_TYPES, TYPE_BY_SLUG, typeLabel, typeStyle, STATUSES, STATUS_BY_KEY,
 } from '../config/marketingTypes'
+
+// Where reads and writes go. The Marketing Tracker uses the full
+// /marketing-tracker API; the GM Event Calendar (eventMode) uses
+// /event-calendar, which only handles type 'event' rows for the caller's clubs
+// and never changes status. Same rows either way, so a GM's event shows up on
+// the Marketing calendar and vice versa.
+const TRACKER_BACKEND = {
+  eventsOnly: false,
+  list: () => getMarketingEfforts().then(r => ({ efforts: r.efforts || [], clubs: null })),
+  create: createMarketingEffort,
+  update: updateMarketingEffort,
+  remove: deleteMarketingEffort,
+  setStatus: updateMarketingEffortStatus,
+  comments: getMarketingEffortComments,
+  addComment: addMarketingEffortComment,
+}
+
+const EVENT_BACKEND = {
+  eventsOnly: true,
+  list: () => getEventCalendar().then(r => ({ efforts: r.efforts || [], clubs: r.clubs || [] })),
+  create: createCalendarEvent,
+  update: updateCalendarEvent,
+  remove: deleteCalendarEvent,
+  setStatus: null,
+  comments: getCalendarEventComments,
+  addComment: addCalendarEventComment,
+}
+
+// The tracker marks nothing read-only; the event calendar flags events that
+// include clubs outside the GM's own.
+function isEditable(effort) {
+  return effort.editable !== false
+}
 
 // --- Date helpers (local-time, noon-anchored to dodge UTC day-shift) ---
 
@@ -252,10 +287,14 @@ function changePhrase(effort, c) {
 
 // --- Main view ---
 
-export default function MarketingTrackerView({ onBack, access }) {
+export default function MarketingTrackerView({ onBack, access, eventMode = false }) {
+  const backend = eventMode ? EVENT_BACKEND : TRACKER_BACKEND
   // Effective capabilities from marketingAccess(); default to full when the
-  // prop is absent (e.g. legacy callers) so nothing regresses.
-  const caps = access || { tracker: true, needs: true, research: true, types: null }
+  // prop is absent (e.g. legacy callers) so nothing regresses. The event
+  // calendar is the tracker tab alone, limited to events.
+  const caps = eventMode
+    ? { tracker: true, needs: false, research: false, types: ['event'] }
+    : (access || { tracker: true, needs: true, research: true, types: null })
   const TABS = useMemo(() => [
     { key: 'tracker', label: 'Tracker', show: caps.tracker !== false },
     { key: 'needs', label: 'Needs List', show: !!caps.needs },
@@ -263,6 +302,8 @@ export default function MarketingTrackerView({ onBack, access }) {
   ].filter(t => t.show), [caps.tracker, caps.needs, caps.research])
 
   const [efforts, setEfforts] = useState([])
+  // Clubs the event calendar may plan for (null = tracker, no limit).
+  const [clubs, setClubs] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [mode, setMode] = useState('calendar')          // 'calendar' | 'list'
@@ -286,17 +327,20 @@ export default function MarketingTrackerView({ onBack, access }) {
       .map(t => ({ slug: t.slug, label: t.label }))
   }, [caps.types])
   const [modal, setModal] = useState(null)               // { view } | { effort } | { date } | null
+  const LOC_FILTER_OPTIONS = useMemo(() => LOCATION_OPTIONS
+    .filter(o => o.slug !== 'all')
+    .filter(o => !clubs || clubs.includes(o.slug)), [clubs])
 
   function load() {
     setLoading(true)
     setError('')
-    return getMarketingEfforts()
-      .then(res => { const list = res.efforts || []; setEfforts(list); return list })
+    return backend.list()
+      .then(res => { const list = res.efforts; setEfforts(list); setClubs(res.clubs); return list })
       .catch(err => { setError(err.message); return [] })
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [backend])
 
   // Near-live updates: while the tracker is open and the tab is visible,
   // silently re-poll so people working the board together see each other's
@@ -309,8 +353,8 @@ export default function MarketingTrackerView({ onBack, access }) {
     async function refresh() {
       if (document.visibilityState !== 'visible') return
       try {
-        const res = await getMarketingEfforts()
-        if (!cancelled) setEfforts(res.efforts || [])
+        const res = await backend.list()
+        if (!cancelled) setEfforts(res.efforts)
       } catch { /* keep last good data */ }
     }
     const timer = setInterval(refresh, POLL_MS)
@@ -322,7 +366,7 @@ export default function MarketingTrackerView({ onBack, access }) {
       document.removeEventListener('visibilitychange', refresh)
       window.removeEventListener('focus', refresh)
     }
-  }, [])
+  }, [backend])
 
   const locationSet = useMemo(() => {
     if (!locationValue || locationValue === 'all') return null // null = all
@@ -382,10 +426,10 @@ export default function MarketingTrackerView({ onBack, access }) {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <h2 className="text-xl font-bold text-text-primary">Marketing</h2>
+              <h2 className="text-xl font-bold text-text-primary">{eventMode ? 'Event Calendar' : 'Marketing'}</h2>
             </div>
             {/* Tab nav — inline with the title */}
-            <div className="flex gap-1 bg-bg rounded-lg p-1">
+            {TABS.length > 1 && <div className="flex gap-1 bg-bg rounded-lg p-1">
               {TABS.map(t => (
                 <button
                   key={t.key}
@@ -393,7 +437,7 @@ export default function MarketingTrackerView({ onBack, access }) {
                   className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${tab === t.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}
                 >{t.label}</button>
               ))}
-            </div>
+            </div>}
           </div>
           {tab === 'tracker' && (
             <div className="flex items-center gap-3">
@@ -414,20 +458,25 @@ export default function MarketingTrackerView({ onBack, access }) {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
-                Add
+                {eventMode ? 'Add Event' : 'Add'}
               </button>
             </div>
           )}
         </div>
 
         {/* Filters (Tracker only) */}
-        {tab === 'tracker' && (
+        {eventMode && (
+          <p className="text-xs text-text-muted mt-2">
+            Plan your club's events here. Every event also shows on the Marketing calendar, and Marketing sets its status after they review it.
+          </p>
+        )}
+        {tab === 'tracker' && (LOC_FILTER_OPTIONS.length > 1 || !eventMode) && (
         <div className="flex items-start gap-4 mt-4 flex-wrap">
-          <div>
+          {LOC_FILTER_OPTIONS.length > 1 && <div>
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Location</span>
-            <LocationMultiSelect value={locationValue} onChange={setLocationValue} options={LOCATION_OPTIONS.filter(o => o.slug !== 'all')} />
-          </div>
-          <div>
+            <LocationMultiSelect value={locationValue} onChange={setLocationValue} options={LOC_FILTER_OPTIONS} />
+          </div>}
+          {!eventMode && <div>
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Type</span>
             <LocationMultiSelect
               value={typeValue}
@@ -437,7 +486,7 @@ export default function MarketingTrackerView({ onBack, access }) {
               noneLabel="No Types"
               nounPlural="types"
             />
-          </div>
+          </div>}
         </div>
         )}
       </div>
@@ -447,7 +496,7 @@ export default function MarketingTrackerView({ onBack, access }) {
       {tab === 'research' && <MarketingResearch />}
 
       {tab === 'tracker' && error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
-      {tab === 'tracker' && loading && <p className="loading-card mx-auto block my-6">Loading marketing tracker...</p>}
+      {tab === 'tracker' && loading && <p className="loading-card mx-auto block my-6">{eventMode ? 'Loading events...' : 'Loading marketing tracker...'}</p>}
 
       {tab === 'tracker' && !loading && mode === 'calendar' && (
         <>
@@ -477,7 +526,7 @@ export default function MarketingTrackerView({ onBack, access }) {
           </div>
 
           {calView === 'day' && (
-            <DayView items={itemsForDate(currentDate)} onAdd={() => setModal({ date: currentDate })} onEdit={e => setModal({ view: e })} />
+            <DayView items={itemsForDate(currentDate)} noun={eventMode ? 'event' : 'effort'} onAdd={() => setModal({ date: currentDate })} onEdit={e => setModal({ view: e })} />
           )}
 
           {calView === 'week' && (
@@ -491,11 +540,12 @@ export default function MarketingTrackerView({ onBack, access }) {
       )}
 
       {tab === 'tracker' && !loading && mode === 'list' && (
-        <ListView efforts={filtered} onEdit={e => setModal({ view: e })} />
+        <ListView efforts={filtered} emptyText={eventMode ? 'No events planned yet.' : undefined} onEdit={e => setModal({ view: e })} />
       )}
 
       {modal && modal.view && (
         <ViewModal
+          backend={backend}
           effort={modal.view}
           onClose={() => setModal(null)}
           onEdit={() => setModal({ effort: modal.view })}
@@ -509,6 +559,8 @@ export default function MarketingTrackerView({ onBack, access }) {
 
       {modal && !modal.view && (
         <EffortModal
+          backend={backend}
+          clubs={clubs}
           effort={modal.effort || null}
           defaultDate={modal.date || currentDate}
           onClose={() => setModal(null)}
@@ -541,12 +593,12 @@ function EffortChip({ effort, onEdit, compact }) {
   )
 }
 
-function DayView({ items, onAdd, onEdit }) {
+function DayView({ items, noun = 'effort', onAdd, onEdit }) {
   if (items.length === 0) {
     return (
       <div className="text-center py-12 bg-surface border border-border rounded-xl">
         <p className="text-sm text-text-muted mb-3">Nothing scheduled for this day</p>
-        <button onClick={onAdd} className="px-3 py-1.5 rounded-lg border border-wcs-red text-wcs-red text-xs font-semibold hover:bg-wcs-red hover:text-white transition-colors">+ Add effort</button>
+        <button onClick={onAdd} className="px-3 py-1.5 rounded-lg border border-wcs-red text-wcs-red text-xs font-semibold hover:bg-wcs-red hover:text-white transition-colors">+ Add {noun}</button>
       </div>
     )
   }
@@ -657,10 +709,10 @@ function MonthGrid({ weeks, month, today, itemsForDate, onAdd, onEdit }) {
   )
 }
 
-function ListView({ efforts, onEdit }) {
+function ListView({ efforts, emptyText = 'No marketing efforts match these filters.', onEdit }) {
   const sorted = useMemo(() => [...efforts].sort((a, b) => new Date(b.start_at) - new Date(a.start_at)), [efforts])
   if (sorted.length === 0) {
-    return <p className="empty-card mx-auto block my-8">No marketing efforts match these filters.</p>
+    return <p className="empty-card mx-auto block my-8">{emptyText}</p>
   }
   return (
     <div className="bg-surface border border-border rounded-xl overflow-hidden">
@@ -703,7 +755,9 @@ function ListView({ efforts, onEdit }) {
 
 // --- Read-only detail view (with inline status + comments) ---
 
-export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
+export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted, backend = TRACKER_BACKEND }) {
+  const editable = isEditable(effort)
+  const noun = backend.eventsOnly ? 'event' : 'marketing effort'
   const typeDef = TYPE_BY_SLUG[effort.type]
   const st = typeStyle(effort.type)
 
@@ -718,7 +772,7 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
   useEffect(() => {
     let alive = true
     function loadComments(initial) {
-      getMarketingEffortComments(effort.id)
+      backend.comments(effort.id)
         .then(r => { if (alive) setComments(r.comments || []) })
         .catch(() => { if (alive && initial) setComments([]) })
     }
@@ -726,14 +780,14 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
     // Poll so a teammate's comment appears while you have the effort open.
     const timer = setInterval(() => { if (document.visibilityState === 'visible') loadComments(false) }, 15000)
     return () => { alive = false; clearInterval(timer) }
-  }, [effort.id])
+  }, [effort.id, backend])
 
   async function changeStatus(next) {
     if (next === status || statusSaving) return
     const prev = status
     setStatus(next); setStatusSaving(true); setErr('')
     try {
-      await updateMarketingEffortStatus(effort.id, next)
+      await backend.setStatus(effort.id, next)
       if (onChanged) onChanged()
     } catch (e) {
       setStatus(prev); setErr(e.message)
@@ -747,7 +801,7 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
     if (!body || posting) return
     setPosting(true); setErr('')
     try {
-      const r = await addMarketingEffortComment(effort.id, body)
+      const r = await backend.addComment(effort.id, body)
       setComments(prev => [...(prev || []), r.comment])
       setCommentText('')
     } catch (e) {
@@ -758,10 +812,10 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
   }
 
   async function handleDelete() {
-    if (!window.confirm('Delete this marketing effort?')) return
+    if (!window.confirm(`Delete this ${noun}?`)) return
     setDeleting(true); setErr('')
     try {
-      await deleteMarketingEffort(effort.id)
+      await backend.remove(effort.id)
       onDeleted()
     } catch (e) {
       setErr(e.message); setDeleting(false)
@@ -797,7 +851,7 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <button onClick={onEdit} className="px-2.5 py-1.5 rounded-lg border border-border text-text-muted hover:text-text-primary hover:border-text-muted text-xs font-semibold transition-colors">Edit</button>
+            {editable && <button onClick={onEdit} className="px-2.5 py-1.5 rounded-lg border border-border text-text-muted hover:text-text-primary hover:border-text-muted text-xs font-semibold transition-colors">Edit</button>}
             <button onClick={onClose} className="text-text-muted hover:text-text-primary">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
             </button>
@@ -807,12 +861,24 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
         <div className="p-5 space-y-5">
           {err && <p className="text-sm text-wcs-red">{err}</p>}
 
-          {/* Status — the only editable field here */}
+          {!editable && (
+            <p className="text-xs text-text-muted bg-bg border border-border rounded-lg px-3 py-2">
+              This event includes clubs outside yours, so only Marketing can change it. You can still comment.
+            </p>
+          )}
+
+          {/* Status — the only editable field here. Marketing only: the event
+              calendar shows it read-only. */}
           <div>
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted">Status</span>
               {statusSaving && <span className="text-[10px] text-text-muted">saving…</span>}
             </div>
+            {!backend.setStatus ? (
+              <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium border ${STATUS_BY_KEY[status]?.badge || ''}`}>
+                {STATUS_BY_KEY[status]?.label || status}
+              </span>
+            ) : (
             <div className="inline-flex rounded-lg border border-border overflow-hidden">
               {STATUSES.map((s, i) => (
                 <button
@@ -823,6 +889,7 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
                 >{s.label}</button>
               ))}
             </div>
+            )}
           </div>
 
           {/* Meta */}
@@ -883,7 +950,7 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
                   {/* Created-by — synthetic first item from the effort record */}
                   <div className="flex items-baseline justify-between gap-2 text-xs px-1">
                     <span className="text-text-muted">
-                      <span className="font-semibold text-text-primary">{effort.created_by_name || 'Someone'}</span> created this effort
+                      <span className="font-semibold text-text-primary">{effort.created_by_name || 'Someone'}</span> created this {backend.eventsOnly ? 'event' : 'effort'}
                     </span>
                     {effort.created_at && <span className="text-[10px] text-text-muted/80 shrink-0">{formatCommentTime(effort.created_at)}</span>}
                   </div>
@@ -929,9 +996,11 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-border flex items-center justify-between sticky bottom-0 bg-surface">
-          <button onClick={handleDelete} disabled={deleting} className="px-3 py-2 rounded-lg text-xs font-semibold text-wcs-red border border-wcs-red/30 hover:bg-wcs-red/10 transition-colors disabled:opacity-50">
-            {deleting ? 'Deleting…' : 'Delete'}
-          </button>
+          {editable ? (
+            <button onClick={handleDelete} disabled={deleting} className="px-3 py-2 rounded-lg text-xs font-semibold text-wcs-red border border-wcs-red/30 hover:bg-wcs-red/10 transition-colors disabled:opacity-50">
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          ) : <span />}
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-text-primary transition-colors">Close</button>
         </div>
       </div>
@@ -944,19 +1013,25 @@ export function ViewModal({ effort, onClose, onEdit, onChanged, onDeleted }) {
 const inputClass = 'w-full px-3 py-2 bg-bg border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-wcs-red'
 const labelClass = 'block text-xs font-medium text-text-muted mb-1'
 
-export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }) {
+export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted, backend = TRACKER_BACKEND, clubs = null }) {
   const editing = !!effort
+  const eventsOnly = backend.eventsOnly
+  // Clubs offered as chips: every club for the tracker, the GM's own clubs on
+  // the event calendar.
+  const clubNames = clubs ? LOCATION_NAMES.filter(n => clubs.includes(n.toLowerCase())) : LOCATION_NAMES
+  const clubSlugs = clubNames.map(n => n.toLowerCase())
   const startParts = effort ? isoToParts(effort.start_at) : { date: defaultDate, time: '' }
   const endParts = effort?.end_at ? isoToParts(effort.end_at) : { date: '', time: '' }
 
   const [title, setTitle] = useState(effort?.title || '')
-  const [type, setType] = useState(effort?.type || MARKETING_TYPES[0].slug)
+  const [type, setType] = useState(effort?.type || (eventsOnly ? 'event' : MARKETING_TYPES[0].slug))
   const [status, setStatus] = useState(effort?.status || 'planned')
   const [startDate, setStartDate] = useState(startParts.date)
   const [startTime, setStartTime] = useState(startParts.time)
   const [endDate, setEndDate] = useState(endParts.date)
   const [endTime, setEndTime] = useState(endParts.time)
-  const [locations, setLocations] = useState(() => new Set(effort?.locations || []))
+  // A GM with one club gets it pre-picked on a new event.
+  const [locations, setLocations] = useState(() => new Set(effort?.locations || (eventsOnly && clubSlugs.length === 1 ? clubSlugs : [])))
   const [custom, setCustom] = useState(() => ({ ...(effort?.custom || {}) }))
   const [notes, setNotes] = useState(effort?.notes || '')
   const [saving, setSaving] = useState(false)
@@ -964,7 +1039,7 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
   const [err, setErr] = useState('')
 
   const typeDef = TYPE_BY_SLUG[type] || MARKETING_TYPES[0]
-  const allOn = locations.size >= ALL_SLUGS.length
+  const allOn = clubSlugs.every(s => locations.has(s))
 
   function toggleLocation(slug) {
     setLocations(prev => {
@@ -1000,7 +1075,7 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
     setErr('')
     if (!title.trim()) return setErr('Title is required')
     if (!startDate) return setErr('Start date is required')
-    if (locations.size === 0) return setErr('Pick at least one location')
+    if (locations.size === 0) return setErr(eventsOnly ? 'Pick at least one club' : 'Pick at least one location')
 
     // Trim custom to only the fields relevant to the chosen type.
     const trimmedCustom = {}
@@ -1022,8 +1097,8 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
 
     setSaving(true)
     try {
-      if (editing) await updateMarketingEffort(effort.id, payload)
-      else await createMarketingEffort(payload)
+      if (editing) await backend.update(effort.id, payload)
+      else await backend.create(payload)
       onSaved()
     } catch (e) {
       setErr(e.message)
@@ -1033,10 +1108,10 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
 
   async function handleDelete() {
     if (!editing) return
-    if (!window.confirm('Delete this marketing effort?')) return
+    if (!window.confirm(eventsOnly ? 'Delete this event?' : 'Delete this marketing effort?')) return
     setDeleting(true)
     try {
-      await deleteMarketingEffort(effort.id)
+      await backend.remove(effort.id)
       onDeleted()
     } catch (e) {
       setErr(e.message)
@@ -1048,7 +1123,7 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-surface rounded-xl border border-border shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-border flex items-center justify-between sticky top-0 bg-surface z-10">
-          <h3 className="text-lg font-bold text-text-primary">{editing ? 'Edit Effort' : 'New Marketing Effort'}</h3>
+          <h3 className="text-lg font-bold text-text-primary">{eventsOnly ? (editing ? 'Edit Event' : 'New Event') : (editing ? 'Edit Effort' : 'New Marketing Effort')}</h3>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
           </button>
@@ -1060,10 +1135,10 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
 
           <label className="block">
             <span className={labelClass}>Title <span className="text-wcs-red">*</span></span>
-            <input className={inputClass} value={title} onChange={e => setTitle(e.target.value)} placeholder="What is this effort?" autoFocus />
+            <input className={inputClass} value={title} onChange={e => setTitle(e.target.value)} placeholder={eventsOnly ? 'What is the event?' : 'What is this effort?'} autoFocus />
           </label>
 
-          <div className="grid grid-cols-2 gap-3">
+          {!eventsOnly && <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className={labelClass}>Type <span className="text-wcs-red">*</span></span>
               <select className={inputClass} value={type} onChange={e => setType(e.target.value)}>
@@ -1076,7 +1151,7 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
                 {STATUSES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
             </label>
-          </div>
+          </div>}
 
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">
@@ -1100,14 +1175,14 @@ export function EffortModal({ effort, defaultDate, onClose, onSaved, onDeleted }
 
           {/* Locations */}
           <div>
-            <span className={labelClass}>Locations <span className="text-wcs-red">*</span></span>
+            <span className={labelClass}>{eventsOnly ? 'Clubs' : 'Locations'} <span className="text-wcs-red">*</span></span>
             <div className="flex flex-wrap gap-1.5">
-              <button
+              {clubSlugs.length > 1 && <button
                 type="button"
-                onClick={() => setLocations(allOn ? new Set() : new Set(ALL_SLUGS))}
+                onClick={() => setLocations(allOn ? new Set() : new Set(clubSlugs))}
                 className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors ${allOn ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}
-              >All</button>
-              {LOCATION_NAMES.map(name => {
+              >All</button>}
+              {clubNames.map(name => {
                 const slug = name.toLowerCase()
                 const on = locations.has(slug)
                 return (

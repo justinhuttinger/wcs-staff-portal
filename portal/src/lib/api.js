@@ -952,6 +952,27 @@ export async function uploadMarketingAsset(file) {
   return api('/marketing-tracker/upload', { method: 'POST', body: fd })
 }
 
+// GM Event Calendar — events-only, club-scoped view of the Marketing Tracker
+// (same rows, type 'event'). Status is set by Marketing, not here.
+export async function getEventCalendar() {
+  return api('/event-calendar')
+}
+export async function createCalendarEvent(data) {
+  return api('/event-calendar', { method: 'POST', body: JSON.stringify(data) })
+}
+export async function updateCalendarEvent(id, data) {
+  return api('/event-calendar/' + id, { method: 'PUT', body: JSON.stringify(data) })
+}
+export async function deleteCalendarEvent(id) {
+  return api('/event-calendar/' + id, { method: 'DELETE' })
+}
+export async function getCalendarEventComments(id) {
+  return api('/event-calendar/' + id + '/comments')
+}
+export async function addCalendarEventComment(id, body) {
+  return api('/event-calendar/' + id + '/comments', { method: 'POST', body: JSON.stringify({ body }) })
+}
+
 // Inventory (experimental)
 function inventoryQs(params = {}) {
   const cleaned = {}
