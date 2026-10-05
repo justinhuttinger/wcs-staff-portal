@@ -17,10 +17,12 @@ const DRILL = {
   dayOnesNoShow:      { set: 'day-ones', filter: 'no-show', title: 'No-showed Day Ones' },
   dayOnesCancelled:   { set: 'day-ones', filter: 'cancelled', title: 'Cancelled Day Ones' },
   dayOnesPending:     { set: 'day-ones-pending', title: 'Pending outcomes' },
-  dayOnesSold:        { set: 'day-ones', filter: 'sold', title: 'Day Ones sold' },
+  dayOnesSold:        { set: 'day-ones', filter: 'sold', title: 'First Visit Sales' },
+  dayOnesTotalSold:   { set: 'day-ones', filter: 'total-sold', title: 'Total Conversion Sales' },
   dayOnesNoSale:      { set: 'day-ones', filter: 'no-sale', title: 'Day Ones not sold' },
   showRate:           { set: 'day-ones', filter: 'completed', title: 'Completed Day Ones' },
-  closeRate:          { set: 'day-ones', filter: 'sold', title: 'Day Ones sold' },
+  closeRate:          { set: 'day-ones', filter: 'sold', title: 'First Visit Sales' },
+  totalCloseRate:     { set: 'day-ones', filter: 'total-sold', title: 'Total Conversion Sales' },
   newClients:         { set: 'pt-sales', title: 'PT sales' },
   resigns:            { set: 'pt-sales', title: 'PT sales' },
   newValue:           { set: 'pt-sales', title: 'PT sold' },
@@ -114,14 +116,16 @@ export default function PtSnapshot({ startDate, endDate, locationSlug }) {
       <TrendPanel title="Day Ones" months={months} series={[
         line('Day Ones', 'dayOnes'),
         line('Completed', 'dayOnesCompleted'),
-        line('Sold', 'dayOnesSold'),
+        line('First Visit Sales', 'dayOnesSold'),
+        line('Total Conversion Sales', 'dayOnesTotalSold'),
       ]} />
 
       {/* The chase list behind the Pending Outcome card above. */}
       <PendingOutcomePanel pending={data?.pending} />
 
-      <TrendPanel title="Close Rate" kind="rate" months={months} series={[
-        line('Close Rate', 'closeRate'),
+      <TrendPanel title="Day One Conversion" kind="rate" months={months} series={[
+        line('First Visit', 'closeRate'),
+        line('Total', 'totalCloseRate'),
       ]} />
 
       <div className="grid md:grid-cols-2 gap-3">

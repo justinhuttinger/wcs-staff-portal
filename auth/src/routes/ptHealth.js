@@ -265,7 +265,9 @@ async function computeDeactivatedPT(club, startDate, endDate) {
 //
 //   Set   = every Day One SCHEDULED in the window, cancellations included
 //   Show  = status  = 'completed'
-//   Close = Show and outcome = 'Sale'
+//   Close = Show and outcome = 'Sale'           (First Visit Sales)
+//   Total Close = Close, or bought PT in ABC within 30 days
+//                                                (Total Conversion Sales)
 //
 // Windowed on scheduled_date (when the appointment IS), never booked_at (when
 // it was booked) — different cohorts, and mixing them was the original sin of
@@ -331,6 +333,7 @@ async function buildPtHealthPayload({ start_date, end_date, location_slug }) {
           acc.dayOnes.set += c.dayOnes.set
           acc.dayOnes.show += c.dayOnes.show
           acc.dayOnes.close += c.dayOnes.close
+          acc.dayOnes.totalClose += c.dayOnes.totalClose || 0
           acc.newPT.count += c.newPT.count
           acc.newPT.newClientCount += c.newPT.newClientCount
           acc.newPT.resignCount += c.newPT.resignCount
@@ -345,7 +348,7 @@ async function buildPtHealthPayload({ start_date, end_date, location_slug }) {
           acc.deactivated.burnedPIFValue += c.deactivated.burnedPIFValue
           return acc
         }, {
-          dayOnes: { set: 0, show: 0, close: 0 },
+          dayOnes: { set: 0, show: 0, close: 0, totalClose: 0 },
           newPT: { count: 0, newClientCount: 0, resignCount: 0, revenue: 0, newClientRevenue: 0, resignRevenue: 0 },
           deactivated: {
             count: 0, deactivatedRSCount: 0, burnedPIFCount: 0,

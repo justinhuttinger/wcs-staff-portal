@@ -84,7 +84,8 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
           rows={[
             ['Set', t.dayOnes.set],
             [`Show (${pct(t.dayOnes.show, t.dayOnes.set)})`, t.dayOnes.show],
-            [`Close (${pct(t.dayOnes.close, t.dayOnes.show)} of show)`, t.dayOnes.close],
+            [`First Visit Sales (${pct(t.dayOnes.close, t.dayOnes.show)} of show)`, t.dayOnes.close],
+            [`Total Conv. Sales (${pct(t.dayOnes.totalClose, t.dayOnes.show)} of show)`, t.dayOnes.totalClose],
             // Last, and only when there are any: it is not a funnel step but a
             // caveat on the two above it. A Day One whose date has passed with
             // nothing recorded is neither held nor missed, so Show and Close
@@ -125,7 +126,8 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
                 <th className="text-left px-4 py-2 font-semibold">Location</th>
                 <th className="text-right px-4 py-2 font-semibold">Set</th>
                 <th className="text-right px-4 py-2 font-semibold">Show</th>
-                <th className="text-right px-4 py-2 font-semibold">Close</th>
+                <th className="text-right px-4 py-2 font-semibold">First Visit</th>
+                <th className="text-right px-4 py-2 font-semibold">Total Conv.</th>
                 <th className="text-right px-4 py-2 font-semibold">New PT</th>
                 <th className="text-right px-4 py-2 font-semibold">New $</th>
                 <th className="text-right px-4 py-2 font-semibold">Deactivated</th>
@@ -137,7 +139,7 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
             <tbody>
               {data.byLocation.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-text-muted text-sm">No data in this date range.</td>
+                  <td colSpan={11} className="px-4 py-8 text-center text-text-muted text-sm">No data in this date range.</td>
                 </tr>
               ) : (
                 data.byLocation.map(c => (
@@ -146,6 +148,7 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
                     <td className="px-4 py-2 text-right text-text-primary">{c.dayOnes.set}</td>
                     <td className="px-4 py-2 text-right text-text-muted">{c.dayOnes.show}</td>
                     <td className="px-4 py-2 text-right text-text-muted">{c.dayOnes.close}</td>
+                    <td className="px-4 py-2 text-right text-text-muted">{c.dayOnes.totalClose}</td>
                     <td className="px-4 py-2 text-right text-text-primary">{c.newPT.count}</td>
                     <td className="px-4 py-2 text-right text-text-muted">{fmtMoney(c.newPT.revenue)}</td>
                     <td className="px-4 py-2 text-right text-text-primary">{c.deactivated.count}</td>
@@ -167,6 +170,7 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
                   <td className="px-4 py-2 text-right text-text-primary">{t.dayOnes.set}</td>
                   <td className="px-4 py-2 text-right text-text-primary">{t.dayOnes.show}</td>
                   <td className="px-4 py-2 text-right text-text-primary">{t.dayOnes.close}</td>
+                  <td className="px-4 py-2 text-right text-text-primary">{t.dayOnes.totalClose}</td>
                   <td className="px-4 py-2 text-right text-text-primary">{t.newPT.count}</td>
                   <td className="px-4 py-2 text-right text-text-primary">{fmtMoney(t.newPT.revenue)}</td>
                   <td className="px-4 py-2 text-right text-text-primary">{t.deactivated.count}</td>
@@ -185,7 +189,7 @@ export default function PTHealthReport({ startDate, endDate, locationSlug }) {
       </div>
 
       <div className="bg-surface border border-border rounded-xl px-4 py-2.5 text-xs text-text-primary">
-        <span className="font-semibold">Set</span> = Day One booked in the range. <span className="font-semibold">Show</span> = day_one_status is <em>Completed</em>. <span className="font-semibold">Close</span> = Show ∩ day_one_sale is <em>Sale</em>. Pulled from the same source-of-truth as the Day One dashboard, so the numbers reconcile cell-for-cell. New PT and Deactivated PT use the same algorithms as their dedicated reports; Net = (new − deactivated) for both counts and dollars.
+        <span className="font-semibold">Set</span> = Day One booked in the range. <span className="font-semibold">Show</span> = day_one_status is <em>Completed</em>. <span className="font-semibold">First Visit</span> = Show ∩ day_one_sale is <em>Sale</em>. <span className="font-semibold">Total Conv.</span> = First Visit, plus shows who bought PT in ABC within 30 days of their Day One. Pulled from the same source-of-truth as the Day One dashboard, so the numbers reconcile cell-for-cell. New PT and Deactivated PT use the same algorithms as their dedicated reports; Net = (new − deactivated) for both counts and dollars.
       </div>
     </div>
   )

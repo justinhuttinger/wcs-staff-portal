@@ -28,8 +28,10 @@ const DRILL = {
   memberMonths:       { set: 'pt-clients', title: 'Clients trained' },
   dayOnesBooked:      { set: 'day-ones', window: 'booked', title: 'Day Ones' },
   dayOnesCompleted:   { set: 'day-ones', window: 'booked', filter: 'completed', title: 'Completed Day Ones' },
-  dayOnesSold:        { set: 'day-ones', window: 'booked', filter: 'sold', title: 'Day Ones sold' },
+  dayOnesSold:        { set: 'day-ones', window: 'booked', filter: 'sold', title: 'First Visit Sales' },
+  dayOnesTotalSold:   { set: 'day-ones', window: 'booked', filter: 'total-sold', title: 'Total Conversion Sales' },
   closeRate:          { set: 'day-ones', window: 'booked', filter: 'completed', title: 'Completed Day Ones' },
+  totalCloseRate:     { set: 'day-ones', window: 'booked', filter: 'completed', title: 'Completed Day Ones' },
   dayOnesPending:     { set: 'day-ones-pending', title: 'Pending outcomes' },
   closeAmount:        { set: 'pt-sales', title: 'PT sold' },
   closeAmountRs:      { set: 'pt-sales', filter: 'rs', title: 'Recurring PT sold' },
@@ -184,7 +186,8 @@ export default function TrainerSnapshot({ startDate, endDate, locationSlug }) {
               <TrendPanel title="Day Ones Serviced" months={months} series={[
                 line('Day Ones', 'dayOnes', series),
                 line('Completed', 'dayOnesCompleted', series),
-                line('Sold', 'dayOnesSold', series),
+                line('First Visit Sales', 'dayOnesSold', series),
+                line('Total Conversion Sales', 'dayOnesTotalSold', series),
                 line('Cancelled', 'dayOnesCancelled', series),
                 line('No Showed', 'dayOnesNoShow', series),
                 line('Pending Outcome', 'dayOnesPending', series),
@@ -193,8 +196,9 @@ export default function TrainerSnapshot({ startDate, endDate, locationSlug }) {
               {/* This trainer's own outstanding intros, oldest first. */}
               <PendingOutcomePanel pending={data?.pending} title="Their Pending Outcomes" />
 
-              <TrendPanel title="Close Rate and Cancellation Rate" kind="rate" months={months} series={[
-                line('Close Rate', 'closeRate', series),
+              <TrendPanel title="Conversion and Cancellation Rate" kind="rate" months={months} series={[
+                line('First Visit Conversion', 'closeRate', series),
+                line('Total Conversion', 'totalCloseRate', series),
                 line('Cancellation Rate', 'cancellationRate', series),
               ]} />
 

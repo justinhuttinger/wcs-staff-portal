@@ -114,6 +114,8 @@ const TRAINER_SORT = {
   no_sale: ([, s]) => s.no_sales || 0,
   show_pct: ([, s]) => (s.total > 0 ? (s.completed || 0) / s.total : 0),
   close_pct: ([, s]) => (s.completed > 0 ? (s.sales || 0) / s.completed : 0),
+  total_sales: ([, s]) => s.total_sales || 0,
+  total_pct: ([, s]) => (s.completed > 0 ? (s.total_sales || 0) / s.completed : 0),
 }
 
 // Sort value for each Day One Breakdown column.
@@ -179,6 +181,12 @@ function DetailModal({ contact, onClose }) {
                   }
                 </span>
               </div>
+              {c.pt_bought_later_date && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-text-muted">Bought PT Later</span>
+                  <span className="text-amber-700 font-medium">{formatDate(c.pt_bought_later_date)}</span>
+                </div>
+              )}
               {c.pt_sale_type && (
                 <div className="flex justify-between text-sm">
                   <span className="text-text-muted">PT Sale Type</span>
@@ -214,7 +222,9 @@ const DRILLS = {
   set:       { title: 'Day Ones' },
   completed: { filter: 'completed', title: 'Completed Day Ones' },
   no_show:   { filter: 'no-show', title: 'No shows' },
-  sales:     { filter: 'sold', title: 'Day Ones sold' },
+  sales:     { filter: 'sold', title: 'First Visit Sales' },
+  // First Visit plus shows who bought PT in ABC within 30 days.
+  total_sales: { filter: 'total-sold', title: 'Total Conversion Sales' },
   no_sales:  { filter: 'no-sale', title: 'Day Ones not sold' },
 }
 
@@ -319,20 +329,24 @@ export default function PTReport({ startDate, endDate, locationSlug, canDrill = 
     acc.completed += s.completed || 0
     acc.no_show += s.no_show || 0
     acc.sales += s.sales || 0
+    acc.total_sales += s.total_sales || 0
     acc.no_sales += s.no_sales || 0
     return acc
-  }, { total: 0, scheduled: 0, completed: 0, no_show: 0, sales: 0, no_sales: 0 })
+  }, { total: 0, scheduled: 0, completed: 0, no_show: 0, sales: 0, total_sales: 0, no_sales: 0 })
 
   return (
     <div className="space-y-6">
       {/* Stat Cards — Set / Show / Close */}
-      <StatBlock cols={4}>
+      <StatBlock cols={5}>
         <HeadlineCell drill="set" canDrill={canDrill} params={drillParams('set')}
           label="Set" value={totalDayOnes} sub="Total Day Ones" />
         <HeadlineCell drill="completed" canDrill={canDrill} params={drillParams('completed')}
           label="Show" value={totalCompleted} sub={`${completionRate}% of ${totalDayOnes} set`} />
         <HeadlineCell drill="sales" canDrill={canDrill} params={drillParams('sales')}
-          label="Close" value={totalSales} sub={`${closeRate}% of ${totalCompleted} shown`} />
+          label="First Visit Sales" value={totalSales} sub={`${closeRate}% of ${totalCompleted} shown`} />
+        <HeadlineCell drill="total_sales" canDrill={canDrill} params={drillParams('total_sales')}
+          label="Total Conv. Sales" value={data.total_conversion_sales ?? totalSales}
+          sub={`${data.total_close_rate ?? closeRate}% of ${totalCompleted} shown`} />
         {/* The number that says how much to trust the two beside it. A Day One
             whose date has passed with no outcome recorded counts as neither
             held nor missed, so Show and Close are measured on an incomplete
@@ -361,13 +375,15 @@ export default function PTReport({ startDate, endDate, locationSlug, canDrill = 
                 { key: 'set', label: 'Set', align: 'center' },
                 { key: 'completed', label: 'Completed', align: 'center' },
                 { key: 'no_show', label: 'No Show', align: 'center' },
-                { key: 'sales', label: 'Sales', align: 'center' },
+                { key: 'sales', label: 'First Visit', align: 'center' },
+                { key: 'total_sales', label: 'Total Conv.', align: 'center' },
                 { key: 'no_sale', label: 'No Sale', align: 'center' },
                 // Between the outcomes and the rates, because it is what says
                 // how much of the outcome is actually known yet.
                 { key: 'pending', label: 'Pending', align: 'center' },
                 { key: 'show_pct', label: 'Show %', align: 'center' },
-                { key: 'close_pct', label: 'Close %', align: 'center' },
+                { key: 'close_pct', label: 'First Visit %', align: 'center' },
+                { key: 'total_pct', label: 'Total Conv. %', align: 'center' },
               ].map(col => (
                 <th
                   key={col.key}
@@ -389,6 +405,8 @@ export default function PTReport({ startDate, endDate, locationSlug, canDrill = 
               const rowNoSales = stats.no_sales || 0
               const showPct = rowTotal > 0 ? Math.round((rowCompleted / rowTotal) * 100) : 0
               const closePct = rowCompleted > 0 ? Math.round((rowSales / rowCompleted) * 100) : 0
+              const rowTotalSales = stats.total_sales || 0
+              const totalPct = rowCompleted > 0 ? Math.round((rowTotalSales / rowCompleted) * 100) : 0
               const rowPending = pendingByTrainer[normaliseName(name)] || 0
               return (
                 <React.Fragment key={name}>
@@ -408,6 +426,10 @@ export default function PTReport({ startDate, endDate, locationSlug, canDrill = 
                   </td>
                   <td className="px-4 py-3 text-center">
                     <TrainerCell k="sales" v={rowSales} name={name} canDrill={canDrill} p={drillParams}
+                      className="text-wcs-red font-semibold" />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <TrainerCell k="total_sales" v={rowTotalSales} name={name} canDrill={canDrill} p={drillParams}
                       className="text-wcs-red font-semibold" />
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -438,10 +460,14 @@ export default function PTReport({ startDate, endDate, locationSlug, canDrill = 
                     <TrainerCell k="sales" v={rowSales} name={name} canDrill={canDrill} p={drillParams}
                       display={`${closePct}%`} className="text-text-primary font-medium" />
                   </td>
+                  <td className="px-4 py-3 text-center">
+                    <TrainerCell k="total_sales" v={rowTotalSales} name={name} canDrill={canDrill} p={drillParams}
+                      display={`${totalPct}%`} className="text-text-primary font-medium" />
+                  </td>
                 </tr>
                 {pendingFor === name && (
                   <tr>
-                    <td colSpan={9} className="px-0 py-0">
+                    <td colSpan={11} className="px-0 py-0">
                       <PendingList
                         rows={(data.pending?.list || []).filter(r => normaliseName(r.trainer) === normaliseName(name))}
                       />
@@ -453,7 +479,7 @@ export default function PTReport({ startDate, endDate, locationSlug, canDrill = 
             })}
             {trainerRows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-text-muted text-sm">No data for this period</td>
+                <td colSpan={11} className="px-4 py-8 text-center text-text-muted text-sm">No data for this period</td>
               </tr>
             )}
             {trainerRows.length > 0 && (
@@ -463,10 +489,12 @@ export default function PTReport({ startDate, endDate, locationSlug, canDrill = 
                 <td className="px-4 py-3 text-center"><TrainerCell k="completed" v={totals.completed} canDrill={canDrill} p={drillParams} className="text-green-700" /></td>
                 <td className="px-4 py-3 text-center"><TrainerCell k="no_show" v={totals.no_show} canDrill={canDrill} p={drillParams} className="text-red-500" /></td>
                 <td className="px-4 py-3 text-center"><TrainerCell k="sales" v={totals.sales} canDrill={canDrill} p={drillParams} className="text-wcs-red" /></td>
+                <td className="px-4 py-3 text-center"><TrainerCell k="total_sales" v={totals.total_sales} canDrill={canDrill} p={drillParams} className="text-wcs-red" /></td>
                 <td className="px-4 py-3 text-center"><TrainerCell k="no_sales" v={totals.no_sales} canDrill={canDrill} p={drillParams} className="text-text-muted" /></td>
                 <td className="px-4 py-3 text-center text-amber-700">{data.pending?.total ?? 0}</td>
                 <td className="px-4 py-3 text-center">{totals.total > 0 ? Math.round((totals.completed / totals.total) * 100) : 0}%</td>
                 <td className="px-4 py-3 text-center">{totals.completed > 0 ? Math.round((totals.sales / totals.completed) * 100) : 0}%</td>
+                <td className="px-4 py-3 text-center">{totals.completed > 0 ? Math.round((totals.total_sales / totals.completed) * 100) : 0}%</td>
               </tr>
             )}
           </tbody>
@@ -519,6 +547,9 @@ export default function PTReport({ startDate, endDate, locationSlug, canDrill = 
                     {(c.day_one_status || '').toLowerCase() === 'scheduled' ? '—' :
                       c.day_one_sale === 'Sale'
                         ? <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 text-xs">Sale</span>
+                        : c.pt_bought_later_date
+                        ? <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-xs"
+                            title={`Bought PT in ABC on ${c.pt_bought_later_date}`}>Bought Later</span>
                         : <span className="px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 border border-gray-200 text-xs">{c.day_one_sale || 'No Sale'}</span>
                     }
                   </td>
@@ -538,7 +569,7 @@ export default function PTReport({ startDate, endDate, locationSlug, canDrill = 
       <div className="flex justify-end gap-2">
         <button onClick={() => {
           const csvRows = [
-            ['Member Name', 'Booking Team Member', 'Date Scheduled', 'Day One Date', 'Trainer', 'Status', 'Sale'],
+            ['Member Name', 'Booking Team Member', 'Date Scheduled', 'Day One Date', 'Trainer', 'Status', 'Sale', 'Bought PT Later'],
             ...contacts.map(c => [
               (c.first_name || '') + ' ' + (c.last_name || ''),
               c.day_one_booking_team_member || '',
@@ -547,6 +578,7 @@ export default function PTReport({ startDate, endDate, locationSlug, canDrill = 
               c.day_one_trainer || '',
               c.day_one_status || '',
               c.day_one_sale || '',
+              c.pt_bought_later_date || '',
             ]),
           ]
           exportCSV(csvRows, `pt-day-one-report-${startDate}-${endDate}`)

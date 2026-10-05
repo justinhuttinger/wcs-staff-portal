@@ -204,6 +204,9 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
   const dayOneClose = dayOneSale['Sale'] || 0
   const showRate = dayOneSet > 0 ? Math.round((dayOneShow / dayOneSet) * 100) : 0
   const closeRate = dayOneShow > 0 ? Math.round((dayOneClose / dayOneShow) * 100) : 0
+  // First Visit plus shows who bought PT in ABC within 30 days.
+  const dayOneTotalClose = data.day_one_total_sales ?? dayOneClose
+  const totalCloseRate = dayOneShow > 0 ? Math.round((dayOneTotalClose / dayOneShow) * 100) : 0
 
   const sameDayRatio = {
     'Same Day': data.total_same_day_sales || 0,
@@ -280,7 +283,7 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
       {/* ---------- PT / DAY ONE ---------- */}
       <SectionHeader title="PT / Day One" />
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <div className="bg-surface rounded-2xl border border-border p-4 text-center">
           <p className="text-3xl font-bold text-text-primary">{dayOneSet}</p>
           <p className="text-[11px] text-text-muted uppercase tracking-wide mt-1">Set</p>
@@ -293,8 +296,13 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
         </div>
         <div className="bg-surface rounded-2xl border border-border p-4 text-center">
           <p className="text-3xl font-bold text-text-primary">{dayOneClose}</p>
-          <p className="text-[11px] text-text-muted uppercase tracking-wide mt-1">Close</p>
-          <p className="text-[10px] text-text-muted mt-0.5">{closeRate}% of shown</p>
+          <p className="text-[11px] text-text-muted uppercase tracking-wide mt-1">First Visit Sales</p>
+          <p className="text-[10px] text-text-muted mt-0.5">{closeRate}% conversion</p>
+        </div>
+        <div className="bg-surface rounded-2xl border border-border p-4 text-center">
+          <p className="text-3xl font-bold text-text-primary">{dayOneTotalClose}</p>
+          <p className="text-[11px] text-text-muted uppercase tracking-wide mt-1">Total Conv. Sales</p>
+          <p className="text-[10px] text-text-muted mt-0.5">{totalCloseRate}% conversion</p>
         </div>
       </div>
 
@@ -302,7 +310,7 @@ export default function MobileClubHealth({ startDate, endDate, locationSlug }) {
 
       <PieChart title="Day One Booked" data={data.day_one_booked} colorMap={{ 'Yes': '#38a169', 'No': '#e53e3e' }} />
       <PieChart title="Day One Status" data={data.day_one_status} colorMap={STATUS_COLORS} />
-      <PieChart title="Day One Sale" data={data.day_one_sale} colorMap={{ 'Sale': '#38a169', 'No Sale': '#e53e3e' }} />
+      <PieChart title="Day One Sale" data={data.day_one_sale} colorMap={{ 'Sale': '#38a169', 'Bought Later': '#d69e2e', 'No Sale': '#e53e3e' }} />
     </div>
   )
 }

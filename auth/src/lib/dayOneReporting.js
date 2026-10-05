@@ -76,6 +76,10 @@ function toLegacyShape(row, contact) {
     day_one_booking_team_member: row.booked_by_name || null,
     day_one_status: status,
     day_one_sale: row.outcome || null,
+    // First Visit Sale is day_one_sale === 'Sale'. Total also counts a show
+    // who bought PT in ABC within 30 days — see isTotalSale.
+    day_one_total_sale: isTotalSale(row),
+    pt_bought_later_date: row.outcome !== 'Sale' ? (row.abc_pt_sale_date || null) : null,
     day_one_trainer: row.trainer_name || null,
     show_or_no_show: status === 'Completed' ? 'Show' : (status === 'No Show' ? 'No Show' : null),
     pt_sale_type: row.pt_sale_type || null,
@@ -128,11 +132,23 @@ async function bookedByPerson({ startISO, endISO, locationSlug }) {
 }
 
 /**
+ * Total Conversion: the Day One showed, and either sold on the day or the
+ * member bought PT in ABC within 30 days (abc_pt_sale_date, set hourly by
+ * day_one_link_conversions). Same rule as day_one_total_sale() in SQL.
+ */
+function isTotalSale(row) {
+  return row.status === 'completed' && (row.outcome === 'Sale' || !!row.abc_pt_sale_date)
+}
+
+/**
  * The Set / Show / Close funnel, windowed on scheduled_date.
  *
  *   set    every Day One scheduled in the window, cancellations included
  *   show   the member turned up            (status = 'completed')
- *   close  they turned up and bought       (outcome = 'Sale')
+ *   close       they turned up and bought on the day (outcome = 'Sale'),
+ *               reported as First Visit Sales
+ *   totalClose  close, plus shows who bought PT in ABC within 30 days,
+ *               reported as Total Conversion Sales
  *
  * Dates are plain ISO days here rather than the epoch-millisecond strings the
  * GHL date-picker columns needed, because scheduled_date is a real date column.
@@ -143,7 +159,7 @@ async function bookedByPerson({ startISO, endISO, locationSlug }) {
 async function funnel({ locationSlug, locationSlugs, startDate, endDate }) {
   let q = supabaseAdmin
     .from('day_one_appointments')
-    .select('status, outcome')
+    .select('status, outcome, abc_pt_sale_date')
   if (startDate) q = q.gte('scheduled_date', startDate)
   if (endDate) q = q.lte('scheduled_date', endDate)
   q = applySlug(q, locationSlug, locationSlugs)
@@ -151,12 +167,14 @@ async function funnel({ locationSlug, locationSlugs, startDate, endDate }) {
   const rows = await fetchAll(q)
   let show = 0
   let close = 0
+  let totalClose = 0
   for (const r of rows) {
     if (r.status !== 'completed') continue
     show++
     if (r.outcome === 'Sale') close++
+    if (isTotalSale(r)) totalClose++
   }
-  return { set: rows.length, show, close }
+  return { set: rows.length, show, close, totalClose }
 }
 
 /**
@@ -168,7 +186,7 @@ async function scheduledInRange({ locationSlug, locationSlugs, startDate, endDat
     .from('day_one_appointments')
     .select('id, ghl_contact_id, contact_name, contact_email, contact_phone, ' +
             'location_slug, scheduled_date, booked_at, status, outcome, ' +
-            'pt_sale_type, why_no_sale, trainer_name, booked_by_name')
+            'pt_sale_type, why_no_sale, trainer_name, booked_by_name, abc_pt_sale_date')
   if (startDate) q = q.gte('scheduled_date', startDate)
   if (endDate) q = q.lte('scheduled_date', endDate)
   q = applySlug(q, locationSlug, locationSlugs)
@@ -222,5 +240,5 @@ function statusLabel(status) {
 
 module.exports = {
   bookedByPerson, bookedInRange, contactIdsWithDayOne, funnel, scheduledInRange,
-  contactsById, toLegacyShape, statusLabel, normalizeName, STATUS_LABEL,
+  contactsById, toLegacyShape, statusLabel, normalizeName, STATUS_LABEL, isTotalSale,
 }

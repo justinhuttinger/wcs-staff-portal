@@ -111,6 +111,7 @@ function buildDailySnapshot(current, prior, series, opts = {}) {
     dayOnes: num(r.day_ones),
     dayOnesCompleted: num(r.day_ones_completed),
     dayOnesSold: num(r.day_ones_sold),
+    dayOnesTotalSold: num(r.day_ones_total_sold),
     // Bucketed in the route from the same rows the card counts, rather than
     // added to analytics_daily_series: the series function is a lateral over two
     // expensive window functions and widening its return type to carry a number

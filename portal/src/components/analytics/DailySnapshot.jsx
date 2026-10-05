@@ -258,7 +258,8 @@ export default function DailySnapshot({ locationSlug }) {
             <DayBars title="Left" days={days} valueKey="lostMembers" format="int" selected={data.day} />
             <DayBars title="Net Members" days={days} valueKey="netMembers" format="int" selected={data.day} />
             <DayBars title="Day Ones" days={days} valueKey="dayOnes" format="int" selected={data.day} />
-            <DayBars title="Day Ones Sold" days={days} valueKey="dayOnesSold" format="int" selected={data.day} />
+            <DayBars title="First Visit Sales" days={days} valueKey="dayOnesSold" format="int" selected={data.day} />
+            <DayBars title="Total Conversion Sales" days={days} valueKey="dayOnesTotalSold" format="int" selected={data.day} />
             <DayBars title="Day Ones Pending Outcome" days={days} valueKey="dayOnesPending" format="int" selected={data.day} />
             <DayBars title="PT Sold" days={days} valueKey="ptNewValue" format="money" selected={data.day} />
           </div>
@@ -278,7 +279,8 @@ export default function DailySnapshot({ locationSlug }) {
                   <th className="text-right font-semibold py-1.5">Left</th>
                   <th className="text-right font-semibold py-1.5">Net</th>
                   <th className="text-right font-semibold py-1.5">Day Ones</th>
-                  <th className="text-right font-semibold py-1.5">Sold</th>
+                  <th className="text-right font-semibold py-1.5">First Visit</th>
+                  <th className="text-right font-semibold py-1.5">Total Conv.</th>
                   <th className="text-right font-semibold py-1.5">Pending</th>
                   <th className="text-right font-semibold py-1.5">PT Sold</th>
                   <th className="text-right font-semibold py-1.5">Revenue</th>
@@ -299,6 +301,7 @@ export default function DailySnapshot({ locationSlug }) {
                     </td>
                     <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(d.dayOnes)}</td>
                     <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(d.dayOnesSold)}</td>
+                    <td className="py-1.5 text-right tabular-nums text-text-muted">{fmtInt(d.dayOnesTotalSold)}</td>
                     <td className="py-1.5 text-right tabular-nums"
                       style={{ color: d.dayOnesPending > 0 ? BAD_COLOR : undefined }}>
                       {fmtInt(d.dayOnesPending)}

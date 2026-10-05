@@ -416,3 +416,13 @@ test('the new counts are in a declared group like every other stat', () => {
     assert.ok(declared.has(s.group), `${key} is in undeclared group ${s.group}`)
   }
 })
+
+test('Total Conversion sits beside First Visit on the same completed base', () => {
+  const out = buildPtSnapshot(ptRow({ day_ones_total_sold: 30 }), null, [], [])
+  assert.equal(stat(out, 'dayOnesSold').label, 'First Visit Sales')
+  assert.equal(stat(out, 'closeRate').label, 'First Visit Conversion')
+  assert.equal(stat(out, 'dayOnesTotalSold').value, 30)
+  // 30 of 60 completed: the same denominator as First Visit's 24 of 60.
+  assert.equal(stat(out, 'totalCloseRate').value, 50)
+  assert.equal(ptSeriesRow({ month_start: '2026-08-01', day_ones_completed: 10, day_ones_total_sold: 4 }).totalCloseRate, 40)
+})

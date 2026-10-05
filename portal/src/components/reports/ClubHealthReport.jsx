@@ -243,7 +243,8 @@ const DRILLS = {
   pending:          { set: 'day-ones-pending', title: 'Pending outcomes' },
   dayOneSet:        { set: 'day-ones', window: 'booked', title: 'Day Ones booked' },
   dayOneShow:       { set: 'day-ones', filter: 'completed', title: 'Completed Day Ones' },
-  dayOneClose:      { set: 'day-ones', filter: 'sold', title: 'Day Ones sold' },
+  dayOneClose:      { set: 'day-ones', filter: 'sold', title: 'First Visit Sales' },
+  dayOneTotalClose: { set: 'day-ones', filter: 'total-sold', title: 'Total Conversion Sales' },
   cancelsMembers:   { set: 'club-health-cancels', title: 'Cancels' },
   cancelsAgreements:{ set: 'club-health-cancels', title: 'Cancels' },
 }
@@ -286,6 +287,9 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug, can
   const dayOneClose = dayOneSale['Sale'] || 0
   const showRate = dayOneSet > 0 ? Math.round((dayOneShow / dayOneSet) * 100) : 0
   const closeRate = dayOneShow > 0 ? Math.round((dayOneClose / dayOneShow) * 100) : 0
+  // First Visit plus shows who bought PT in ABC within 30 days.
+  const dayOneTotalClose = data.day_one_total_sales ?? dayOneClose
+  const totalCloseRate = dayOneShow > 0 ? Math.round((dayOneTotalClose / dayOneShow) * 100) : 0
 
   // Ratio pie
   const sameDayRatio = { 'Same Day': data.total_same_day_sales || 0, 'Other': Math.max(0, totalAgreements - (data.total_same_day_sales || 0)) }
@@ -386,10 +390,11 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug, can
       {/* ---------- PT / DAY ONE ---------- */}
       <div>
         <Heading>PT / Day One</Heading>
-        <StatBlock cols={4} flush>
+        <StatBlock cols={5} flush>
           <DrillCell {...drillScope} drill="dayOneSet" label="Set" value={dayOneSet} sub="Day Ones Booked" />
           <DrillCell {...drillScope} drill="dayOneShow" label="Show" value={dayOneShow} sub={`${showRate}% of set`} />
-          <DrillCell {...drillScope} drill="dayOneClose" label="Close" value={dayOneClose} sub={`${closeRate}% of shown`} />
+          <DrillCell {...drillScope} drill="dayOneClose" label="First Visit Sales" value={dayOneClose} sub={`${closeRate}% conversion`} />
+          <DrillCell {...drillScope} drill="dayOneTotalClose" label="Total Conv. Sales" value={dayOneTotalClose} sub={`${totalCloseRate}% conversion`} />
           {/* The caveat on the two rates beside it: a Day One whose date has
               passed with nothing recorded is neither held nor missed, so Show
               and Close are measured on an incomplete picture until somebody
@@ -412,7 +417,7 @@ export default function ClubHealthReport({ startDate, endDate, locationSlug, can
       <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-border">
         <PieChart title="Day One Booked" data={data.day_one_booked} colorMap={{ 'Yes': '#38a169', 'No': '#e53e3e' }} flush />
         <PieChart title="Day One Status" data={data.day_one_status} colorMap={STATUS_COLORS} flush />
-        <PieChart title="Day One Sale" data={data.day_one_sale} colorMap={{ 'Sale': '#38a169', 'No Sale': '#e53e3e' }} flush />
+        <PieChart title="Day One Sale" data={data.day_one_sale} colorMap={{ 'Sale': '#38a169', 'Bought Later': '#d69e2e', 'No Sale': '#e53e3e' }} flush />
       </div>
     </ReportBlock>
   )

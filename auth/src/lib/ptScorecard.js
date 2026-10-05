@@ -121,6 +121,12 @@ function buildRow(r, goals, clubNameFor) {
     closeGoal,
     closeDiff: closeGoal === null ? null : close - closeGoal,
 
+    // Close above is First Visit: marked Sale on the outcome form. Total adds
+    // shows who bought PT in ABC within 30 days (migration 229). The goal and
+    // diff stay on First Visit, which is what the close goal was set against.
+    totalCloseCount: num(r.total_close_count),
+    totalClosePct: pct(num(r.total_close_count), show),
+
     newEftDraft: newEft,
     cancelledEftDraft: cancelledEft,
     netEftDraft: round2(newEft - cancelledEft),
@@ -152,6 +158,7 @@ function buildScorecard(rows, opts = {}) {
     a.set_incl_future += num(r.set_incl_future)
     a.show_count += num(r.show_count)
     a.close_count += num(r.close_count)
+    a.total_close_count += num(r.total_close_count)
     a.pending_count += num(r.pending_count)
     a.pt_revenue += num(r.pt_revenue)
     a.new_eft_draft += num(r.new_eft_draft)
@@ -161,7 +168,7 @@ function buildScorecard(rows, opts = {}) {
   }, {
     club_number: null, new_members: 0, pt_on_join: 0, pif_on_join: 0,
     book_count: 0, book_on_join: 0, set_to_date: 0, set_incl_future: 0,
-    show_count: 0, close_count: 0, pending_count: 0, pt_revenue: 0,
+    show_count: 0, close_count: 0, total_close_count: 0, pending_count: 0, pt_revenue: 0,
     new_eft_draft: 0, cancelled_eft_draft: 0, new_pif_revenue: 0,
   })
 

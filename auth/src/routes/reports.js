@@ -5,7 +5,7 @@ const { requireReportAccess, requireRole } = require('../middleware/role')
 const { recombineTotals } = require('../lib/membershipAuditTotals')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const {
-  bookedInRange, contactIdsWithDayOne, scheduledInRange, contactsById, toLegacyShape,
+  bookedInRange, contactIdsWithDayOne, scheduledInRange, contactsById, toLegacyShape, isTotalSale,
   statusLabel,
 } = require('../lib/dayOneReporting')
 const { getSkipList } = require('../utils/membershipSkipList')
@@ -611,6 +611,7 @@ router.get('/pt', async (req, res) => {
 
     let totalCompleted = 0
     let totalSales = 0
+    let totalConversionSales = 0
 
     for (const c of contacts) {
       const status = c.day_one_status || 'Unknown'
@@ -625,6 +626,7 @@ router.get('/pt', async (req, res) => {
           completed: 0,
           no_show: 0,
           sales: 0,
+          total_sales: 0,
           no_sales: 0,
           _ptSaleTypes: [],
           _noSaleReasons: [],
@@ -640,7 +642,13 @@ router.get('/pt', async (req, res) => {
       else if (sl === 'completed') t.completed++
       else if (sl === 'no show' || sl === 'no-show') t.no_show++
 
-      // Sales/no-sales only counted when status = Completed
+      // Sales/no-sales only counted when status = Completed. `sales` is First
+      // Visit (marked Sale on the form); `total_sales` adds shows who bought PT
+      // in ABC within 30 days.
+      if (c.day_one_total_sale) {
+        t.total_sales++
+        totalConversionSales++
+      }
       if (sl === 'completed') {
         if (c.day_one_sale === 'Sale') {
           t.sales++
@@ -665,6 +673,7 @@ router.get('/pt', async (req, res) => {
     const total = contacts.length
     const completionRate = total > 0 ? Math.round((totalCompleted / total) * 100) : 0
     const closeRate = totalCompleted > 0 ? Math.round((totalSales / totalCompleted) * 100) : 0
+    const totalCloseRate = totalCompleted > 0 ? Math.round((totalConversionSales / totalCompleted) * 100) : 0
 
     // From lib/dayOnePending, the same loader Club Snapshot and PT Snapshot
     // use, so "pending" means one thing across every report that shows it.
@@ -675,6 +684,9 @@ router.get('/pt', async (req, res) => {
       by_status: byStatus,
       completion_rate: completionRate,
       close_rate: closeRate,
+      total_sales: totalSales,
+      total_conversion_sales: totalConversionSales,
+      total_close_rate: totalCloseRate,
       by_trainer: byTrainer,
       contacts,
       // Day Ones whose date has passed with no outcome recorded — what PT
@@ -823,13 +835,18 @@ router.get('/club-health', async (req, res) => {
 
     const dayOneStatusCounts = {}
     const dayOneSaleCounts = {}
+    // First Visit Sales are dayOneSaleCounts['Sale']. Total adds the shows who
+    // said no on the day but bought PT in ABC within 30 days, which the pie
+    // shows as their own 'Bought Later' slice carved out of No Sale.
+    let dayOneTotalSales = 0
     for (const c of dayOnesScheduled) {
       const statusVal = statusLabel(c.status)
       dayOneStatusCounts[statusVal] = (dayOneStatusCounts[statusVal] || 0) + 1
 
       if (c.status === 'completed') {
-        const saleVal = c.outcome || 'No Sale'
+        const saleVal = c.outcome === 'Sale' ? 'Sale' : (c.abc_pt_sale_date ? 'Bought Later' : (c.outcome || 'No Sale'))
         dayOneSaleCounts[saleVal] = (dayOneSaleCounts[saleVal] || 0) + 1
+        if (isTotalSale(c)) dayOneTotalSales++
       }
     }
 
@@ -1107,6 +1124,7 @@ router.get('/club-health', async (req, res) => {
       day_one_booked: dayOneBookedCounts,
       day_one_status: dayOneStatusCounts,
       day_one_sale: dayOneSaleCounts,
+      day_one_total_sales: dayOneTotalSales,
       top_salespeople: topSalespeople,
       top_trainers: topTrainers,
       by_date: byDate,

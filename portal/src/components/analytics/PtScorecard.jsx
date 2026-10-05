@@ -25,7 +25,7 @@ import PendingOutcomePanel from './PendingOutcomePanel'
 const GOALS = [
   { key: 'book', label: 'Book Goal %' },
   { key: 'show', label: 'Show Goal %' },
-  { key: 'close', label: 'Close Goal %' },
+  { key: 'close', label: 'First Visit Goal %' },
 ]
 
 const COLUMNS = [
@@ -44,10 +44,14 @@ const COLUMNS = [
   { key: 'showPct', label: 'Show %', format: 'pct' },
   { key: 'showGoal', label: 'Show Goal', format: 'int', goal: true },
   { key: 'showDiff', label: 'Show Diff', format: 'signed', diff: 'showGoal' },
-  { key: 'closeCount', label: 'Close Count', format: 'int', group: true },
-  { key: 'closePct', label: 'Close %', format: 'pct' },
-  { key: 'closeGoal', label: 'Close Goal', format: 'int', goal: true },
-  { key: 'closeDiff', label: 'Close Diff', format: 'signed', diff: 'closeGoal' },
+  // Close is First Visit: marked Sale on the outcome form. The goal is set
+  // against it. Total adds shows who bought PT in ABC within 30 days.
+  { key: 'closeCount', label: 'First Visit Sales', format: 'int', group: true },
+  { key: 'closePct', label: 'First Visit Conv. %', format: 'pct' },
+  { key: 'closeGoal', label: 'First Visit Goal', format: 'int', goal: true },
+  { key: 'closeDiff', label: 'First Visit Diff', format: 'signed', diff: 'closeGoal' },
+  { key: 'totalCloseCount', label: 'Total Conv. Sales', format: 'int', group: true },
+  { key: 'totalClosePct', label: 'Total Conv. %', format: 'pct' },
   // Sits after Close because it is what is MISSING from these columns: a set
   // appointment that passed with no outcome is neither a show nor a no-show, so
   // it is counted here and kept out of both rates above.
@@ -212,7 +216,11 @@ export default function PtScorecard({ startDate, endDate, locationSlug }) {
           </div>
           <p className="text-[10px] text-text-muted leading-snug pt-2 border-t border-border">
             Each goal applies to the same base as its rate: Book against new members,
-            Show against sets to date, Close against shows.
+            Show against sets to date, First Visit against shows.
+          </p>
+          <p className="text-[10px] text-text-muted leading-snug pt-2 border-t border-border">
+            First Visit = marked Sale on the Day One form. Total Conversion also counts
+            shows who bought PT in ABC within 30 days of their Day One.
           </p>
         </aside>
       </div>
