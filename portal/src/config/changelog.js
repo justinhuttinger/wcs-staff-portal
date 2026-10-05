@@ -75,7 +75,7 @@ export const CHANGELOG = [
   {
     id: 20, date: '2026-10-05',
     title: 'Event Calendar',
-    body: 'New Event Calendar tile in Tools. Plan your club’s in-person events on a month, week or day calendar, add a description and notes, and comment back and forth with Marketing. Every event you add also shows on the Marketing calendar, and Marketing marks it Approved once they’ve reviewed it.',
+    body: 'New Event Calendar tile in Tools, under More. Plan your club’s in-person events on a month, week or day calendar, add a description and notes, and comment back and forth with Marketing. Every event you add also shows on the Marketing calendar, and Marketing marks it Approved once they’ve reviewed it.',
     audience: { tool: 'eventCalendar' },
   },
   {

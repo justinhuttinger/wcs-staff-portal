@@ -364,6 +364,13 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
       <SvgTileButton key="till" onClick={() => { setShowMore(false); onTill() }}
         iconPath={TILE_ICONS.till} label="Till" desc="Cash in / out" />
     ),
+    // Event Calendar — GMs plan club events (type 'event' rows that also land
+    // on the Marketing calendar). Role/override-driven via 'eventCalendar'
+    // (seeded manager + admin in migration 230).
+    onEventCalendar && (visibleTools || []).includes('eventCalendar') && (
+      <SvgTileButton key="eventCalendar" onClick={() => { setShowMore(false); onEventCalendar() }}
+        iconPath={TILE_ICONS.eventCalendar} label="Event Calendar" desc="Club events" />
+    ),
   ].filter(Boolean)
 
   if (showMore) {
@@ -740,10 +747,6 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability — role/override-driven (seeded manager+ in migration 086) */}
           {onTrainerAvail && (visibleTools || []).includes('trainerAvail') && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
-          {/* 6.1. Event Calendar — GMs plan club events (type 'event' rows that
-              also land on the Marketing calendar). Role/override-driven via
-              'eventCalendar' (seeded manager + admin in migration 230). */}
-          {onEventCalendar && (visibleTools || []).includes('eventCalendar') && <SvgTileButton onClick={onEventCalendar} iconPath={TILE_ICONS.eventCalendar} label="Event Calendar" desc="Club events" />}
           {/* 6.2. Workflows & Scripts (GHL) — role/override-driven via 'ghlScripts' (seeded corporate+ in migration 228) */}
           {onGhlScripts && (visibleTools || []).includes('ghlScripts') && <SvgTileButton onClick={onGhlScripts} iconPath={TILE_ICONS.ghlScripts} label="Workflows & Scripts (GHL)" desc="SMS & call scripts" />}
           {/* 6.4. Group X — role/override-driven via 'groupX' (seeded for every
