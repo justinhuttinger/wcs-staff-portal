@@ -12,18 +12,22 @@ const QUICK_RANGES = [
 import { LOCATIONS_WITH_ALL as LOCATIONS } from '../config/locations'
 const TYPES = ['All', 'Lead', 'Traffic', 'Retargeting', 'Other']
 
+// Local calendar date. toISOString() is UTC, which after 5pm Pacific is
+// already tomorrow and shifted every range by a day.
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
 function getQuickRange(key) {
   const now = new Date()
-  const today = now.toISOString().split('T')[0]
+  const today = ymd(now)
   switch (key) {
-    case 'last_7': { const s = new Date(now); s.setDate(s.getDate() - 7); return { start: s.toISOString().split('T')[0], end: today } }
-    case 'last_30': { const s = new Date(now); s.setDate(s.getDate() - 30); return { start: s.toISOString().split('T')[0], end: today } }
-    case 'last_90': { const s = new Date(now); s.setDate(s.getDate() - 90); return { start: s.toISOString().split('T')[0], end: today } }
-    case 'this_month': return { start: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0], end: today }
+    case 'last_7': { const s = new Date(now); s.setDate(s.getDate() - 7); return { start: ymd(s), end: today } }
+    case 'last_30': { const s = new Date(now); s.setDate(s.getDate() - 30); return { start: ymd(s), end: today } }
+    case 'last_90': { const s = new Date(now); s.setDate(s.getDate() - 90); return { start: ymd(s), end: today } }
+    case 'this_month': return { start: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), end: today }
     case 'last_month': {
       const s = new Date(now.getFullYear(), now.getMonth() - 1, 1)
       const e = new Date(now.getFullYear(), now.getMonth(), 0)
-      return { start: s.toISOString().split('T')[0], end: e.toISOString().split('T')[0] }
+      return { start: ymd(s), end: ymd(e) }
     }
     default: return { start: today, end: today }
   }
@@ -153,7 +157,7 @@ export default function MetaAdsView({ onBack }) {
       const params = { start_date: startDate, end_date: endDate }
       const [ov, camps, roas] = await Promise.all([
         getMetaAdsOverview(params),
-        getMetaAdsCampaigns({ ...params, status: showAll ? 'all' : 'active' }),
+        getMetaAdsCampaigns(params),
         getFbRoas({ ...params, group_by: 'ad' }).catch(err => {
           // ROAS endpoint can fail if attribution backfill hasn't run yet —
           // degrade gracefully and still show Meta data
@@ -178,7 +182,7 @@ export default function MetaAdsView({ onBack }) {
     setEndDate(range.end)
   }
 
-  useEffect(() => { if (activeQuick) loadData() }, [activeQuick, showAll])
+  useEffect(() => { if (activeQuick) loadData() }, [activeQuick])
 
   function handleApply() { setActiveQuick(null); loadData() }
 
@@ -229,6 +233,10 @@ export default function MetaAdsView({ onBack }) {
     }
     return true
   })
+
+  // Totals and ROAS count every campaign that spent in the range; "Active
+  // only" just hides the paused ones from the table.
+  const visibleCampaigns = showAll ? filteredCampaigns : filteredCampaigns.filter(c => c.status === 'ACTIVE')
 
   // ROAS only applies to Lead-classified campaigns. We restrict the ROAS
   // card and table columns to campaigns that:
@@ -385,7 +393,7 @@ export default function MetaAdsView({ onBack }) {
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <p className="text-xs text-text-muted font-semibold uppercase">
-                Campaigns ({filteredCampaigns.length})
+                Campaigns ({visibleCampaigns.length})
                 {(locationFilter !== 'All' || typeFilter !== 'All') && <span className="text-wcs-red ml-1">(filtered)</span>}
               </p>
               <button onClick={() => { setShowAll(!showAll) }} className="text-xs text-text-muted hover:text-text-primary transition-colors">
@@ -410,10 +418,10 @@ export default function MetaAdsView({ onBack }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredCampaigns.length === 0 && (
+                  {visibleCampaigns.length === 0 && (
                     <tr><td colSpan={11} className="px-4 py-8 text-center text-text-muted text-sm">No campaigns match filters</td></tr>
                   )}
-                  {filteredCampaigns.map(c => {
+                  {visibleCampaigns.map(c => {
                     const campSales = salesByCampaignId.get(c.campaign_id)
                     const campIsLead = isLeadCampaign(c.campaign_id)
                     return (
