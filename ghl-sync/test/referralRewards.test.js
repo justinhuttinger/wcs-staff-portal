@@ -147,7 +147,7 @@ test('isEligibleCandidate uses since_date when sign_date is absent', () => {
 const { processReferralReward } = require('../src/abc/referralRewards');
 
 function makeDeps(overrides = {}) {
-  const calls = { adjust: [], tagged: [], recorded: [] };
+  const calls = { adjust: [], tagged: [], recorded: [], notes: [] };
   const deps = {
     today: '2026-05-28',
     fetchMemberInvoices: async () => overrides.invoices ?? [
@@ -156,6 +156,11 @@ function makeDeps(overrides = {}) {
     adjustInvoice: async (club, id, body) => {
       calls.adjust.push({ club, id, body });
       return overrides.adjustResult ?? { ok: true, status: 200, data: {} };
+    },
+    addNote: async (club, id, note) => {
+      if (overrides.noteThrows) throw new Error('abc note down');
+      calls.notes.push({ club, id, note });
+      return { ok: true, status: 200, data: {} };
     },
     tagReferrer: async (contactId, friendName) => {
       if (overrides.tagThrows) throw new Error('ghl down');
@@ -230,4 +235,30 @@ test('processReferralReward: dryRun zeroes nothing, records nothing', async () =
   assert.strictEqual(calls.tagged.length, 0);
   assert.strictEqual(calls.recorded.length, 0);
   assert.strictEqual(row.dry_run, true);
+});
+
+test('processReferralReward: notes the referrer ABC profile after zeroing', async () => {
+  const { deps, calls } = makeDeps();
+  await processReferralReward({ ...BASE, ...deps });
+  assert.strictEqual(calls.notes.length, 1);
+  assert.strictEqual(calls.notes[0].id, 'REF1');
+  assert.strictEqual(
+    calls.notes[0].note,
+    'VIP referral reward for referring Sam Jones: next month free. DUES invoice due 05/31/2026 adjusted from $54.99 to $0.00 automatically by WCS.',
+  );
+});
+
+test('processReferralReward: failed note keeps the reward and still tags', async () => {
+  const { deps, calls } = makeDeps({ noteThrows: true });
+  const row = await processReferralReward({ ...BASE, ...deps });
+  assert.strictEqual(row.dues_status, 'zeroed');
+  assert.strictEqual(row.sms_status, 'tagged');
+  assert.strictEqual(calls.tagged.length, 1);
+  assert.match(row.error, /abc note failed/);
+});
+
+test('processReferralReward: adjust failure adds no note', async () => {
+  const { deps, calls } = makeDeps({ adjustResult: { ok: false, status: 200, data: {} } });
+  await processReferralReward({ ...BASE, ...deps });
+  assert.strictEqual(calls.notes.length, 0);
 });

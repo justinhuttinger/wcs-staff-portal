@@ -43,18 +43,32 @@ function buildAdjustmentBody(dueDate) {
   };
 }
 
+function usDate(ymd) {
+  const [y, m, d] = String(ymd || '').split('-');
+  return y && m && d ? `${m}/${d}/${y}` : String(ymd || '');
+}
+
+/** Note left on the referrer's ABC profile once their dues are zeroed. */
+function referralNote({ dueDate, originalAmount, friendName }) {
+  const from = originalAmount != null && !Number.isNaN(Number(originalAmount))
+    ? ` from $${Number(originalAmount).toFixed(2)}` : '';
+  const friend = friendName ? ` for referring ${friendName}` : '';
+  return `VIP referral reward${friend}: next month free. DUES invoice due ${usDate(dueDate)} `
+    + `adjusted${from} to $0.00 automatically by WCS.`;
+}
+
 /**
  * Process one referral reward end-to-end. Side effects happen only through the
  * injected dep functions, which makes it unit-testable.
  *
  * opts: { location, runId, abcMember, referrerAbcId, referrerContact, dryRun,
- *         today, fetchMemberInvoices, adjustInvoice, tagReferrer, recordReward }
+ *         today, fetchMemberInvoices, adjustInvoice, addNote, tagReferrer, recordReward }
  * Returns the referral_rewards row object that was (or would be) recorded.
  */
 async function processReferralReward(opts) {
   const {
     location, runId, abcMember, referrerAbcId, referrerContact, dryRun,
-    today, fetchMemberInvoices, adjustInvoice, tagReferrer, recordReward,
+    today, fetchMemberInvoices, adjustInvoice, addNote, tagReferrer, recordReward,
   } = opts;
 
   const friendName = `${abcMember.first_name || ''} ${abcMember.last_name || ''}`.trim();
@@ -118,6 +132,18 @@ async function processReferralReward(opts) {
   }
   row.dues_status = 'zeroed';
 
+  // Note the referrer's ABC profile so staff see why the invoice is $0.
+  // Best effort: a failed note never undoes the reward or blocks the SMS.
+  if (addNote) {
+    try {
+      const noteResult = await addNote(location.clubNumber, referrerAbcId,
+        referralNote({ dueDate: invoice.dueDate, originalAmount: invoice.invoiceAmount, friendName }));
+      if (!noteResult.ok) row.error = `abc note not ok: ${JSON.stringify(noteResult.data?.status || noteResult.status)}`;
+    } catch (err) {
+      row.error = `abc note failed: ${err.message}`;
+    }
+  }
+
   // 3. Dues confirmed zeroed. Only now do we trigger the SMS via the tag.
   if (!referrerContact?.id) {
     row.sms_status = 'no_referrer_contact';
@@ -131,11 +157,11 @@ async function processReferralReward(opts) {
   } catch (err) {
     row.sms_status = 'error';
     row.needs_review = true;
-    row.error = `tag write failed (dues already zeroed): ${err.message}`;
+    row.error = [row.error, `tag write failed (dues already zeroed): ${err.message}`].filter(Boolean).join('; ');
   }
 
   await recordReward(row);
   return row;
 }
 
-module.exports = { pickNextDuesInvoice, isEligibleCandidate, buildAdjustmentBody, processReferralReward };
+module.exports = { pickNextDuesInvoice, isEligibleCandidate, buildAdjustmentBody, referralNote, processReferralReward };
