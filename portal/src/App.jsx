@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback} from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import ToolGrid from './components/ToolGrid'
 import LoginScreen from './components/LoginScreen'
 import ResetPasswordScreen from './components/ResetPasswordScreen'
@@ -661,6 +661,28 @@ export default function App() {
       setBoardMode(key)
     }
   }
+
+  // "Open in New Tab" on a board tile (or on the Reports / Analytics toggle)
+  // loads the portal in a new tab at #open/<tool>, #reporting or #analytics.
+  // Once the signed-in user is known, open that view. Tools resolve through
+  // the pin catalog, so a link only opens what this user could pin anyway.
+  const deepLinkDone = useRef(false)
+  useEffect(() => {
+    if (!user || deepLinkDone.current) return
+    deepLinkDone.current = true
+    const hash = window.location.hash
+    const m = hash.match(/^#open\/([\w-]+)$/)
+    if (m) {
+      // Drop the hash so a reload or Back to Portal lands on the board.
+      history.replaceState(null, '', window.location.pathname + window.location.search)
+      if (m[1] === 'calendar' || m[1] === 'leaderboard') selectTab(m[1])
+      else PINNABLE.find(p => p.key === 'tool:' + m[1])?.open()
+    } else if (hash.startsWith('#reporting')) {
+      setShowReporting(true)
+    } else if (hash.startsWith('#analytics') && canAnalytics) {
+      setShowAnalytics(true)
+    }
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen bg-bg flex flex-col relative">

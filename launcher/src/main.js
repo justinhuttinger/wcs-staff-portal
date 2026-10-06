@@ -741,11 +741,30 @@ app.on('ready', async () => {
     'trainerize.com': 'Trainerize',
   }
 
+  // Tab names for portal tools opened at #open/<key> (keys match the
+  // portal's tile keys in ToolGrid.jsx).
+  const PORTAL_TOOL_TAB_NAMES = {
+    calendar: 'Calendar', leaderboard: 'Leaderboard', drive: 'Shared Drive',
+    hr: 'HR Docs', helpCenter: 'Help Center', ticketing: 'Tickets',
+    trainerAvail: 'D1 Availability', forms: 'Forms', quizzes: 'Quiz Funnels',
+    groupX: 'Group X', facility: 'Courts & Pool', inventory: 'Inventory',
+    till: 'Till', ghlScripts: 'Scripts', nps: 'Feedback',
+    marketingTracker: 'Marketing', adsManager: 'Ads Manager',
+    eventCalendar: 'Event Calendar', media: 'Media Library', commNotes: 'Comm Notes',
+  }
+
+  function isPortalUrl(url) {
+    try { return new URL(url).origin === new URL(PORTAL_URL).origin } catch { return false }
+  }
+
   function getTabName(url) {
     try {
       const parsed = new URL(url)
-      // Check for reporting hash
+      // Portal views opened in their own tab, named after the view.
       if (parsed.hash && parsed.hash.startsWith('#reporting')) return 'Reporting'
+      if (parsed.hash && parsed.hash.startsWith('#analytics')) return 'Analytics'
+      const tool = parsed.hash && parsed.hash.match(/^#open\/([\w-]+)/)
+      if (tool) return PORTAL_TOOL_TAB_NAMES[tool[1]] || 'Portal'
       const hostname = parsed.hostname
       for (const [domain, name] of Object.entries(URL_TAB_NAMES)) {
         if (hostname.includes(domain) || hostname === domain) return name
@@ -775,9 +794,10 @@ app.on('ready', async () => {
       tabManager.createTab(abcDirect, 'ABC Financial', {
         preload: path.join(__dirname, 'abc-scraper.js'),
       })
-    } else if (url.includes('#reporting')) {
-      // Reporting tab uses portal preload for auth bridge
-      tabManager.createTab(url, 'Reporting', {
+    } else if (isPortalUrl(url)) {
+      // Portal pages (Reporting, Analytics, any tool opened with "Open Link in
+      // New Tab") use the portal preload for the auth bridge.
+      tabManager.createTab(url, getTabName(url), {
         preload: path.join(__dirname, 'portal-preload.js'),
       })
     } else if (url !== 'about:blank' && !url.startsWith('chrome')) {
