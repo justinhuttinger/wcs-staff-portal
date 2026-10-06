@@ -197,4 +197,29 @@ async function adjustInvoice(clubNumber, memberId, body) {
   return { ok, status: res.status, data: res.data };
 }
 
-module.exports = { fetchAllABCMembers, transformABCMember, fetchMemberInvoices, adjustInvoice };
+/**
+ * Add a CLUB note to a member's ABC profile.
+ * POST /{club}/members/{memberId}/notes
+ * Same success rule as adjustInvoice.
+ * @returns {Promise<{ok: boolean, status: number, data: object}>}
+ */
+async function addMemberNote(clubNumber, memberId, note) {
+  if (!ABC_APP_ID || !ABC_APP_KEY) {
+    throw new Error('ABC_APP_ID and ABC_APP_KEY must be set');
+  }
+  const url = `${ABC_BASE_URL}/${clubNumber}/members/${memberId}/notes`;
+  const res = await axios.post(url, { note, noteType: 'CLUB' }, {
+    headers: {
+      app_id: ABC_APP_ID,
+      app_key: ABC_APP_KEY,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    timeout: 60000,
+  });
+  const statusMsg = res.data?.status?.message;
+  const ok = res.status >= 200 && res.status < 300 && (statusMsg === undefined || statusMsg === 'success');
+  return { ok, status: res.status, data: res.data };
+}
+
+module.exports = { fetchAllABCMembers, transformABCMember, fetchMemberInvoices, adjustInvoice, addMemberNote };
