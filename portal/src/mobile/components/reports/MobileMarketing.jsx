@@ -306,7 +306,6 @@ export default function MobileMarketing() {
       const params = {
         start_date: dateRange.start,
         end_date: dateRange.end,
-        ...(activeOnly ? { status: 'ACTIVE' } : {}),
       }
       const [ov, camp] = await Promise.all([
         getMetaAdsOverview(params, { cache: true, signal }),
@@ -314,7 +313,7 @@ export default function MobileMarketing() {
       ])
       return { overview: ov, campaigns: camp.campaigns || [] }
     },
-    [dateRange?.start, dateRange?.end, activeOnly]
+    [dateRange?.start, dateRange?.end]
   )
   const overview = bundle?.overview ?? null
   const campaigns = bundle?.campaigns ?? []
@@ -337,6 +336,13 @@ export default function MobileMarketing() {
       return true
     })
   }, [campaigns, location, type])
+
+  // Totals count every campaign that spent in the range; "Active campaigns"
+  // just hides the paused ones from the list.
+  const visible = useMemo(
+    () => (activeOnly ? filtered.filter(c => c.status === 'ACTIVE') : filtered),
+    [filtered, activeOnly]
+  )
 
   // Recompute overview stats from filtered campaigns when filters are active
   const displayOverview = useMemo(() => {
@@ -492,19 +498,19 @@ export default function MobileMarketing() {
           {/* Campaign count */}
           <div className="px-4 mb-2">
             <p className="text-xs text-text-muted bg-surface/95 backdrop-blur-sm rounded-lg border border-border px-3 py-1 shadow-sm inline-block">
-              {filtered.length} campaign{filtered.length !== 1 ? 's' : ''}
+              {visible.length} campaign{visible.length !== 1 ? 's' : ''}
               {location !== 'All' || type !== 'All' ? ' (filtered)' : ''}
             </p>
           </div>
 
           {/* Campaign cards */}
           <div className="px-4 space-y-2.5">
-            {filtered.length === 0 ? (
+            {visible.length === 0 ? (
               <div className="bg-surface rounded-xl border border-border p-6 text-center">
                 <p className="text-sm text-text-muted">No campaigns match your filters</p>
               </div>
             ) : (
-              filtered.map((c, i) => (
+              visible.map((c, i) => (
                 <CampaignCard key={c.campaign_id || i} campaign={c} dateRange={dateRange} />
               ))
             )}
