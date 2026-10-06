@@ -455,6 +455,33 @@ export default function App() {
 
   // A password-reset link landing back on the portal. Read once at module load
   // (see recoveryToken below) so the token never sits in the address bar.
+  // "Open in New Tab" on a board tile (or on the Reports / Analytics toggle)
+  // loads the portal in a new tab at #open/<tool>, #reporting or #analytics.
+  // Once the signed-in user is known, open that view. Tools resolve through
+  // the pin catalog, so a link only opens what this user could pin anyway.
+  //
+  // Must stay ABOVE the early returns below (recovery / login / kiosk): hooks
+  // after them change the hook count between renders and blank the app
+  // (React #310). It reads PINNABLE and selectTab, which are declared further
+  // down, but only runs once a signed-in render has got past those returns.
+  const deepLinkDone = useRef(false)
+  useEffect(() => {
+    if (!user || deepLinkDone.current) return
+    deepLinkDone.current = true
+    const hash = window.location.hash
+    const m = hash.match(/^#open\/([\w-]+)$/)
+    if (m) {
+      // Drop the hash so a reload or Back to Portal lands on the board.
+      history.replaceState(null, '', window.location.pathname + window.location.search)
+      if (m[1] === 'calendar' || m[1] === 'leaderboard') selectTab(m[1])
+      else PINNABLE.find(p => p.key === 'tool:' + m[1])?.open()
+    } else if (hash.startsWith('#reporting')) {
+      setShowReporting(true)
+    } else if (hash.startsWith('#analytics') && canAnalytics) {
+      setShowAnalytics(true)
+    }
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (recovery) {
     return (
       <ResetPasswordScreen
@@ -662,27 +689,6 @@ export default function App() {
     }
   }
 
-  // "Open in New Tab" on a board tile (or on the Reports / Analytics toggle)
-  // loads the portal in a new tab at #open/<tool>, #reporting or #analytics.
-  // Once the signed-in user is known, open that view. Tools resolve through
-  // the pin catalog, so a link only opens what this user could pin anyway.
-  const deepLinkDone = useRef(false)
-  useEffect(() => {
-    if (!user || deepLinkDone.current) return
-    deepLinkDone.current = true
-    const hash = window.location.hash
-    const m = hash.match(/^#open\/([\w-]+)$/)
-    if (m) {
-      // Drop the hash so a reload or Back to Portal lands on the board.
-      history.replaceState(null, '', window.location.pathname + window.location.search)
-      if (m[1] === 'calendar' || m[1] === 'leaderboard') selectTab(m[1])
-      else PINNABLE.find(p => p.key === 'tool:' + m[1])?.open()
-    } else if (hash.startsWith('#reporting')) {
-      setShowReporting(true)
-    } else if (hash.startsWith('#analytics') && canAnalytics) {
-      setShowAnalytics(true)
-    }
-  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen bg-bg flex flex-col relative">
