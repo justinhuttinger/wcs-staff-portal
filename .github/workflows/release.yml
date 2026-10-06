@@ -44,7 +44,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        # macos-15, not macos-latest: on the macOS 26 image electron-builder
+        # 25 fails signing (it passes CSC_KEY_PASSWORD as the temp keychain's
+        # password to set-key-partition-list, which macOS 26 rejects with
+        # "SecKeychainUnlock: ... passphrase ... not correct"). Move back to
+        # macos-latest after upgrading electron-builder past that bug.
+        os: [windows-latest, macos-15]
 
     runs-on: ${{ matrix.os }}
 
@@ -66,7 +71,7 @@ jobs:
       # assets/icon.png with a 1024x1024 master at some point for crisp
       # retina rendering.
       - name: Generate macOS icon.icns
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-15'
         working-directory: launcher
         run: |
           set -euo pipefail
@@ -102,7 +107,7 @@ jobs:
       # APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD trigger notarization
       # using the team ID hardcoded in electron-builder.yml.
       - name: Build macOS dmg + zip (signed, notarized)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-15'
         working-directory: launcher
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

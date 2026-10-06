@@ -85,7 +85,8 @@ class TabManager {
     const preload = options.preload || undefined
 
     const isPortalPreload = preload && preload.includes('portal-preload')
-    const isAbcPreload = preload && preload.includes('abc-scraper') && require('./app-mode').IS_ABC_ONLY
+    const isAbcTab = !!preload && preload.includes('abc-scraper')
+    const isAbcPreload = isAbcTab && require('./app-mode').IS_ABC_ONLY
     const view = new BrowserView({
       webPreferences: {
         preload,
@@ -99,9 +100,10 @@ class TabManager {
     // version follows the bundled Chromium so it never looks out of date.
     const chromeUA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome.split('.')[0]}.0.0.0 Safari/537.36`
     view.webContents.setUserAgent(chromeUA)
-    // WCS ABC: mute ABC's own sounds (all of them: media, Web Audio, frames).
-    // The check-in alert cues play from alert-sound.js instead.
-    if (isAbcPreload) view.webContents.setAudioMuted(true)
+    // Mute ABC's own sounds (all of them: media, Web Audio, frames) in both
+    // apps. WCS ABC plays its check-in alert cues from alert-sound.js instead;
+    // the Portal's ABC tab is just silent.
+    if (isAbcTab) view.webContents.setAudioMuted(true)
 
     attachContextMenu(view.webContents)
 
