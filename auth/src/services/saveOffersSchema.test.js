@@ -329,3 +329,12 @@ test('reason questions: bad input is refused with a readable message', () => {
 test('reason questions: an empty list clears them', () => {
   assert.deepStrictEqual(validateReason({ questions: [] }, { partial: true }).row, { questions: [] })
 })
+
+test('validateSettings accepts the offer limit and bounds it', () => {
+  const ok = validateSettings({ offer_limit_count: '1', offer_limit_days: '90' })
+  assert.strictEqual(ok.ok, true)
+  assert.deepStrictEqual(ok.patch, { offer_limit_count: 1, offer_limit_days: 90 })
+  assert.strictEqual(validateSettings({ offer_limit_count: 11 }).ok, false)
+  assert.strictEqual(validateSettings({ offer_limit_days: -1 }).ok, false)
+  assert.strictEqual(validateSettings({ offer_limit_days: 1.5 }).ok, false)
+})
