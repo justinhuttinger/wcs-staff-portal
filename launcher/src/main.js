@@ -178,7 +178,7 @@ function applyLocationConfig({ location, abc_url } = {}) {
   }
 }
 
-// abc-scraper asks which app it's in (check-in cues + ABC mute are WCS ABC
+// abc-scraper asks which app it's in (check-in cues are WCS ABC
 // only). Registered before any window exists so the sync call always answers.
 ipcMain.on('wcs-app-mode', (e) => { e.returnValue = APP_MODE })
 // abc-scraper maps an agreement number's prefix to its home club. The preload
