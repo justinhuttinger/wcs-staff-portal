@@ -5,6 +5,7 @@ import { onlineJoin } from '../../lib/api'
 // one row per online join on a type with "set next month's dues" on.
 const STATUS_BADGE = {
   pending:         { label: 'Pending',            cls: 'bg-gray-100 text-gray-700' },
+  queued:          { label: 'Waiting on ABC queue', cls: 'bg-blue-100 text-blue-800' },
   adjusted:        { label: 'Dues adjusted',      cls: 'bg-green-100 text-green-800' },
   no_change:       { label: 'Already lower',      cls: 'bg-gray-100 text-gray-700' },
   no_dues_invoice: { label: 'No upcoming dues',   cls: 'bg-amber-100 text-amber-800' },
@@ -126,7 +127,11 @@ export default function OnlineJoinPromoDues() {
                 </td>
                 <td className="px-3 py-2">
                   <StatusBadge status={a.status} />
-                  {a.error && <div className="text-[10px] text-red-700 mt-1 max-w-xs break-words">{a.error}</div>}
+                  {a.error && (
+                    <div className={`text-[10px] mt-1 max-w-xs break-words ${a.status === 'queued' ? 'text-text-muted' : 'text-red-700'}`}>
+                      {a.error}{a.status === 'queued' && ' · retries hourly'}
+                    </div>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-xs">
                   {a.note_added ? 'Added' : a.status === 'adjusted' ? <span className="text-red-700">Missing</span> : '—'}
