@@ -46,4 +46,13 @@ contextBridge.exposeInMainWorld('wcsElectron', {
   onNavigate: (callback) => {
     ipcRenderer.on('navigate-to', (e, view) => callback(view))
   },
+  // App updates for the bell: { state, version, percent }, where state is
+  // 'none' | 'available' | 'downloading' | 'ready' | 'installing'.
+  getUpdateStatus: () => ipcRenderer.invoke('get-update-status'),
+  onUpdateStatus: (callback) => {
+    const handler = (e, st) => callback(st)
+    ipcRenderer.on('update-status', handler)
+    return () => ipcRenderer.removeListener('update-status', handler)
+  },
+  installUpdate: () => ipcRenderer.invoke('install-update'),
 })
