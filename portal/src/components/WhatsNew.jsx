@@ -20,12 +20,75 @@ function fmtDate(d) {
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+// Desktop app update status from the launcher (window.wcsElectron, 1.8.3+):
+// { state: 'none' | 'available' | 'downloading' | 'ready' | 'installing',
+//   version, percent }. Always { state: 'none' } in a plain browser.
+function useAppUpdate() {
+  const [update, setUpdate] = useState({ state: 'none' })
+  useEffect(() => {
+    const el = window.wcsElectron
+    if (!el?.getUpdateStatus) return
+    let ignore = false
+    el.getUpdateStatus().then(st => { if (!ignore && st) setUpdate(st) }).catch(() => {})
+    const off = el.onUpdateStatus?.(st => setUpdate(st))
+    return () => { ignore = true; if (typeof off === 'function') off() }
+  }, [])
+  return update
+}
+
+// The update card at the top of the bell panel. 'available' (Windows kiosks)
+// and 'ready' (downloaded, Mac) offer Update now; the app closes, installs and
+// reopens by itself.
+function UpdateCard({ update }) {
+  const [error, setError] = useState(null)
+  const canInstall = update.state === 'available' || update.state === 'ready'
+
+  async function install() {
+    setError(null)
+    try {
+      const res = await window.wcsElectron.installUpdate()
+      if (res && res.ok === false) setError(res.error || 'Could not start the update')
+    } catch (e) {
+      setError(e?.message || 'Could not start the update')
+    }
+  }
+
+  return (
+    <div className="flex gap-3 rounded-xl border border-wcs-red/40 bg-wcs-red/5 p-3">
+      <div className="mt-1.5 w-2 h-2 rounded-full flex-shrink-0 bg-wcs-red" />
+      <div className="min-w-0 flex-1">
+        <h4 className="text-sm font-bold text-text-primary">
+          App update available{update.version ? ` (v${update.version})` : ''}
+        </h4>
+        <p className="text-sm text-text-muted mt-0.5">
+          {update.state === 'installing'
+            ? 'Updating now. The app will close and reopen in a minute.'
+            : update.state === 'downloading'
+              ? `Downloading the update${update.percent != null ? ` (${update.percent}%)` : ''}...`
+              : 'A new version of the Portal app is ready. It installs by itself overnight, or update now: the app closes and reopens in about a minute.'}
+        </p>
+        {error && <p className="text-xs text-wcs-red mt-1">{error}</p>}
+        {canInstall && (
+          <button
+            onClick={install}
+            className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-lg bg-wcs-red text-white hover:opacity-90 transition-opacity"
+          >
+            Update now
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // "What's New" top-bar bell. Shows the changelog entries this user can actually
 // use (audience-filtered), with an unread dot until they open it. bgImage styles
 // the button to match the Admin/Sign Out buttons on background-image locations.
 export default function WhatsNew({ user, bgImage }) {
   const [open, setOpen] = useState(false)
   const [lastSeen, setLastSeen] = useState(readCache) // instant cache; server reconciles below
+  const update = useAppUpdate()
+  const hasUpdate = update.state !== 'none'
 
   const entries = useMemo(() => visibleChangelog({
     role: user?.staff?.role,
@@ -46,11 +109,12 @@ export default function WhatsNew({ user, bgImage }) {
     return () => { ignore = true }
   }, [])
 
-  // Nothing relevant to this user -> no bell at all.
-  if (entries.length === 0) return null
+  // Nothing relevant to this user and no app update -> no bell at all.
+  if (entries.length === 0 && !hasUpdate) return null
 
-  const latestId = entries[0].id
-  const unseen = entries.filter(e => e.id > lastSeen).length
+  const latestId = entries[0]?.id || 0
+  // A pending app update counts as one unread item until it's installed.
+  const unseen = entries.filter(e => e.id > lastSeen).length + (hasUpdate ? 1 : 0)
 
   function openPanel() {
     setOpen(true)
@@ -80,6 +144,7 @@ export default function WhatsNew({ user, bgImage }) {
           <button onClick={() => setOpen(false)} className="text-text-muted hover:text-text-primary text-2xl leading-none">&times;</button>
         </div>
         <div className="overflow-y-auto px-5 py-4 space-y-5">
+          {hasUpdate && <UpdateCard update={update} />}
           {entries.map(e => (
             <div key={e.id} className="flex gap-3">
               <div className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${e.id > lastSeen ? 'bg-wcs-red' : 'bg-border'}`} />

@@ -19,6 +19,10 @@
 //
 // Quiet moment = the machine has been idle IDLE_MINUTES, or it's inside the
 // overnight window.
+//
+// UPDATE NOW: the portal's bell shows "Update available" with an Update now
+// button (getStatus / onStatus / installNow, bridged in main.js). That skips
+// the wait for a quiet moment and installs straight away the same way.
 
 const { app, powerMonitor } = require('electron')
 const { autoUpdater } = require('electron-updater')
@@ -39,6 +43,18 @@ const TASKS = { portal: 'WCS Portal', abc: 'WCS ABC' }
 let log = () => {}
 let pendingVersion = null
 let installTimer = null
+let mode = null          // { selfInstall, taskName } once start() has run
+let installRequested = false
+
+// What the portal's bell shows. state: 'none' | 'available' (newer build on
+// the feed) | 'downloading' | 'ready' (downloaded, self-install only) |
+// 'installing'.
+let status = { state: 'none', version: null, percent: null }
+const listeners = new Set()
+function setStatus(next) {
+  status = { ...status, ...next }
+  for (const fn of listeners) { try { fn(status) } catch {} }
+}
 
 // fs.access(W_OK) on Windows only checks the read-only attribute, not ACLs,
 // so actually try to create a file in the install directory.
@@ -98,6 +114,7 @@ function start(logger) {
   log = logger || (() => {})
   const selfInstall = canWriteInstallDir()
   const taskName = selfInstall ? null : updaterTaskName()
+  mode = { selfInstall, taskName }
   log('[Updater] Mode: ' + (selfInstall ? 'self-install (silent, idle/overnight)' : 'SYSTEM task ' + (taskName || '(unknown feed)')))
 
   autoUpdater.logger = { info: log, warn: log, error: log }
@@ -108,10 +125,21 @@ function start(logger) {
 
   autoUpdater.on('checking-for-update', () => log('[Updater] Checking for updates...'))
   autoUpdater.on('update-not-available', () => log('[Updater] App is up to date'))
-  autoUpdater.on('download-progress', (p) => log('[Updater] Downloading: ' + Math.round(p.percent) + '%'))
-  autoUpdater.on('error', (err) => log('[Updater] Error: ' + (err && err.message)))
+  autoUpdater.on('download-progress', (p) => {
+    log('[Updater] Downloading: ' + Math.round(p.percent) + '%')
+    setStatus({ state: 'downloading', percent: Math.round(p.percent) })
+  })
+  autoUpdater.on('error', (err) => {
+    log('[Updater] Error: ' + (err && err.message))
+    // A failed Update now goes back to offering the button.
+    if (status.state === 'downloading' || status.state === 'installing') {
+      installRequested = false
+      setStatus({ state: status.version ? 'available' : 'none', percent: null })
+    }
+  })
   autoUpdater.on('update-available', (info) => {
     log('[Updater] Update available: v' + info.version)
+    if (status.state !== 'installing') setStatus({ state: selfInstall ? 'downloading' : 'available', version: info.version, percent: null })
     if (selfInstall || !taskName) return
     pendingVersion = info.version
     whenQuiet(() => runSystemTask(taskName))
@@ -119,6 +147,8 @@ function start(logger) {
   autoUpdater.on('update-downloaded', (info) => {
     log('[Updater] Update downloaded: v' + info.version + ' - will install at the next quiet moment')
     pendingVersion = info.version
+    setStatus({ state: 'ready', version: info.version, percent: null })
+    if (installRequested) return installNow()
     // isSilent=true runs the NSIS installer with /S; forceRunAfter=true
     // relaunches the app when it finishes.
     whenQuiet(() => {
@@ -132,4 +162,40 @@ function start(logger) {
   setInterval(check, CHECK_EVERY_MS)
 }
 
-module.exports = { start }
+// Install the pending update now (the bell's Update now button).
+// Per-machine Windows: start the SYSTEM task, which installs silently, closes
+// this app and relaunches it. Self-install: apply the downloaded update and
+// relaunch, or download it first and install as soon as it lands.
+function installNow() {
+  if (!mode || !status.version) return { ok: false, error: 'No update available' }
+  installRequested = true
+  if (mode.selfInstall) {
+    if (status.state === 'ready') {
+      log('[Updater] Update now - installing v' + status.version)
+      setStatus({ state: 'installing' })
+      setImmediate(() => autoUpdater.quitAndInstall(true, true))
+    } else {
+      log('[Updater] Update now - downloading v' + status.version + ' first')
+      setStatus({ state: 'downloading' })
+      autoUpdater.downloadUpdate().catch(err => log('[Updater] Download failed: ' + err.message))
+    }
+    return { ok: true }
+  }
+  if (!mode.taskName) return { ok: false, error: 'Updater task not found on this PC' }
+  pendingVersion = status.version
+  if (installTimer) { clearInterval(installTimer); installTimer = null }
+  setStatus({ state: 'installing' })
+  log('[Updater] Update now - starting ' + mode.taskName + ' for v' + status.version)
+  execFile('schtasks.exe', ['/Run', '/TN', mode.taskName], { windowsHide: true }, (err, stdout, stderr) => {
+    if (!err) return
+    log('[Updater] Could not start ' + mode.taskName + ' (' + String(stderr || err.message).trim() + ')')
+    installRequested = false
+    setStatus({ state: 'available' })
+  })
+  return { ok: true }
+}
+
+function getStatus() { return status }
+function onStatus(fn) { listeners.add(fn); return () => listeners.delete(fn) }
+
+module.exports = { start, installNow, getStatus, onStatus }

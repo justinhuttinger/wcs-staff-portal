@@ -181,6 +181,10 @@ function applyLocationConfig({ location, abc_url } = {}) {
 // abc-scraper asks which app it's in (check-in cues are WCS ABC
 // only). Registered before any window exists so the sync call always answers.
 ipcMain.on('wcs-app-mode', (e) => { e.returnValue = APP_MODE })
+
+// Update status + Update now for the portal's bell (see silent-updater.js).
+ipcMain.handle('get-update-status', () => silentUpdater.getStatus())
+ipcMain.handle('install-update', () => silentUpdater.installNow())
 // abc-scraper maps an agreement number's prefix to its home club. The preload
 // is sandboxed and can't read clubs.json, so it asks here.
 ipcMain.on('wcs-club-numbers', (e) => { e.returnValue = CLUB_NUMBERS })
@@ -293,6 +297,14 @@ app.on('ready', async () => {
 
   // Silent background updates (no dialogs) - see silent-updater.js
   silentUpdater.start(log)
+
+  // The portal's bell shows "Update available" + Update now. Push every
+  // status change to all tabs (only portal tabs listen).
+  silentUpdater.onStatus((st) => {
+    for (const { view } of tabManager.tabs.values()) {
+      if (!view.webContents.isDestroyed()) view.webContents.send('update-status', st)
+    }
+  })
 
   // Force-update polling — relaunches the kiosk if its version drops below
   // the min_launcher_version pinned via the admin panel. That pin is a Portal
