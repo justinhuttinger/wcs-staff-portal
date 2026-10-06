@@ -18,6 +18,8 @@ function toForm(settings) {
     enabled: s.enabled ?? true,
     require_email_code: s.require_email_code ?? true,
     max_offers_shown: String(s.max_offers_shown ?? 2),
+    offer_limit_count: String(s.offer_limit_count ?? 1),
+    offer_limit_days: String(s.offer_limit_days ?? 90),
     owed_balance_mode: ['block', 'charge'].includes(s.owed_balance_mode) ? s.owed_balance_mode : 'staff',
     staff_notify_emails: (s.staff_notify_emails || []).join('\n'),
   }
@@ -64,6 +66,10 @@ export default function SettingsTab() {
     const bad = emails.filter(e => !EMAIL_RE.test(e))
     if (bad.length) problems.staff_notify_emails = `Not a valid email: ${bad.join(', ')}`
     for (const k of COPY_KEYS) if (!f[k].trim()) problems[k] = 'This text cannot be blank'
+    const limitCount = Number(f.offer_limit_count)
+    const limitDays = Number(f.offer_limit_days)
+    if (!Number.isInteger(limitCount) || limitCount < 0 || limitCount > 10) problems.offer_limit_count = 'A whole number from 0 to 10'
+    if (!Number.isInteger(limitDays) || limitDays < 0 || limitDays > 730) problems.offer_limit_days = 'A whole number of days from 0 to 730'
     if (Object.keys(problems).length) {
       setErrors(problems)
       setMsg('Check the highlighted fields')
@@ -73,6 +79,8 @@ export default function SettingsTab() {
       enabled: f.enabled,
       require_email_code: f.require_email_code,
       max_offers_shown: Number(f.max_offers_shown),
+      offer_limit_count: limitCount,
+      offer_limit_days: limitDays,
       owed_balance_mode: f.owed_balance_mode,
       staff_notify_emails: emails,
     }
@@ -143,6 +151,25 @@ export default function SettingsTab() {
                       : 'The cancel request is saved and staff collect the balance and finish it in ABC.'}
                 </p>}
           </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-text-muted mb-1">Offer limit per member</label>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-text-primary">
+            <input type="number" min={0} max={10} step={1} value={f.offer_limit_count}
+              onChange={e => set('offer_limit_count', e.target.value)}
+              className={`${inputClass(errors.offer_limit_count)} w-20`} aria-label="Offers per member" />
+            <span>{f.offer_limit_count === '1' ? 'offer' : 'offers'} every</span>
+            <input type="number" min={0} max={730} step={1} value={f.offer_limit_days}
+              onChange={e => set('offer_limit_days', e.target.value)}
+              className={`${inputClass(errors.offer_limit_days)} w-24`} aria-label="Days" />
+            <span>days</span>
+          </div>
+          {errors.offer_limit_count || errors.offer_limit_days
+            ? <p className="text-xs text-wcs-red mt-1">{errors.offer_limit_count || errors.offer_limit_days}</p>
+            : <p className="text-xs text-text-muted mt-1">
+                A member who already took this many save offers in that many days sees no offers and goes straight to cancelling. 0 days turns the limit off.
+              </p>}
         </div>
 
         <div>

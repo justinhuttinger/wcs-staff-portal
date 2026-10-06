@@ -35,6 +35,8 @@ const SETTINGS_EDITABLE = [
   ...SETTINGS_BOOL_FIELDS,
   'max_offers_shown',
   'owed_balance_mode',
+  'offer_limit_count',
+  'offer_limit_days',
   ...SETTINGS_TEXT_FIELDS,
   'staff_notify_emails',
 ]
@@ -104,6 +106,18 @@ function validateSettings(body) {
     const n = toNumber(b.max_offers_shown)
     if (!isIntIn(n, 0, 5)) fields.max_offers_shown = 'Max offers shown must be a whole number from 0 to 5'
     else patch.max_offers_shown = n
+  }
+
+  if ('offer_limit_count' in b) {
+    const n = toNumber(b.offer_limit_count)
+    if (!isIntIn(n, 0, 10)) fields.offer_limit_count = 'Offers per member must be a whole number from 0 to 10'
+    else patch.offer_limit_count = n
+  }
+
+  if ('offer_limit_days' in b) {
+    const n = toNumber(b.offer_limit_days)
+    if (!isIntIn(n, 0, 730)) fields.offer_limit_days = 'Days must be a whole number from 0 to 730'
+    else patch.offer_limit_days = n
   }
 
   if ('owed_balance_mode' in b) {
