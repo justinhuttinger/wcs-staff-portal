@@ -5,7 +5,7 @@ const { getSkipList } = require('../config/membership-skip-list');
 const { buildContactIndex, matchContact, isClaimedByOther } = require('./contactIndex');
 const referral = require('../config/referral');
 const { isEligibleCandidate, processReferralReward } = require('./referralRewards');
-const { fetchMemberInvoices, adjustInvoice } = require('./client');
+const { fetchMemberInvoices, adjustInvoice, addMemberNote } = require('./client');
 const { MEMBER_DETAIL_FIELD_KEYS, desiredMemberDetails, memberDetailUpdates, dateOfBirthUpdate } = require('./memberDetailFields');
 const { PT_FIELD_KEYS, desiredPtFields, ptFieldUpdates, loadPtSummaries, ptSummaryFor, ptOnlyContact } = require('./ptFields');
 
@@ -775,6 +775,7 @@ async function reconcileLocation(location, runId) {
           today,
           fetchMemberInvoices,
           adjustInvoice,
+          addNote: addMemberNote,
           tagReferrer,
           recordReward,
         });
