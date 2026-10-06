@@ -5,6 +5,7 @@ import OnlineJoinPlans from './OnlineJoinPlans'
 import OnlineJoinAgeRules from './OnlineJoinAgeRules'
 import OnlineJoinCopy from './OnlineJoinCopy'
 import OnlineJoinSignups from './OnlineJoinSignups'
+import OnlineJoinPromoDues from './OnlineJoinPromoDues'
 import OnlineJoinPreview from './OnlineJoinPreview'
 
 const TABS = [
@@ -15,6 +16,7 @@ const TABS = [
   { key: 'age-rules', label: 'Age Rules', desc: 'Named age ranges with live preview' },
   { key: 'copy',      label: 'Copy',      desc: 'Editable global strings' },
   { key: 'signups',   label: 'Signups',   desc: 'Read-only signup log + error trail' },
+  { key: 'promo-dues', label: 'Promo Dues', desc: "Promo types: next month's dues set in ABC (free or $X) + profile notes" },
 ]
 
 export default function OnlineJoinAdmin() {
@@ -48,6 +50,7 @@ export default function OnlineJoinAdmin() {
       {tab === 'age-rules' && <OnlineJoinAgeRules />}
       {tab === 'copy' && <OnlineJoinCopy />}
       {tab === 'signups' && <OnlineJoinSignups />}
+      {tab === 'promo-dues' && <OnlineJoinPromoDues />}
     </div>
   )
 }
