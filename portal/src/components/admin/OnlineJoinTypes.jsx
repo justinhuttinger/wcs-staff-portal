@@ -16,6 +16,7 @@ const EMPTY_TYPE = {
   promo_ends_at: '',
   promo_callout: '',
   promo_callout_enabled: false,
+  free_next_month: false,
   allow_secondary_members: false,
   active: true,
 }
@@ -93,6 +94,7 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
         promo_ends_at: toIso(draft.promo_ends_at),
         promo_callout: (draft.promo_callout || '').trim() || null,
         promo_callout_enabled: !!draft.promo_callout_enabled,
+        free_next_month: !!draft.free_next_month,
         allow_secondary_members: !!draft.allow_secondary_members,
         active: !!draft.active,
       }
@@ -280,6 +282,24 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
                 />
               </div>
             )}
+          </section>
+
+          <section>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={!!draft.free_next_month}
+                onChange={e => update('free_next_month', e.target.checked)}
+                className="w-4 h-4 mt-0.5"
+              />
+              <span className="text-sm text-text-primary">
+                Next month free
+                <span className="block text-[10px] text-text-muted">
+                  After someone joins online on this type, their next dues invoice in ABC is set to $0.00
+                  and a note is added to their ABC profile. Tracked under the Free Months tab.
+                </span>
+              </span>
+            </label>
           </section>
 
           <section>

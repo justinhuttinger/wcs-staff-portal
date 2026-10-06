@@ -320,6 +320,8 @@ export const onlineJoin = {
     return prospectsApi('/api/admin/online-join/signups' + (qs ? '?' + qs : ''))
   },
   getSignup: (id) => prospectsApi(`/api/admin/online-join/signups/${id}`),
+  listDuesAdjustments: () => prospectsApi('/api/admin/online-join/dues-adjustments'),
+  retryDuesAdjustment: (id) => prospectsApi(`/api/admin/online-join/dues-adjustments/${id}/retry`, { method: 'POST' }),
 
   // ABC plan discovery (used by Plans editor "Pull from ABC")
   abcPlans: (clubNumber) => prospectsApi(`/api/admin/online-join/abc-plans/${encodeURIComponent(clubNumber)}`),
