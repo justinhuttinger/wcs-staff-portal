@@ -16,6 +16,7 @@ const EMPTY_TYPE = {
   promo_ends_at: '',
   promo_callout: '',
   promo_callout_enabled: false,
+  next_month_dues: null,
   allow_secondary_members: false,
   active: true,
 }
@@ -93,6 +94,8 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
         promo_ends_at: toIso(draft.promo_ends_at),
         promo_callout: (draft.promo_callout || '').trim() || null,
         promo_callout_enabled: !!draft.promo_callout_enabled,
+        next_month_dues: draft.next_month_dues == null || draft.next_month_dues === ''
+          ? null : Math.max(0, Number(draft.next_month_dues) || 0),
         allow_secondary_members: !!draft.allow_secondary_members,
         active: !!draft.active,
       }
@@ -277,6 +280,36 @@ function TypeEditor({ type, locations, ageRules, onClose, onSaved }) {
                   value={draft.promo_callout}
                   onChange={v => update('promo_callout', v)}
                   placeholder="HALF OFF AND NO ENROLLMENT"
+                />
+              </div>
+            )}
+          </section>
+
+          <section>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={draft.next_month_dues != null}
+                onChange={e => update('next_month_dues', e.target.checked ? '0' : null)}
+                className="w-4 h-4 mt-0.5"
+              />
+              <span className="text-sm text-text-primary">
+                Promo: set next month's dues
+                <span className="block text-[10px] text-text-muted">
+                  After someone joins online on this type, their next dues invoice in ABC is set to this
+                  amount and a note is added to their ABC profile. Tracked under the Promo Dues tab.
+                </span>
+              </span>
+            </label>
+            {draft.next_month_dues != null && (
+              <div className="mt-2 max-w-[200px]">
+                <Field
+                  label="Next month's dues ($)"
+                  type="number"
+                  value={draft.next_month_dues}
+                  onChange={v => update('next_month_dues', v)}
+                  placeholder="0"
+                  hint="0 = free month"
                 />
               </div>
             )}
