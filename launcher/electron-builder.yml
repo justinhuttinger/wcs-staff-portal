@@ -21,6 +21,11 @@ publish:
     owner: justinhuttinger
     repo: wcs-staff-portal
 
+# Portal has no native modules of its own: the serial port module (WCS ABC's
+# call button) is excluded below and ships prebuilt binaries anyway. Without
+# this, the build tries to compile it with node-gyp and fails on CI.
+npmRebuild: false
+
 # The call button's Zigbee libraries are WCS ABC only (see pager.js); keep
 # them out of the Portal installer.
 files:
