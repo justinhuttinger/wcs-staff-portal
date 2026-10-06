@@ -53,10 +53,22 @@ const ORDERING_LINKS = [
 // pinned-tab picker has to agree with this board about both, and it cannot
 // import from a component.
 
-function SvgTileButton({ onClick, iconPath, label, desc, badge, star, last }) {
+// With an href the tile is a link, so right-click offers "Open in New Tab"
+// (the launcher's menu, or the browser's own) and Ctrl/middle-click work too.
+// A plain left-click still opens the tool in place.
+function SvgTileButton({ onClick, href, iconPath, label, desc, badge, star, last }) {
+  const Tag = href ? 'a' : 'button'
+  const handleClick = href
+    ? (e) => {
+        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+        e.preventDefault()
+        onClick?.()
+      }
+    : onClick
   return (
-    <button
-      onClick={onClick}
+    <Tag
+      href={href}
+      onClick={handleClick}
       className={(last ? 'portal-tile--last ' : '') + "portal-tile group relative flex flex-col items-center justify-center gap-3 rounded-[14px] bg-surface border border-border p-4 h-40 overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_8px_32px_rgba(0,0,0,0.12)]"}
     >
       {star && (
@@ -80,7 +92,7 @@ function SvgTileButton({ onClick, iconPath, label, desc, badge, star, last }) {
         <span className="portal-tile__label block text-base font-semibold text-text-primary line-clamp-2 leading-tight">{label}</span>
         <span className="portal-tile__desc block text-xs font-medium text-tile-sub uppercase tracking-[0.8px] mt-1">{desc}</span>
       </div>
-    </button>
+    </Tag>
   )
 }
 
@@ -318,19 +330,19 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
   // board's own Marketing tile is shown only when this is non-empty.
   const marketingCells = [
     onMarketingTracker && (canMarketingTracker ?? (roleIdx >= ROLE_LEVELS.corporate || marketingAddon)) && (
-      <SvgTileButton key="tracker" onClick={() => { setShowMarketing(false); onMarketingTracker() }}
+      <SvgTileButton key="tracker" href="#open/marketingTracker" onClick={() => { setShowMarketing(false); onMarketingTracker() }}
         iconPath={TILE_ICONS.marketing} label="Campaigns" desc="Marketing tracker" />
     ),
     onAdsManager && roleIdx >= ROLE_LEVELS.admin && (
-      <SvgTileButton key="ads" onClick={() => { setShowMarketing(false); onAdsManager() }}
+      <SvgTileButton key="ads" href="#open/adsManager" onClick={() => { setShowMarketing(false); onAdsManager() }}
         iconPath={TILE_ICONS.adsManager} label="Ads Manager" desc="Build Meta ads" />
     ),
     onForms && (roleIdx >= ROLE_LEVELS.admin || (visibleTools || []).includes('forms')) && (
-      <SvgTileButton key="forms" onClick={() => { setShowMarketing(false); onForms() }}
+      <SvgTileButton key="forms" href="#open/forms" onClick={() => { setShowMarketing(false); onForms() }}
         iconPath={TILE_ICONS.forms} label="Forms" desc="Signups" />
     ),
     onQuizzes && (roleIdx >= ROLE_LEVELS.admin || (visibleTools || []).includes('quizzes')) && (
-      <SvgTileButton key="quizzes" onClick={() => { setShowMarketing(false); onQuizzes() }}
+      <SvgTileButton key="quizzes" href="#open/quizzes" onClick={() => { setShowMarketing(false); onQuizzes() }}
         iconPath={TILE_ICONS.quizzes} label="Quiz Funnels" desc="Lead quizzes" />
     ),
   ].filter(Boolean)
@@ -361,14 +373,14 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
   // offers a screen the board itself would have withheld.
   const moreCells = [
     onTill && (visibleTools || []).includes('till') && (
-      <SvgTileButton key="till" onClick={() => { setShowMore(false); onTill() }}
+      <SvgTileButton key="till" href="#open/till" onClick={() => { setShowMore(false); onTill() }}
         iconPath={TILE_ICONS.till} label="Till" desc="Cash in / out" />
     ),
     // Event Calendar — GMs plan club events (type 'event' rows that also land
     // on the Marketing calendar). Role/override-driven via 'eventCalendar'
     // (seeded manager + admin in migration 230).
     onEventCalendar && (visibleTools || []).includes('eventCalendar') && (
-      <SvgTileButton key="eventCalendar" onClick={() => { setShowMore(false); onEventCalendar() }}
+      <SvgTileButton key="eventCalendar" href="#open/eventCalendar" onClick={() => { setShowMore(false); onEventCalendar() }}
         iconPath={TILE_ICONS.eventCalendar} label="Event Calendar" desc="Club events" />
     ),
   ].filter(Boolean)
@@ -417,43 +429,43 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
         case 'notifications':
           return <ToolButton key={key} label="Send Notifications" description="Member App" url="https://westcoaststrength.trainerize.com/app/login" />
         case 'drive':
-          return onDrive && <SvgTileButton key={key} onClick={onDrive} iconPath={DRIVE_ICON} label="Shared Drive" desc="Documents" />
+          return onDrive && <SvgTileButton href="#open/drive" key={key} onClick={onDrive} iconPath={DRIVE_ICON} label="Shared Drive" desc="Documents" />
         case 'calendar':
-          return onCalendar && <SvgTileButton key={key} onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} />
+          return onCalendar && <SvgTileButton href="#open/calendar" key={key} onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} />
         case 'leaderboard':
-          return onLeaderboard && <SvgTileButton key={key} onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />
+          return onLeaderboard && <SvgTileButton href="#open/leaderboard" key={key} onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />
         case 'hr':
-          return onHR && <SvgTileButton key={key} onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />
+          return onHR && <SvgTileButton href="#open/hr" key={key} onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />
         case 'helpCenter':
-          return onHelpCenter && <SvgTileButton key={key} onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />
+          return onHelpCenter && <SvgTileButton href="#open/helpCenter" key={key} onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />
         case 'ordering':
           return <SvgTileButton key={key} onClick={() => setShowOrdering(true)} iconPath={TILE_ICONS.ordering} label="Ordering" desc="Vendors" />
         case 'ticketing':
-          return onTicketsBoard && <SvgTileButton key={key} onClick={onTicketsBoard} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Submit & Track" />
+          return onTicketsBoard && <SvgTileButton href="#open/ticketing" key={key} onClick={onTicketsBoard} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Submit & Track" />
         case 'trainerAvail':
-          return onTrainerAvail && <SvgTileButton key={key} onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />
+          return onTrainerAvail && <SvgTileButton href="#open/trainerAvail" key={key} onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />
         case 'reporting':
-          return onReporting && <SvgTileButton key={key} onClick={() => { window.location.hash = '#reporting'; onReporting() }} iconPath={TILE_ICONS.reporting} label="Reporting" desc="Reports" />
+          return onReporting && <SvgTileButton key={key} href="#reporting" onClick={() => { window.location.hash = '#reporting'; onReporting() }} iconPath={TILE_ICONS.reporting} label="Reporting" desc="Reports" />
         case 'forms':
-          return onForms && <SvgTileButton key={key} onClick={onForms} iconPath={TILE_ICONS.forms} label="Forms" desc="Signups" />
+          return onForms && <SvgTileButton href="#open/forms" key={key} onClick={onForms} iconPath={TILE_ICONS.forms} label="Forms" desc="Signups" />
         case 'quizzes':
-          return onQuizzes && <SvgTileButton key={key} onClick={onQuizzes} iconPath={TILE_ICONS.quizzes} label="Quiz Funnels" desc="Lead quizzes" />
+          return onQuizzes && <SvgTileButton href="#open/quizzes" key={key} onClick={onQuizzes} iconPath={TILE_ICONS.quizzes} label="Quiz Funnels" desc="Lead quizzes" />
         case 'groupX':
-          return onGroupX && <SvgTileButton key={key} onClick={onGroupX} iconPath={TILE_ICONS.groupX} label="Group X" desc="Classes" />
+          return onGroupX && <SvgTileButton href="#open/groupX" key={key} onClick={onGroupX} iconPath={TILE_ICONS.groupX} label="Group X" desc="Classes" />
         case 'facility':
-          return onFacility && <SvgTileButton key={key} onClick={onFacility} iconPath={TILE_ICONS.facility} label="Courts & Pool" desc="Schedules" />
+          return onFacility && <SvgTileButton href="#open/facility" key={key} onClick={onFacility} iconPath={TILE_ICONS.facility} label="Courts & Pool" desc="Schedules" />
         // The custom board is exactly the tiles an admin granted, so it is
         // short by construction and has no "More" drawer to nest Till in.
         case 'inventory':
-          return onInventory && <SvgTileButton key={key} onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />
+          return onInventory && <SvgTileButton href="#open/inventory" key={key} onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />
         case 'till':
-          return onTill && <SvgTileButton key={key} onClick={onTill} iconPath={TILE_ICONS.till} label="Till" desc="Cash in / out" />
+          return onTill && <SvgTileButton href="#open/till" key={key} onClick={onTill} iconPath={TILE_ICONS.till} label="Till" desc="Cash in / out" />
         case 'ghlScripts':
-          return onGhlScripts && <SvgTileButton key={key} onClick={onGhlScripts} iconPath={TILE_ICONS.ghlScripts} label="Workflows & Scripts (GHL)" desc="SMS & call scripts" />
+          return onGhlScripts && <SvgTileButton href="#open/ghlScripts" key={key} onClick={onGhlScripts} iconPath={TILE_ICONS.ghlScripts} label="Workflows & Scripts (GHL)" desc="SMS & call scripts" />
         case 'nps':
-          return onNps && <SvgTileButton key={key} onClick={onNps} iconPath={TILE_ICONS.nps} label="Feedback" desc="Member surveys" />
+          return onNps && <SvgTileButton href="#open/nps" key={key} onClick={onNps} iconPath={TILE_ICONS.nps} label="Feedback" desc="Member surveys" />
         case 'marketingTracker':
-          return onMarketingTracker && <SvgTileButton key={key} onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing" desc="Campaigns" />
+          return onMarketingTracker && <SvgTileButton href="#open/marketingTracker" key={key} onClick={onMarketingTracker} iconPath={TILE_ICONS.marketing} label="Marketing" desc="Campaigns" />
         default:
           return null
       }
@@ -701,7 +713,7 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
               Google Drive link). It opens a portal view rather than an external
               service, so driveInTools moves it to the Tools board where it
               belongs; it stays here for the themes that keep one board. */}
-          {onDrive && !driveInTools && <SvgTileButton onClick={onDrive} iconPath={DRIVE_ICON} label="Shared Drive" desc="Documents" />}
+          {onDrive && !driveInTools && <SvgTileButton href="#open/drive" onClick={onDrive} iconPath={DRIVE_ICON} label="Shared Drive" desc="Documents" />}
           {/* Insights (FitnessBI / ABC) — role/override-driven (seeded manager+ in migration 203) */}
           {(visibleTools || []).includes('insights') && (
             <ToolButton label="Insights" description="ABC" url="https://app.fitnessbi.com/signin" />
@@ -731,35 +743,35 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
         <div className="portal-tile-grid grid grid-cols-4 gap-4">
           {/* Cancel used to lead this board; it is an App now. */}
           {/* 2. Calendar (Tours + Day Ones combined) */}
-          {onCalendar && !omitted.has('calendar') && <SvgTileButton onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} star />}
+          {onCalendar && !omitted.has('calendar') && <SvgTileButton href="#open/calendar" onClick={onCalendar} iconPath={TILE_ICONS.tours} label="Calendar" desc="Tours & Day Ones" badge={calendarBadge} star />}
           {/* 4. Leaderboard */}
-          {onLeaderboard && !omitted.has('leaderboard') && <SvgTileButton onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />}
+          {onLeaderboard && !omitted.has('leaderboard') && <SvgTileButton href="#open/leaderboard" onClick={onLeaderboard} iconPath={TILE_ICONS.leaderboard} label="Leaderboard" desc="Rankings" />}
           {/* 4.5. Shared Drive, when it has been moved off the Apps board. */}
-          {onDrive && driveInTools && <SvgTileButton onClick={onDrive} iconPath={DRIVE_ICON} label="Shared Drive" desc="Documents" />}
+          {onDrive && driveInTools && <SvgTileButton href="#open/drive" onClick={onDrive} iconPath={DRIVE_ICON} label="Shared Drive" desc="Documents" />}
           {/* 4.6. HR Documents — manager+ only */}
-          {onHR && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />}
+          {onHR && roleIdx >= ROLE_LEVELS.manager && <SvgTileButton href="#open/hr" onClick={onHR} iconPath={TILE_ICONS.hr} label="HR Docs" desc="Documents" />}
           {/* 4.7. Help Center — all roles */}
-          {onHelpCenter && <SvgTileButton onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />}
+          {onHelpCenter && <SvgTileButton href="#open/helpCenter" onClick={onHelpCenter} iconPath={TILE_ICONS.helpCenter} label="Help Center" desc="Guides" />}
           {/* 4.8. Ordering — role/override-driven (seeded lead+ in migration 203) */}
           {(visibleTools || []).includes('ordering') && <SvgTileButton onClick={() => setShowOrdering(true)} iconPath={TILE_ICONS.ordering} label="Ordering" desc="Vendors" />}
           {/* 4.9. Tickets (native module) — role/override-driven via 'ticketing' */}
-          {onTicketsBoard && (visibleTools || []).includes('ticketing') && <SvgTileButton onClick={onTicketsBoard} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Submit & Track" />}
+          {onTicketsBoard && (visibleTools || []).includes('ticketing') && <SvgTileButton href="#open/ticketing" onClick={onTicketsBoard} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Submit & Track" />}
           {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability — role/override-driven (seeded manager+ in migration 086) */}
-          {onTrainerAvail && (visibleTools || []).includes('trainerAvail') && <SvgTileButton onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
+          {onTrainerAvail && (visibleTools || []).includes('trainerAvail') && <SvgTileButton href="#open/trainerAvail" onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
           {/* 6.2. Workflows & Scripts (GHL) — role/override-driven via 'ghlScripts' (seeded corporate+ in migration 228) */}
-          {onGhlScripts && (visibleTools || []).includes('ghlScripts') && <SvgTileButton onClick={onGhlScripts} iconPath={TILE_ICONS.ghlScripts} label="Workflows & Scripts (GHL)" desc="SMS & call scripts" />}
+          {onGhlScripts && (visibleTools || []).includes('ghlScripts') && <SvgTileButton href="#open/ghlScripts" onClick={onGhlScripts} iconPath={TILE_ICONS.ghlScripts} label="Workflows & Scripts (GHL)" desc="SMS & call scripts" />}
           {/* 6.4. Group X — role/override-driven via 'groupX' (seeded for every
               built-in role in migration 174). What the tile can DO inside is
               gated separately by groupX:schedule-edit / groupX:attendance. */}
-          {onGroupX && (visibleTools || []).includes('groupX') && <SvgTileButton onClick={onGroupX} iconPath={TILE_ICONS.groupX} label="Group X" desc="Classes" />}
+          {onGroupX && (visibleTools || []).includes('groupX') && <SvgTileButton href="#open/groupX" onClick={onGroupX} iconPath={TILE_ICONS.groupX} label="Group X" desc="Classes" />}
           {/* 6.45. Courts & Pool -- role/override-driven via 'facility' (seeded
               for every built-in role in migration 176). Editing is gated
               separately by facility:schedule-edit, exactly as Group X. The
               server also strips 'facility' when none of the caller's clubs has
               courts or a pool (auth lib/featureGatedTiles), so a Eugene-only
               member never gets a tile onto an empty screen. */}
-          {onFacility && (visibleTools || []).includes('facility') && <SvgTileButton onClick={onFacility} iconPath={TILE_ICONS.facility} label="Courts & Pool" desc="Schedules" />}
+          {onFacility && (visibleTools || []).includes('facility') && <SvgTileButton href="#open/facility" onClick={onFacility} iconPath={TILE_ICONS.facility} label="Courts & Pool" desc="Schedules" />}
           {/* 6.5. Marketing — a folder now, not a single tool. Campaigns, Ads
               Manager and Forms all sit behind it, the same way Ordering holds
               the vendor links.
@@ -771,7 +783,7 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           {marketingCells.length > 0 && <SvgTileButton onClick={() => setShowMarketing(true)} iconPath={TILE_ICONS.marketing} label="Marketing" desc="Campaigns, ads, forms & quizzes" />}
           {/* 6.6. Inventory — role/override-driven (seeded lead+ in migration 203).
               Sales/margin stay manager+ inside the view and on the API. */}
-          {onInventory && (visibleTools || []).includes('inventory') && <SvgTileButton onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />}
+          {onInventory && (visibleTools || []).includes('inventory') && <SvgTileButton href="#open/inventory" onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />}
           {/* Ads Manager and Forms moved INSIDE the Marketing folder above.
               Feedback moved into the Admin panel — it is survey setup, which is
               configuration, and it was the only admin-shaped thing left sitting
@@ -824,6 +836,7 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
               return (
                 <SvgTileButton
                   key={'custom-' + tile.id}
+                  href={tileLabel === 'reporting' && onReporting ? '#reporting' : undefined}
                   onClick={handleClick}
                   iconPath={iconPath}
                   label={tile.label}

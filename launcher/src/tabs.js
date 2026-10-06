@@ -105,7 +105,10 @@ class TabManager {
     // the Portal's ABC tab is just silent.
     if (isAbcTab) view.webContents.setAudioMuted(true)
 
-    attachContextMenu(view.webContents)
+    // WCS ABC has no tab bar, so it gets no "Open Link in New Tab".
+    attachContextMenu(view.webContents, {
+      openInTab: require('./app-mode').IS_ABC_ONLY ? null : (link) => { if (this.onNewWindow) this.onNewWindow(link) },
+    })
 
     view.webContents.loadURL(url)
 
@@ -183,7 +186,10 @@ class TabManager {
       try {
         const next = new URL(url).hostname
         const cur = new URL(view.webContents.getURL()).hostname
-        if (next && cur && next === cur) {
+        // Same host loads in place, except from a portal tab: a Ctrl/middle-
+        // click on a portal tool link asks for a new tab, and onNewWindow
+        // gives portal URLs their own portal tab.
+        if (next && cur && next === cur && !isPortalPreload) {
           view.webContents.loadURL(url)
           return { action: 'deny' }
         }

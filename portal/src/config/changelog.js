@@ -73,6 +73,11 @@ export function visibleChangelog(ctx) {
 
 export const CHANGELOG = [
   {
+    id: 21, date: '2026-10-06',
+    title: 'Open tools in their own tab',
+    body: 'Right-click any tool on the board (Reporting, Calendar, Marketing, Inventory and the rest) and pick Open Link in New Tab to give it a tab of its own. On Reporting you can do the same with the Reports and Analytics switch, so both can stay open side by side. In the desktop app this needs Portal 1.8.3, which installs automatically overnight.',
+  },
+  {
     id: 20, date: '2026-10-05',
     title: 'Event Calendar',
     body: 'New Event Calendar tile in Tools, under More. Plan your club’s in-person events on a month, week or day calendar, add a description and notes, and comment back and forth with Marketing. Every event you add also shows on the Marketing calendar, and Marketing marks it Approved once they’ve reviewed it.',

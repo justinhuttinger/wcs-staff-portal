@@ -16,12 +16,18 @@ export default function SurfaceToggle({ active, onReports, onAnalytics }) {
   const other = active === 'reports' ? onAnalytics : onReports
   if (!other) return null
 
+  // Links, so either half can be right-clicked into its own tab (Reports in
+  // one, Analytics in another). A plain click still switches in place.
   const Half = ({ side, label, onClick }) => {
     const on = active === side
     return (
-      <button
-        type="button"
-        onClick={onClick}
+      <a
+        href={side === 'reports' ? '#reporting' : '#analytics'}
+        onClick={(e) => {
+          if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+          e.preventDefault()
+          onClick?.()
+        }}
         aria-current={on ? 'page' : undefined}
         // The active half still fires. On Reporting it is the old title button,
         // which jumped back to the default report, and swallowing that click
@@ -33,7 +39,7 @@ export default function SurfaceToggle({ active, onReports, onAnalytics }) {
         }`}
       >
         {label}
-      </button>
+      </a>
     )
   }
 

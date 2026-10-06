@@ -4,13 +4,19 @@ const { Menu, MenuItem, clipboard, shell } = require('electron')
 // Electron ships no context menu by default — without this, staff can't
 // right-click to copy/paste credentials, URLs, or selected text inside
 // any of the launcher's BrowserView tabs.
-function attachContextMenu(webContents) {
+//
+// `openInTab(url)`, when given, adds "Open Link in New Tab" for web links
+// (Portal tool tiles are links, so this is how a tool gets its own tab).
+function attachContextMenu(webContents, { openInTab } = {}) {
   webContents.on('context-menu', (_event, params) => {
     const menu = new Menu()
     const { editFlags, isEditable, selectionText, linkURL, srcURL, mediaType } = params
     const hasSelection = selectionText && selectionText.trim().length > 0
 
     if (linkURL) {
+      if (openInTab && /^https?:/i.test(linkURL)) {
+        menu.append(new MenuItem({ label: 'Open Link in New Tab', click: () => openInTab(linkURL) }))
+      }
       menu.append(new MenuItem({ label: 'Open Link in Browser', click: () => shell.openExternal(linkURL) }))
       menu.append(new MenuItem({ label: 'Copy Link Address', click: () => clipboard.writeText(linkURL) }))
       menu.append(new MenuItem({ type: 'separator' }))
