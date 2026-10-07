@@ -74,6 +74,8 @@ app.use('/day-one-program', express.json({ limit: '2mb' }))
 // with PayloadTooLargeError before any of our code ran, which is why bookings
 // kept arriving with no booking team member.
 app.use('/webhooks/day-one-booked', express.json({ limit: '2mb' }))
+// Workflow maps save their whole graph on every autosave.
+app.use('/workflow-maps', express.json({ limit: '2mb' }))
 app.use(express.json())
 app.use(cookieParser())
 
@@ -238,6 +240,7 @@ app.use('/abc-sync', require('./routes/abcSync'))
 app.use('/referral-rewards', require('./routes/referralRewards'))
 app.use('/marketing-tracker', require('./routes/marketingTracker'))
 app.use('/event-calendar', require('./routes/eventCalendar'))
+app.use('/workflow-maps', require('./routes/workflowMaps'))
 app.use('/blog-automation', require('./routes/blogAutomation'))
 app.use('/kpi-digest', require('./routes/kpiDigest'))
 app.use('/meeting-goals', require('./routes/meetingGoals'))

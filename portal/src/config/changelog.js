@@ -12,7 +12,7 @@
 // pass):
 //   minRole : tier floor — 'lead' | 'manager' | 'corporate' | 'admin'
 //   tool    : must have this tool visible — 'inventory' | 'forms' | 'quizzes' | 'admin' |
-//             'trainerAvail' | 'groupX' | 'facility' | 'ghlScripts'
+//             'trainerAvail' | 'groupX' | 'facility' | 'ghlScripts' | 'marketing:workflows'
 //   report  : must be able to see this report key — e.g. 'till', 'pos-sales'
 
 // Role ladder (mirrors ToolGrid.jsx ROLE_LEVELS). Higher = more access.
@@ -49,6 +49,7 @@ function canSeeTool(tool, { role, visibleTools }) {
     case 'groupX': return (visibleTools || []).includes('groupX')
     case 'facility': return (visibleTools || []).includes('facility')
     case 'ghlScripts': return (visibleTools || []).includes('ghlScripts')
+    case 'marketing:workflows': return (visibleTools || []).includes('marketing:workflows')
     case 'eventCalendar': return (visibleTools || []).includes('eventCalendar')
     case 'admin': return role === 'admin'
     default: return true
@@ -72,6 +73,12 @@ export function visibleChangelog(ctx) {
 }
 
 export const CHANGELOG = [
+  {
+    id: 22, date: '2026-10-06',
+    title: 'Workflow Maps',
+    body: 'New Workflows tab in Marketing. Draw any GHL workflow as a map of triggers, texts, emails, waits, calls and Yes/No branches, then click a step to read or edit its exact copy. Changes save automatically for everyone. Use Present to walk staff through a workflow without risk of editing it, and mark steps as New, Change or Remove to keep a to-do list for GHL.',
+    audience: { tool: 'marketing:workflows' },
+  },
   {
     id: 21, date: '2026-10-06',
     title: 'Open tools in their own tab',

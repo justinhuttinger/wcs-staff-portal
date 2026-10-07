@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
 import {
   getMarketingEfforts, createMarketingEffort, updateMarketingEffort, deleteMarketingEffort,
   updateMarketingEffortStatus, getMarketingEffortComments, addMarketingEffortComment,
@@ -14,6 +14,8 @@ import MarketingResearch from './MarketingResearch'
 import {
   MARKETING_TYPES, TYPE_BY_SLUG, typeLabel, typeStyle, STATUSES, STATUS_BY_KEY,
 } from '../config/marketingTypes'
+// Lazy: React Flow is only needed once someone opens the Workflows tab.
+const WorkflowMapsHome = lazy(() => import('./workflowMaps/WorkflowMapsHome'))
 
 // Where reads and writes go. The Marketing Tracker uses the full
 // /marketing-tracker API; the GM Event Calendar (eventMode) uses
@@ -294,13 +296,14 @@ export default function MarketingTrackerView({ onBack, access, eventMode = false
   // prop is absent (e.g. legacy callers) so nothing regresses. The event
   // calendar is the tracker tab alone, limited to events.
   const caps = eventMode
-    ? { tracker: true, needs: false, research: false, types: ['event'] }
-    : (access || { tracker: true, needs: true, research: true, types: null })
+    ? { tracker: true, needs: false, research: false, workflows: false, types: ['event'] }
+    : (access || { tracker: true, needs: true, research: true, workflows: true, types: null })
   const TABS = useMemo(() => [
     { key: 'tracker', label: 'Tracker', show: caps.tracker !== false },
     { key: 'needs', label: 'Needs List', show: !!caps.needs },
     { key: 'research', label: 'Research', show: !!caps.research },
-  ].filter(t => t.show), [caps.tracker, caps.needs, caps.research])
+    { key: 'workflows', label: 'Workflows', show: !!caps.workflows },
+  ].filter(t => t.show), [caps.tracker, caps.needs, caps.research, caps.workflows])
 
   const [efforts, setEfforts] = useState([])
   // Clubs the event calendar may plan for (null = tracker, no limit).
@@ -312,7 +315,7 @@ export default function MarketingTrackerView({ onBack, access, eventMode = false
   const [currentDate, setCurrentDate] = useState(todayStr())
   const [typeValue, setTypeValue] = useState('all')
   const [locationValue, setLocationValue] = useState('all')
-  const [tab, setTab] = useState(() => (caps.tracker !== false ? 'tracker' : (caps.needs ? 'needs' : 'research')))
+  const [tab, setTab] = useState(() => (caps.tracker !== false ? 'tracker' : (caps.needs ? 'needs' : (caps.research ? 'research' : 'workflows'))))
 
   // Keep the active tab within the granted set (e.g. a member with only the
   // Needs section should never land on a hidden Tracker tab).
@@ -518,6 +521,11 @@ export default function MarketingTrackerView({ onBack, access, eventMode = false
       {/* Needs List + Research tabs */}
       {tab === 'needs' && <MarketingNeeds />}
       {tab === 'research' && <MarketingResearch />}
+      {tab === 'workflows' && (
+        <Suspense fallback={<p className="loading-card mx-auto block my-6">Loading workflows...</p>}>
+          <WorkflowMapsHome />
+        </Suspense>
+      )}
 
       {tab === 'tracker' && error && <p className="text-sm text-wcs-red mb-4">{error}</p>}
       {tab === 'tracker' && loading && <p className="loading-card mx-auto block my-6">{eventMode ? 'Loading events...' : 'Loading marketing tracker...'}</p>}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { getMarketingEfforts } from '../../lib/api'
 import { LOCATION_NAMES, LOCATION_OPTIONS } from '../../config/locations'
@@ -8,6 +8,9 @@ import { ViewModal, EffortModal } from '../../components/MarketingTrackerView'
 import MobileHeader from './MobileHeader'
 import WcsLoadingMark from '../../components/WcsLoadingMark'
 import MobileEmptyState from './MobileEmptyState'
+
+// Lazy: React Flow only loads once someone opens Workflows.
+const WorkflowMapsHome = lazy(() => import('../../components/workflowMaps/WorkflowMapsHome'))
 
 // --- date helpers (local) ---
 function toLocalDateStr(d) {
@@ -30,7 +33,38 @@ function locationsLabel(slugs) {
   return slugs.map(s => bySlug[s] || s).join(', ')
 }
 
+// Tracker / Workflows switch, shown only to members granted Workflow Maps.
+function ViewSwitch({ view, onChange }) {
+  return (
+    <div className="flex gap-1 bg-surface border border-border rounded-xl p-1 mt-3">
+      {[['tracker', 'Tracker'], ['workflows', 'Workflows']].map(([k, l]) => (
+        <button key={k} onClick={() => onChange(k)}
+          className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${view === k ? 'bg-wcs-red text-white' : 'text-text-muted'}`}>{l}</button>
+      ))}
+    </div>
+  )
+}
+
 export default function MobileMarketingTracker({ access }) {
+  const [view, setView] = useState('tracker')
+  const switcher = access?.workflows ? <ViewSwitch view={view} onChange={setView} /> : null
+  if (view === 'workflows' && switcher) {
+    return (
+      <div className="pt-4 px-4 pb-24">
+        <MobileHeader title="Workflows" />
+        {switcher}
+        <div className="mt-3">
+          <Suspense fallback={<div className="flex justify-center py-10"><WcsLoadingMark size={48} className="text-wcs-red" /></div>}>
+            <WorkflowMapsHome />
+          </Suspense>
+        </div>
+      </div>
+    )
+  }
+  return <TrackerList access={access} switcher={switcher} />
+}
+
+function TrackerList({ access, switcher }) {
   const [efforts, setEfforts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -111,6 +145,7 @@ export default function MobileMarketingTracker({ access }) {
         title="Marketing Tracker"
         rightAction={<span className="px-2 py-0.5 rounded-full bg-wcs-red/10 text-wcs-red text-[10px] font-bold uppercase tracking-wider border border-wcs-red/20">Beta</span>}
       />
+      {switcher}
 
       {/* Filters */}
       <div className="bg-surface border border-border rounded-2xl p-3 mt-3 mb-4 flex items-center gap-2 flex-wrap">
