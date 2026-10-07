@@ -2473,3 +2473,10 @@ export async function deleteWorkflowMap(id) {
 export async function getWorkflowGhlValues(links = []) {
   return api('/workflow-maps/ghl-values?links=' + encodeURIComponent(JSON.stringify(links)))
 }
+
+export async function createCustomValue(location, { name, value }) {
+  return api('/custom-values?location=' + encodeURIComponent(location), {
+    method: 'POST',
+    body: JSON.stringify({ name, value }),
+  })
+}

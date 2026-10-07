@@ -12,6 +12,9 @@ import {
 } from '../lib/api'
 import { shrinkImage, formatBytes } from '../lib/imageShrink'
 import { MERGE_FIELD_GROUPS } from '../lib/ghlMergeFields'
+import { emailPairs } from '../lib/messageLinks'
+import EmailsPanel from './scripts/EmailsPanel'
+import LinksModal from './scripts/LinksModal'
 
 // The WCS drip sequence, in the order the messages actually go out. GHL returns
 // custom values in an arbitrary order, so the list is sorted by this instead of
@@ -764,6 +767,10 @@ export default function DripCampaigns() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
   const [savedId, setSavedId] = useState(null)
+  // Texts & call scripts, or emails (custom value pairs: "<Name> Subject" +
+  // "<Name> HTML").
+  const [view, setView] = useState('texts')
+  const [showLinks, setShowLinks] = useState(false)
 
   useEffect(() => {
     getCustomValueLocations()
@@ -824,8 +831,19 @@ export default function DripCampaigns() {
     return [...groups, ...MERGE_FIELD_GROUPS]
   }, [data])
 
+  // Patch one value in place after a save from the Emails or Links views.
+  function patchValue(id, value) {
+    setData(d => ({ ...d, customValues: (d.customValues || []).map(cv => (cv.id === id ? { ...cv, value } : cv)) }))
+  }
+  function addValue(cv) {
+    setData(d => ({ ...d, customValues: [...(d.customValues || []), cv] }))
+  }
+
+  const emailIds = useMemo(() => emailPairs(data?.customValues || []).ids, [data])
+
   const q = search.trim().toLowerCase()
   const rows = (data?.customValues || []).map(applyMediaEdit).slice().sort(byDripOrder)
+    .filter(cv => !emailIds.has(cv.id))
     .filter(cv => inFlow(cv, flow))
     .filter(cv =>
       !q ||
@@ -917,6 +935,21 @@ export default function DripCampaigns() {
             </select>
           </label>
         </div>
+
+        {data && (
+          <div className="flex flex-wrap items-center gap-2 mt-3">
+            <div className="flex gap-1 bg-bg rounded-lg p-1">
+              {[['texts', 'Texts & scripts'], ['emails', 'Emails']].map(([k, l]) => (
+                <button key={k} onClick={() => setView(k)}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${view === k ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>{l}</button>
+              ))}
+            </div>
+            <button onClick={() => setShowLinks(true)}
+              className="text-xs bg-surface border border-border rounded-lg px-3 py-1.5 font-medium text-text-muted hover:text-text-primary transition-colors">
+              Links
+            </button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -925,7 +958,28 @@ export default function DripCampaigns() {
         </div>
       )}
 
-      <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 space-y-3">
+      {view === 'emails' && data && (
+        <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 space-y-3">
+          <input
+            type="text"
+            placeholder="Search emails…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full max-w-md text-xs bg-bg border border-border rounded-lg px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
+          />
+          <EmailsPanel
+            locationSlug={location}
+            locationName={activeLocation?.name || ''}
+            customValues={data.customValues || []}
+            search={search}
+            onUpdated={patchValue}
+            onCreated={addValue}
+            canCreate={!isPlayground}
+          />
+        </div>
+      )}
+
+      {view === 'texts' && <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <input
             type="text"
@@ -935,7 +989,7 @@ export default function DripCampaigns() {
             className="w-full max-w-md text-xs bg-bg border border-border rounded-lg px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-wcs-red/30"
           />
           <span className="text-xs text-text-muted whitespace-nowrap">
-            {loading ? 'Loading…' : `${rows.length} of ${data?.customValues?.length || 0}`}
+            {loading ? 'Loading…' : `${rows.length} of ${(data?.customValues?.length || 0) - emailIds.size}`}
           </span>
         </div>
 
@@ -999,7 +1053,17 @@ export default function DripCampaigns() {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
+
+      {showLinks && data && (
+        <LinksModal
+          locationSlug={location}
+          locationName={activeLocation?.name || ''}
+          customValues={data.customValues || []}
+          onUpdated={patchValue}
+          onClose={() => setShowLinks(false)}
+        />
+      )}
 
       {testing && (
         <TestSendPanel

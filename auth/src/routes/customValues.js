@@ -446,6 +446,38 @@ router.put('/:id', async (req, res) => {
   }
 })
 
+// POST /custom-values?location=<slug>  { name, value }
+// Creates a custom value in the club. Used to add an email (a "<Name> Subject"
+// and "<Name> HTML" pair). Not available in the playground, whose messages
+// are fixed.
+router.post('/', async (req, res) => {
+  if (isPlayground(req.query.location || req.body.location)) {
+    return res.status(400).json({ error: 'The playground has a fixed set of messages' })
+  }
+  const loc = findLocation(req.query.location || req.body.location)
+  if (!loc) return res.status(400).json({ error: 'Unknown or missing location' })
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : ''
+  if (!name) return res.status(400).json({ error: 'Name is required' })
+  if (typeof req.body.value !== 'string') return res.status(400).json({ error: 'Value must be a string' })
+
+  try {
+    const data = await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey, {
+      method: 'POST',
+      body: { name, value: req.body.value },
+    })
+    const created = shapeValue(data.customValue || data.customValues || { name, value: req.body.value })
+    audit.record(req.staff?.id, 'ghl.custom_value.create', {
+      target: `${loc.slug}:${created.id}`,
+      metadata: { location: loc.slug, name, fieldKey: created.fieldKey },
+      ip: req.ip,
+    }).catch(() => {})
+    res.status(201).json({ customValue: { ...created, media: { key: null, on: false, url: '', id: null, exists: false } } })
+  } catch (err) {
+    console.error('[custom-values] create failed:', err.message)
+    res.status(502).json({ error: 'GHL create failed: ' + err.message })
+  }
+})
+
 // GET /custom-values/test-config
 // What the Drip Campaigns test panel needs to render. The webhook URL itself is
 // only returned to admins - everyone else gets whether one is configured.
