@@ -2470,8 +2470,9 @@ export async function deleteWorkflowMap(id) {
 }
 
 // Workflow Maps: live GHL custom values for linked steps (read only)
-export async function getWorkflowGhlValues(links = []) {
-  return api('/workflow-maps/ghl-values?links=' + encodeURIComponent(JSON.stringify(links)))
+export async function getWorkflowGhlValues(links = [], club = '') {
+  return api('/workflow-maps/ghl-values?links=' + encodeURIComponent(JSON.stringify(links))
+    + (club ? '&club=' + encodeURIComponent(club) : ''))
 }
 
 export async function createCustomValue(location, { name, value }) {

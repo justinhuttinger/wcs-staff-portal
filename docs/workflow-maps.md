@@ -26,6 +26,11 @@ import maps; everyone else gets the read-only Present view.
   **Tidy up** auto-arranges top to bottom.
 - **Present mode:** read-only. Clicking a step shows its content with Copy
   buttons. Phones open maps in Present mode.
+- **Club copy:** when a map has steps linked to GHL custom values, the top bar
+  has a club picker. "Standard copy" shows the base copy; pick a club to see the
+  exact SMS, call scripts and emails that club's GHL sends (each linked email
+  shows its "<Name> HTML" value plus the matching "<Name> Subject"). Read only;
+  the choice is remembered in that browser.
 - **Autosave:** every change saves after a short pause. The top bar shows
   Saving... / Saved. If someone else saved the same map in the meantime, a banner
   offers "Load their version" or "Keep mine".

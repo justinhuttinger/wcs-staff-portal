@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { sanitizeMapInput, findLinkedValue, normalizeCvKey } = require('./workflowMaps')
+const { sanitizeMapInput, findLinkedValue, normalizeCvKey, findEmailSubject } = require('./workflowMaps')
 
 const node = (id, type = 'sms', extra = {}) => ({ id, type, position: { x: 1, y: 2 }, data: { title: id }, ...extra })
 
@@ -53,4 +53,17 @@ test('linked custom values resolve by key, then by name', () => {
   assert.equal(findLinkedValue(values, { key: 'custom_values.gone', name: 'Past Due SMS 1' }).id, '2')
   assert.equal(findLinkedValue(values, { key: 'custom_values.gone' }), null)
   assert.equal(findLinkedValue(values, null), null)
+})
+
+test('findEmailSubject pairs "<Name> HTML" with "<Name> Subject"', () => {
+  const values = [
+    { id: 'h', name: 'New Lead Email 1 HTML' },
+    { id: 's', name: 'New Lead Email 1 Subject' },
+    { id: 'x', name: 'New Lead SMS 1' },
+  ]
+  assert.equal(findEmailSubject(values, values[0]).id, 's')
+  assert.equal(findEmailSubject(values, { name: 'new lead email 1 html ' }).id, 's')
+  assert.equal(findEmailSubject(values, values[2]), null)
+  assert.equal(findEmailSubject(values, { name: 'Free Pass Email 1 HTML' }), null)
+  assert.equal(findEmailSubject(values, null), null)
 })

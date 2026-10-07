@@ -100,4 +100,13 @@ function findLinkedValue(values, link) {
   return name ? values.find(v => String(v.name || '').trim().toLowerCase() === name) || null : null
 }
 
-module.exports = { sanitizeMapInput, NODE_TYPES, normalizeCvKey, findLinkedValue }
+// Workflow emails are stored as a pair of custom values, "<Name> HTML" and
+// "<Name> Subject". Given the HTML value a step links to, find its subject.
+function findEmailSubject(values, linked) {
+  const m = String(linked?.name || '').trim().match(/^(.*\S)\s+html$/i)
+  if (!m) return null
+  const want = (m[1] + ' subject').toLowerCase()
+  return values.find(v => String(v.name || '').trim().toLowerCase() === want) || null
+}
+
+module.exports = { sanitizeMapInput, NODE_TYPES, normalizeCvKey, findLinkedValue, findEmailSubject }

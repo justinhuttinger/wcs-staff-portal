@@ -98,8 +98,8 @@ function GhlLink({ node, ghl, onLink, onUnlink }) {
           <button type="button" onClick={onUnlink} className="shrink-0 text-[11px] font-semibold text-text-muted hover:text-wcs-red">Unlink</button>
         </div>
         {!ghl.values && ghl.loading && <p className="text-[11px] text-text-muted">Loading from GHL...</p>}
-        {ghl.values && !live && <p className="text-[11px] font-semibold text-amber-800">Not found in GHL. Showing the last saved copy.</p>}
-        {live && <p className="text-[11px] text-text-muted">Showing the live copy from GHL. To change it, edit the custom value in GHL or Workflows &amp; Scripts.</p>}
+        {ghl.values && !live && <p className="text-[11px] font-semibold text-amber-800">{ghl.clubName ? `Not found in ${ghl.clubName}'s GHL.` : 'Not found in GHL.'} Showing the last saved copy.</p>}
+        {live && <p className="text-[11px] text-text-muted">Showing the live copy from {ghl.clubName ? `${ghl.clubName}'s ` : ''}GHL. To change it, edit the custom value in GHL or Workflows &amp; Scripts.</p>}
       </div>
     )
   }
@@ -190,7 +190,9 @@ export default function NodePanel({ node, readOnly, onChange, onBeforeEdit, onDe
           <h3 className="text-lg font-bold text-text-primary leading-snug">{data.title || kind.label}</h3>
           {data.cv && (
             <p className="text-[11px] font-semibold text-emerald-800">
-              {data._ghl === 'missing' ? 'Linked custom value not found in GHL; showing the last saved copy.' : `Live from GHL: ${data.cv.name || data.cv.key}`}
+              {data._ghl === 'missing'
+                ? `Linked custom value not found in ${ghl?.clubName ? `${ghl.clubName}'s ` : ''}GHL; showing the last saved copy.`
+                : `Live from ${ghl?.clubName ? `${ghl.clubName}'s ` : ''}GHL: ${data.cv.name || data.cv.key}`}
             </p>
           )}
           {flag?.color && <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold text-white" style={{ background: flag.color }}>{flag.label}</span>}

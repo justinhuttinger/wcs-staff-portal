@@ -13,7 +13,7 @@ const { requireMarketing, requireMarketingCapability, requireRole, roleLevel, RO
 const { LOCATIONS } = require('../config/ghlLocations')
 const { ghlFetch } = require('../services/ghlClient')
 const { isMediaKey } = require('../lib/dripMedia')
-const { sanitizeMapInput, findLinkedValue } = require('../lib/workflowMaps')
+const { sanitizeMapInput, findLinkedValue, findEmailSubject } = require('../lib/workflowMaps')
 
 const router = Router()
 router.use(authenticate)
@@ -54,10 +54,13 @@ router.get('/', async (req, res) => {
 // Steps can be linked to a GHL custom value (the SMS copy and call scripts the
 // workflows send). The map shows the live value read from GHL; it never writes
 // to GHL. Copy is edited in GHL or the Workflows & Scripts tile and shows up
-// here on the next load. Values come from the base club's sub-account.
+// here on the next load. Values come from the base club's sub-account unless
+// the viewer picks a club to see that club's exact copy. The UI never names
+// the base club.
 const BASE_CLUB = 'salem'
 
-function baseLocation() {
+function valuesLocation(slug) {
+  if (slug) return LOCATIONS.find(l => l.slug === slug) || null
   return LOCATIONS.find(l => l.slug === BASE_CLUB) || LOCATIONS[0] || null
 }
 
@@ -68,12 +71,16 @@ const shapeCv = (cv) => ({
   value: cv.value == null ? '' : String(cv.value),
 })
 
-// GET /ghl-values?links=<json [{key,name}]>
-// Every custom value (for the link picker), with the linked ones re-read by
-// id: GHL's list endpoint lags writes by minutes, a GET by id doesn't.
+// GET /ghl-values?links=<json [{key,name}]>&club=<slug>
+// Every custom value (for the link picker), with the linked ones (and each
+// linked email's subject) re-read by id: GHL's list endpoint lags writes by
+// minutes, a GET by id doesn't. No club = the base copy. Also returns the
+// clubs that can be picked.
 router.get('/ghl-values', async (req, res) => {
-  const loc = baseLocation()
-  if (!loc) return res.status(503).json({ error: 'GHL is not configured' })
+  const club = typeof req.query.club === 'string' ? req.query.club.trim() : ''
+  const loc = valuesLocation(club)
+  if (!loc) return res.status(club ? 404 : 503).json({ error: club ? 'Unknown club' : 'GHL is not configured' })
+  const clubs = LOCATIONS.map(l => ({ slug: l.slug, name: l.name }))
   let links = []
   try { links = JSON.parse(req.query.links || '[]') } catch { links = [] }
   if (!Array.isArray(links)) links = []
@@ -82,7 +89,8 @@ router.get('/ghl-values', async (req, res) => {
     const values = (data.customValues || data.customValue || [])
       .map(shapeCv)
       .filter(v => !(v.fieldKey && isMediaKey(v.fieldKey)))
-    const linkedIds = [...new Set(links.slice(0, 200).map(l => findLinkedValue(values, l)?.id).filter(Boolean))]
+    const linked = links.slice(0, 200).map(l => findLinkedValue(values, l)).filter(Boolean)
+    const linkedIds = [...new Set(linked.flatMap(v => [v.id, findEmailSubject(values, v)?.id]).filter(Boolean))]
     const fresh = await Promise.all(linkedIds.map(id =>
       ghlFetch(`/locations/${loc.id}/customValues/${id}`, loc.apiKey)
         .then(r => (r.customValue ? shapeCv(r.customValue) : null))
@@ -92,6 +100,7 @@ router.get('/ghl-values', async (req, res) => {
       values: values
         .map(v => byId.get(v.id) || v)
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
+      clubs,
     })
   } catch (err) {
     console.error('[workflowMaps] ghl values failed:', err.message)
