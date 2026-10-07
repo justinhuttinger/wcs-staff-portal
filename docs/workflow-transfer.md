@@ -50,3 +50,11 @@ Export selected, all in a club, or every club. Several workflows download as one
 **Batch order.** Per club, every NEW copy first gets an empty draft (`POST /prepare`, which places it in its folder too). Then each draft is filled (`mode: 'fill'`, no backup needed). Workflows in the same batch that add/remove each other therefore link to the club's new copies. Preview treats those links as matched (`batchNames`).
 
 **Publish new copies** (off by default). Applies to new copies only. A copy is published only when nothing is "not found". It is set back to draft if a trigger didn't copy or an if/else trigger check couldn't be linked. The final status is read back.
+
+## Triggers mirror the source (overwrite)
+After matching (same type + conditions) and adding missing triggers, every trigger the target has that no source trigger matched is deleted. This covers triggers removed in the source, and changed ones, which are recreated.
+
+- Delete call, captured from the builder 2026-10-07: `DELETE /workflow/{loc}/trigger/{triggerId}?userId={GHL user id}`, then the normal save.
+- `userId` comes from the session token's `authClassId` claim when present, otherwise `WORKFLOW_TRANSFER_GHL_USER_ID` (default: the owner's GHL user id).
+- Removed and not-removed triggers are read back and shown.
+- Files without a trigger list (`triggersKnown: false`, e.g. Chrome extension exports without `exportedTriggers`) leave the club's triggers untouched.

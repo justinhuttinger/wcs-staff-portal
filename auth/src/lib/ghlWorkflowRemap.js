@@ -171,6 +171,9 @@ function normalizePayload(input) {
     return {
       workflow: input.workflow,
       triggers: Array.isArray(input.triggers) ? input.triggers : [],
+      // False when the file carries no trigger list at all: the club's own
+      // triggers are then left alone instead of being mirrored to "none".
+      triggersKnown: Array.isArray(input.triggers),
       sourceLocationId: input.sourceLocationId || input.workflow.locationId || null,
       folderPath: Array.isArray(input.folderPath) ? input.folderPath.map(String).slice(0, 10) : [],
     }
@@ -180,6 +183,7 @@ function normalizePayload(input) {
   return {
     workflow: wf,
     triggers: Array.isArray(wf.exportedTriggers) ? wf.exportedTriggers : [],
+    triggersKnown: Array.isArray(wf.exportedTriggers),
     sourceLocationId: wf.locationId || null,
     folderPath: [],
   }

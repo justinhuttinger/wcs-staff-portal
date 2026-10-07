@@ -200,6 +200,18 @@ function triggerSignature(t) {
   return `${t.type}|${conds.join('&')}`
 }
 
+// The GHL user id the builder sends as ?userId= when deleting a trigger. Read
+// from the session token's claims when present; this tool is owner-only, so
+// the owner's GHL user id is the fallback (WORKFLOW_TRANSFER_GHL_USER_ID).
+function ghlUserId(token) {
+  try {
+    const part = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const claims = JSON.parse(Buffer.from(part, 'base64').toString('utf8'))
+    if (claims.authClassId) return claims.authClassId
+  } catch { /* fall through */ }
+  return process.env.WORKFLOW_TRANSFER_GHL_USER_ID || 'qHho9M6pxIE8YEgBhlxK'
+}
+
 function triggerIdOf(resp) {
   return resp?.id || resp?._id || resp?.trigger?.id || resp?.trigger?._id || resp?.data?.id || null
 }
@@ -235,10 +247,12 @@ async function writeWorkflow(token, loc, id, source, { name, publish } = {}) {
     else toCreate.push(t)
   }
   const alreadyThere = srcTriggers.length - toCreate.length
-  const srcSigs = new Set(srcTriggers.map(triggerSignature))
-  const extraTriggers = oldTriggers
-    .filter(t => !srcSigs.has(triggerSignature(t)))
-    .map(t => ({ type: t.type, name: t.name || t.type }))
+  // The target mirrors the source: any trigger it has that no source trigger
+  // matched (removed in the source, or changed and so recreated above) is
+  // deleted. Skipped when the source's trigger list is unknown (an export
+  // without triggers), so a file never wipes a club's triggers.
+  const usedOld = new Set(Object.values(triggerIds))
+  const toDelete = source.triggersKnown === false ? [] : oldTriggers.filter(t => !usedOld.has(t.id))
 
   if (toCreate.length) {
     let base = await getWorkflow(token, loc, id)
@@ -286,6 +300,16 @@ async function writeWorkflow(token, loc, id, source, { name, publish } = {}) {
     })
   }
 
+  // Remove what the source no longer has, the way the builder does (captured
+  // 2026-10-07): DELETE /workflow/{loc}/trigger/{triggerId}?userId=..., then
+  // the normal save below.
+  if (toDelete.length) {
+    const userId = ghlUserId(token)
+    for (const t of toDelete) {
+      await backend(token, `/workflow/${enc(loc)}/trigger/${enc(t.id)}?userId=${enc(userId)}`, { method: 'DELETE' })
+    }
+  }
+
   // Steps: swap source trigger ids for the target's, then save.
   const swaps = new Map(Object.entries(triggerIds).filter(([from, to]) => from && to && from !== to))
   const { value: workflowData } = replaceIds(source.workflow.workflowData || { templates: [] }, swaps)
@@ -304,22 +328,31 @@ async function writeWorkflow(token, loc, id, source, { name, publish } = {}) {
   if (publish) target.status = 'published'
   await backend(token, `/workflow/${enc(loc)}/${enc(id)}`, { method: 'PUT', body: target })
 
-  // Read back: every trigger we meant to add must now be there.
+  // Read back: every trigger we meant to add must be there, and every one we
+  // removed must be gone.
   let droppedTriggers = []
-  if (toCreate.length) {
+  let notRemoved = []
+  if (toCreate.length || toDelete.length) {
     const after = (await getTriggers(token, loc, id).catch(() => [])).filter(t => !t.deleted)
     const afterSigs = after.map(triggerSignature)
+    const afterIds = new Set(after.map(t => t.id))
     droppedTriggers = toCreate
       .filter(t => !afterSigs.includes(triggerSignature(t)))
       .map(t => ({ type: t.type, name: t.name || t.type }))
+    notRemoved = toDelete.filter(t => afterIds.has(t.id)).map(t => ({ type: t.type, name: t.name || t.type }))
   }
+  const removedTriggers = toDelete
+    .filter(t => !notRemoved.some(n => n.type === t.type && n.name === (t.name || t.type)))
+    .map(t => ({ type: t.type, name: t.name || t.type }))
 
   return {
     steps: (workflowData.templates || []).length,
     triggers: toCreate.length - droppedTriggers.length,
     triggersAlreadyThere: alreadyThere,
     droppedTriggers,
-    extraTriggers,
+    removedTriggers,
+    notRemovedTriggers: notRemoved,
+    triggersUntouched: source.triggersKnown === false,
     // Steps that check "Workflow Trigger is ..." against a trigger we could not
     // place in the target; those branches need fixing by hand.
     unlinkedTriggerChecks: unresolved.map(t => ({ type: t.type, name: t.name || t.type })),
