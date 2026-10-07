@@ -202,14 +202,20 @@ router.get('/membership', async (req, res) => {
     const startISO = start_date ? start_date + 'T00:00:00.000Z' : null
     const endISO   = end_date ? end_date + 'T23:59:59.999Z' : null
 
-    // --- 1. ABC members with sign_date in range (source of truth for sales) ---
+    // --- 1. ABC members who joined in range (source of truth for sales) ---
+    // Selected on since_date, the day the membership started, with no
+    // is_active filter: the same population Club Health, Club Snapshot and
+    // Salesperson Performance count as new sales. This used to select on
+    // sign_date, keep active rows only and drop since_date < sign_date as
+    // renewals. sign_date moves onto a member's latest agreement, so that lost
+    // anyone who had re-signed or already cancelled, and Membership showed
+    // fewer sales than Club Health for the same month.
     let abcQuery = supabaseAdmin
       .from('abc_members')
       .select('member_id, first_name, last_name, email, membership_type, since_date, sign_date, sales_person_name, club_number, is_active')
-      .eq('is_active', true)
-      .not('sign_date', 'is', null)
-    if (start_date) abcQuery = abcQuery.gte('sign_date', start_date)
-    if (end_date) abcQuery = abcQuery.lte('sign_date', end_date)
+      .not('since_date', 'is', null)
+    if (start_date) abcQuery = abcQuery.gte('since_date', start_date)
+    if (end_date) abcQuery = abcQuery.lte('since_date', end_date)
 
     // Filter by location via club_number (supports multi-slug)
     let clubNumbers = []
@@ -233,13 +239,11 @@ router.get('/membership', async (req, res) => {
       abcFrom += 1000
     }
 
-    // Filter out non-member types AND renewals (since_date < sign_date means a renewal,
-    // not a new sale; ABC's "New Member Sales" report excludes those, so we do too).
+    // Filter out non-member types (the skip list), as Club Health does.
     const skipTypes = await getSkipList()
     const categoryFilter = await resolveCategoryExclusion(req)
     const filteredMembers = abcMembers.filter(m =>
       !skipTypes.has((m.membership_type || '').toLowerCase())
-      && m.since_date && m.sign_date && m.since_date >= m.sign_date
       // Unticked categories narrow on top of the skip list; with everything
       // ticked this is exactly the set it was before the filter existed.
       && !isCategoryExcluded(m, categoryFilter.categoryMap, categoryFilter.excluded)
@@ -320,9 +324,9 @@ router.get('/membership', async (req, res) => {
     const bySalesperson = {}
 
     for (const m of filteredMembers) {
-      // by_date chart
-      if (m.sign_date) {
-        const dateKey = m.sign_date
+      // by_date chart, on the join date the member was selected by
+      if (m.since_date) {
+        const dateKey = m.since_date
         if (!byDate[dateKey]) byDate[dateKey] = { memberships: 0, vips: 0, day_ones: 0 }
         byDate[dateKey].memberships++
       }
@@ -345,7 +349,7 @@ router.get('/membership', async (req, res) => {
         name: `${m.first_name || ''} ${m.last_name || ''}`.trim(),
         email: m.email,
         membership_type: m.membership_type,
-        since_date: m.sign_date || m.since_date,
+        since_date: m.since_date,
         day_one_booked: isDayOneBooked,
         same_day_sale: isSameDaySale,
       })
@@ -406,7 +410,7 @@ router.get('/membership', async (req, res) => {
         full_name: `${m.first_name || ''} ${m.last_name || ''}`.trim(),
         email: m.email,
         membership_type: m.membership_type,
-        member_sign_date: m.sign_date || m.since_date,
+        member_sign_date: m.since_date,
         sale_team_member: m.sales_person_name,
         day_one_booked: (ghl?.id && dayOneContactIds.has(ghl.id)) ? 'Yes' : null,
         same_day_sale: ghl?.same_day_sale || null,
