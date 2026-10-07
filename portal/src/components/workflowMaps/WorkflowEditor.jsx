@@ -14,6 +14,8 @@ import useGhlValues from './useGhlValues'
 import { Modal, MapDetailsForm, downloadJson } from './MapDetails'
 import { btnGhost, STATUS_CLS } from './ui'
 
+const CLUB_KEY = 'wcs.workflowMaps.club'
+
 const nodeTypes = Object.fromEntries(KIND_KEYS.map(k => [k, StepNode]))
 const META_FIELDS = ['name', 'description', 'category', 'status', 'clubs', 'ghl_workflow_url']
 const HISTORY_LIMIT = 100
@@ -97,7 +99,18 @@ function Editor({ id, onClose }) {
   const [addOpen, setAddOpen] = useState(false)
   const [, setHistoryTick] = useState(0)
 
-  const ghl = useGhlValues({ nodes, enabled: !!meta })
+  // Whose GHL copy linked steps show: '' = the base copy, or a club slug.
+  // Remembered per browser.
+  const [club, setClub] = useState(() => { try { return localStorage.getItem(CLUB_KEY) || '' } catch { return '' } })
+  const pickClub = (slug) => {
+    setClub(slug)
+    try { slug ? localStorage.setItem(CLUB_KEY, slug) : localStorage.removeItem(CLUB_KEY) } catch { /* storage blocked */ }
+  }
+  const ghl = useGhlValues({ nodes, enabled: !!meta, club })
+  // A remembered club that no longer exists falls back to the base copy.
+  useEffect(() => {
+    if (club && ghl.clubs.length && !ghl.clubs.some(c => c.slug === club)) pickClub('')
+  }, [club, ghl.clubs])
 
   const latest = useRef({ nodes, edges, meta })
   latest.current = { nodes, edges, meta }
@@ -393,12 +406,19 @@ function Editor({ id, onClose }) {
   }, [nodes, edges])
 
   // What the canvas and panel show: linked steps carry the club's live GHL
-  // value instead of the stored copy.
+  // value instead of the stored copy. A linked email ("<Name> HTML") also
+  // takes its "<Name> Subject" value and renders as HTML.
   const displayNodes = useMemo(() => nodes.map(n => {
     if (!n.data?.cv) return n
     const live = ghl.liveFor(n.data.cv)
     const status = live ? 'live' : (ghl.values ? 'missing' : 'loading')
-    return { ...n, data: { ...n.data, body: live ? live.value : n.data.body, _ghl: status } }
+    const data = { ...n.data, body: live ? live.value : n.data.body, _ghl: status }
+    if (live && n.type === 'email') {
+      const subject = ghl.subjectFor(live)
+      if (subject) data.subject = subject.value
+      if (/<[a-z!]/i.test(live.value)) data.bodyFormat = 'html'
+    }
+    return { ...n, data }
   }), [nodes, ghl.values]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedNode = displayNodes.find(n => n.id === selectedId) || null
@@ -436,6 +456,14 @@ function Editor({ id, onClose }) {
         </button>
         <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold uppercase tracking-wide ${STATUS_CLS[meta.status] || STATUS_CLS.draft}`}>{WORKFLOW_STATUSES[meta.status] || meta.status}</span>
         {!present && <SaveIndicator state={saveState} onRetry={save} />}
+        {ghl.hasLinks && ghl.clubs.length > 1 && (
+          <select value={club} onChange={e => pickClub(e.target.value)} disabled={ghl.loading && !ghl.values}
+            title="Show the SMS, call and email copy one club actually sends"
+            className="px-2 py-1 rounded-md border border-border bg-surface text-[11px] font-semibold text-text-primary">
+            <option value="">Standard copy</option>
+            {ghl.clubs.map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)}
+          </select>
+        )}
         {ghl.hasLinks && (
           <button type="button" onClick={ghl.refresh} disabled={ghl.loading} title="Reload linked copy from GHL"
             className="px-2 py-1 rounded-md border border-border bg-surface text-[11px] font-semibold text-text-muted hover:text-text-primary disabled:opacity-50">
