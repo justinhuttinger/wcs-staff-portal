@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   getWorkflowTransferClubs, getWorkflowTransferList, checkWorkflowTransferSession, exportGhlWorkflow,
   previewWorkflowTransfer, pushWorkflowTransfer, getWorkflowSnapshots, getWorkflowSnapshot,
+  getWorkflowFolder, prepareWorkflowDrafts,
 } from '../lib/api'
 import { getGhlSession, setGhlSession, clearGhlSession, GHL_SESSION_EVENT } from '../lib/ghlSession'
 import { Button, ErrorBanner, EmptyState, Spinner, Modal } from './adsmanager/ui'
@@ -112,6 +113,14 @@ function SourcePanel({ clubs, session, onUse, onNeedSession }) {
   const [progress, setProgress] = useState(null)
   const fileRef = useRef(null)
   const latestLoad = useRef(0)
+  // 'all' = every workflow (public API, no session); 'folders' = browse GHL's
+  // folders (internal API, needs the session). folderStack is the path from
+  // the top: [{ id, name }].
+  const [view, setView] = useState('all')
+  const [folderStack, setFolderStack] = useState([])
+  const [folders, setFolders] = useState([])
+  const folderId = folderStack.length ? folderStack[folderStack.length - 1].id : null
+  const sessionToken = session?.token || null
 
   // A slow list for one club must never land after a newer club's list: each
   // load is numbered and only the latest one is applied. Every row also keeps
@@ -119,19 +128,29 @@ function SourcePanel({ clubs, session, onUse, onNeedSession }) {
   const load = useCallback(async (fresh) => {
     if (!club) return
     const seq = ++latestLoad.current
-    setLoading(true); setError(''); setList([])
+    setLoading(true); setError(''); setList([]); setFolders([])
     try {
-      const data = await getWorkflowTransferList(club, fresh)
-      if (seq !== latestLoad.current) return
-      setList((data.workflows || []).map(w => ({ ...w, club })))
+      if (view === 'folders') {
+        if (!sessionToken) { onNeedSession(); return }
+        const data = await getWorkflowFolder(sessionToken, club, folderId)
+        if (seq !== latestLoad.current) return
+        setFolders(data.folders || [])
+        setList((data.workflows || []).map(w => ({ ...w, club })))
+      } else {
+        const data = await getWorkflowTransferList(club, fresh)
+        if (seq !== latestLoad.current) return
+        setList((data.workflows || []).map(w => ({ ...w, club })))
+      }
     } catch (err) {
       if (seq === latestLoad.current) setError(err.message)
     } finally {
       if (seq === latestLoad.current) setLoading(false)
     }
-  }, [club])
+  }, [club, view, folderId, sessionToken]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { setPicked(new Set()); load(false) }, [load])
+  // A new club starts at its top level.
+  useEffect(() => { setFolderStack([]) }, [club])
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -254,6 +273,31 @@ function SourcePanel({ clubs, session, onUse, onNeedSession }) {
         ))}
       </div>
 
+      <div className="flex items-center gap-1 mb-2 text-xs">
+        {[['all', 'All workflows'], ['folders', 'Folders']].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => { setView(key); setFolderStack([]) }}
+            className={`px-2.5 py-1 rounded-md font-semibold ${view === key ? 'bg-border/60 text-text-primary' : 'text-text-muted hover:text-text-primary'}`}
+          >{label}</button>
+        ))}
+      </div>
+
+      {view === 'folders' && (
+        <div className="flex items-center gap-1 flex-wrap mb-2 text-xs">
+          <button onClick={() => setFolderStack([])} className={`hover:underline ${folderStack.length ? 'text-wcs-red' : 'font-semibold text-text-primary'}`}>Top</button>
+          {folderStack.map((f, i) => (
+            <span key={f.id} className="flex items-center gap-1">
+              <span className="text-text-muted">›</span>
+              <button
+                onClick={() => setFolderStack(folderStack.slice(0, i + 1))}
+                className={`hover:underline ${i === folderStack.length - 1 ? 'font-semibold text-text-primary' : 'text-wcs-red'}`}
+              >{f.name}</button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center gap-2 mb-2">
         <input
           value={search}
@@ -267,13 +311,29 @@ function SourcePanel({ clubs, session, onUse, onNeedSession }) {
       <ErrorBanner error={error} onDismiss={() => setError('')} />
 
       <div className="flex-1 min-h-[240px] overflow-y-auto rounded-lg border border-border mt-2">
-        {loading ? <Spinner label="Loading workflows…" /> : shown.length === 0 ? (
-          <EmptyState title={list.length ? 'No match' : 'No workflows'} />
+        {view === 'folders' && !loading && folders.map(f => (
+          <button
+            key={f.id}
+            onClick={() => setFolderStack([...folderStack, { id: f.id, name: f.name }])}
+            className="w-full flex items-center gap-2 px-3 py-1.5 border-b border-border/50 text-left hover:bg-border/20"
+          >
+            <span aria-hidden="true">📁</span>
+            <span className="flex-1 text-sm font-semibold text-text-primary truncate">{f.name}</span>
+            <span className="text-text-muted text-xs">›</span>
+          </button>
+        ))}
+        {loading ? <Spinner label={view === 'folders' ? 'Opening folder…' : 'Loading workflows…'} /> : shown.length === 0 ? (
+          (view !== 'folders' || !folders.length) && (
+            <EmptyState
+              title={view === 'folders' && !sessionToken ? 'Needs your GHL session' : list.length ? 'No match' : 'No workflows'}
+              hint={view === 'folders' && !sessionToken ? "Folders come from GHL's own API. Use Send to portal in GHL first." : undefined}
+            />
+          )
         ) : (
           <>
             <label className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs text-text-muted cursor-pointer sticky top-0 bg-surface">
               <input type="checkbox" checked={allShownPicked} onChange={toggleAll} />
-              Select {search ? 'shown' : 'all'} ({shown.length})
+              Select {search ? 'shown' : view === 'folders' ? 'all in this folder' : 'all'} ({shown.length})
             </label>
             {shown.map(w => (
               <label key={w.id} className="flex items-center gap-2 px-3 py-1.5 border-b border-border/50 last:border-0 cursor-pointer hover:bg-border/20">
@@ -379,6 +439,16 @@ function PairCard({ item, club, plan, clubWorkflows, onChange }) {
             : `${result.mode === 'new' ? 'Created draft' : 'Overwrote'} · ${result.steps} steps · ${result.triggers} trigger${result.triggers === 1 ? '' : 's'} added${result.triggersAlreadyThere ? ` · ${result.triggersAlreadyThere} already there` : ''}${result.snapshotId ? ' · backup saved' : ''}`}
         </p>
       )}
+      {result?.folder && (
+        <p className={`text-xs mt-1 ${result.folder.ok ? 'text-text-muted' : 'font-semibold text-amber-700'}`}>
+          {result.folder.ok ? '📁 ' : 'Could not confirm the folder: '}{result.folder.path.join(' › ')}
+          {result.folder.created?.length ? ` (created ${result.folder.created.join(', ')})` : ''}
+        </p>
+      )}
+      {result?.published && <p className="text-xs mt-1 font-semibold text-green-700">Published</p>}
+      {result?.unpublishReason && (
+        <p className="text-xs mt-1 font-semibold text-amber-700">Left as a draft: {result.unpublishReason}.</p>
+      )}
       {result?.extraTriggers?.length > 0 && (
         <p className="text-xs mt-1 text-text-muted">
           Left in place (not in the source): {result.extraTriggers.map(t => t.name).join(', ')}. Remove in GHL if unwanted.
@@ -404,6 +474,11 @@ function CopyPanel({ clubs, session, items, onClear, onNeedSession, onPushed }) 
   const [clubLists, setClubLists] = useState({})
   const [confirm, setConfirm] = useState(false)
   const [pushing, setPushing] = useState(null)
+  // Copies go in the same folder path as the source (created if missing).
+  const [sameFolder, setSameFolder] = useState(true)
+  // New copies are published, but only when nothing is left "not found".
+  const [publishNew, setPublishNew] = useState(false)
+  const batchNames = useMemo(() => items.map(it => it.name), [items])
 
   const sourceClubs = useMemo(() => new Set(items.map(i => i.payload.sourceClub).filter(Boolean)), [items])
   // Plans are keyed by the item's own id, so loading new items never reads a stale plan.
@@ -425,7 +500,7 @@ function CopyPanel({ clubs, session, items, onClear, onNeedSession, onPushed }) 
       const overrides = Object.fromEntries(Object.entries(plan.overrides || {}).filter(([, v]) => v))
       const { results } = await previewWorkflowTransfer(items[i].payload, [{
         club: slug, mode: plan.mode, targetWorkflowId: plan.targetWorkflowId, overrides,
-      }])
+      }], batchNames)
       const r = results[0]
       // First preview: default to overwriting the same-named workflow if there is one.
       if (!plan.touched && plan.mode === 'new' && r.sameName?.length) {
@@ -435,7 +510,7 @@ function CopyPanel({ clubs, session, items, onClear, onNeedSession, onPushed }) 
     } catch (err) {
       setPlans(prev => ({ ...prev, [k]: { ...(prev[k] || plan), loading: false, error: err.message } }))
     }
-  }, [items]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [items, batchNames]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // New target club -> preview every workflow into it.
   useEffect(() => {
@@ -461,19 +536,47 @@ function CopyPanel({ clubs, session, items, onClear, onNeedSession, onPushed }) 
     setConfirm(false)
     if (!session) { onNeedSession(); return }
     setPushing({ done: 0, total: pairs.length })
-    for (const { i, slug, plan } of pairs) {
-      const k = key(i, slug)
-      try {
-        const overrides = Object.fromEntries(Object.entries(plan.overrides || {}).filter(([, v]) => v))
-        const r = await pushWorkflowTransfer(session.token, items[i].payload, {
-          club: slug, mode: plan.mode, targetWorkflowId: plan.targetWorkflowId, overrides,
-        })
-        setPlans(prev => ({ ...prev, [k]: { ...prev[k], result: r } }))
-      } catch (err) {
-        setPlans(prev => ({ ...prev, [k]: { ...prev[k], result: { error: err.message } } }))
-        if (isSessionError(err)) { onNeedSession(); break }
+    const folder = sameFolder ? 'source' : 'keep'
+    // Club by club. Every NEW copy in a club gets an empty draft first, so
+    // workflows in this batch that add/remove each other link to the club's
+    // new copies; then each one is filled in.
+    clubs: for (const slug of targets) {
+      const clubPairs = pairs.filter(p => p.slug === slug)
+      const draftIds = {}
+      const news = clubPairs.filter(p => p.plan.mode === 'new')
+      if (news.length) {
+        try {
+          const { drafts } = await prepareWorkflowDrafts(session.token, slug, news.map(p => ({
+            name: p.plan.preview?.name || p.item.name,
+            folderPath: p.item.payload.folderPath || [],
+          })), folder)
+          news.forEach((p, n) => { if (drafts[n]) draftIds[key(p.i, slug)] = drafts[n].id })
+        } catch (err) {
+          for (const p of clubPairs) setPlans(prev => ({ ...prev, [key(p.i, slug)]: { ...prev[key(p.i, slug)], result: { error: err.message } } }))
+          setPushing(s => ({ ...s, done: s.done + clubPairs.length }))
+          if (isSessionError(err)) { onNeedSession(); break clubs }
+          continue
+        }
       }
-      setPushing(p => ({ ...p, done: p.done + 1 }))
+      for (const { i, plan } of clubPairs) {
+        const k = key(i, slug)
+        try {
+          const overrides = Object.fromEntries(Object.entries(plan.overrides || {}).filter(([, v]) => v))
+          const isNew = plan.mode === 'new'
+          if (isNew && !draftIds[k]) throw new Error('No draft was created for this copy')
+          const r = await pushWorkflowTransfer(session.token, items[i].payload, {
+            club: slug,
+            mode: isNew ? 'fill' : plan.mode,
+            targetWorkflowId: isNew ? draftIds[k] : plan.targetWorkflowId,
+            overrides, folder, publish: publishNew,
+          })
+          setPlans(prev => ({ ...prev, [k]: { ...prev[k], result: { ...r, mode: isNew ? 'new' : r.mode } } }))
+        } catch (err) {
+          setPlans(prev => ({ ...prev, [k]: { ...prev[k], result: { error: err.message } } }))
+          if (isSessionError(err)) { onNeedSession(); break clubs }
+        }
+        setPushing(p => ({ ...p, done: p.done + 1 }))
+      }
     }
     setPushing(null)
     setClubLists({})
@@ -514,6 +617,18 @@ function CopyPanel({ clubs, session, items, onClear, onNeedSession, onPushed }) 
         >All other clubs</button>
       </div>
 
+      <div className="flex flex-wrap gap-x-5 gap-y-1 mb-3 text-xs text-text-primary">
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={sameFolder} onChange={e => setSameFolder(e.target.checked)} />
+          Same folder as the source (created if missing)
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" checked={publishNew} onChange={e => setPublishNew(e.target.checked)} />
+          Publish new copies
+          <span className="text-text-muted">(only if nothing is "not found")</span>
+        </label>
+      </div>
+
       <div className="flex-1 overflow-y-auto min-h-0 space-y-4">
         {items.map((item, i) => (
           <div key={i}>
@@ -522,6 +637,7 @@ function CopyPanel({ clubs, session, items, onClear, onNeedSession, onPushed }) 
               <span className="ml-2 text-xs font-normal text-text-muted">
                 {(item.payload.workflow?.workflowData?.templates || []).length} steps · {(item.payload.triggers || []).length} triggers
                 {item.payload.sourceClub ? ` · from ${clubs.find(c => c.slug === item.payload.sourceClub)?.name || item.payload.sourceClub}` : ''}
+                {item.payload.folderPath?.length ? ` · 📁 ${item.payload.folderPath.join(' › ')}` : ''}
               </span>
             </p>
             {targets.size === 0 ? (
@@ -547,7 +663,7 @@ function CopyPanel({ clubs, session, items, onClear, onNeedSession, onPushed }) 
       <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-border">
         <p className="text-xs text-text-muted">
           {pushing ? `Pushing ${pushing.done} / ${pushing.total}…`
-            : pairs.length ? `${pairs.length} push${pairs.length > 1 ? 'es' : ''}${overwrites ? `, ${overwrites} overwrite${overwrites > 1 ? 's' : ''} (backed up first)` : ''}. New ones land as drafts.` : ''}
+            : pairs.length ? `${pairs.length} push${pairs.length > 1 ? 'es' : ''}${overwrites ? `, ${overwrites} overwrite${overwrites > 1 ? 's' : ''} (backed up first)` : ''}. New ones land as ${publishNew ? "published (when fully matched)" : "drafts"}${sameFolder ? ", in the source folder" : ""}.` : ''}
         </p>
         <Button onClick={() => (session ? setConfirm(true) : onNeedSession())} disabled={!ready || !!pushing}>Push to GHL</Button>
       </div>

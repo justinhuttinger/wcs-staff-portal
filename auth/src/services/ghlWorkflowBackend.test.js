@@ -60,3 +60,47 @@ test('writeWorkflow creates missing triggers first and points if/else trigger ch
     global.fetch = orig
   }
 })
+
+test('folders: path walks up by folderName, ensureFolderPath reuses existing and creates missing levels', async () => {
+  const { folderPath, ensureFolderPath } = require('./ghlWorkflowBackend')
+  const LOC = 'loc1'
+  // root -> WCS (f1) -> Lead Calls (f2)
+  const dirs = [
+    { id: 'f1', name: 'WCS', parentId: null },
+    { id: 'f2', name: 'Lead Calls', parentId: 'f1' },
+  ]
+  const posts = []
+  const orig = global.fetch
+  global.fetch = async (url, opts = {}) => {
+    const u = new URL(url)
+    const method = opts.method || 'GET'
+    let out = null
+    if (method === 'GET' && u.pathname === `/workflow/${LOC}/list`) {
+      const parent = u.searchParams.get('parentId')
+      const pid = parent === 'root' ? null : parent
+      const self = dirs.find(d => d.id === pid)
+      const rows = dirs.filter(d => d.parentId === pid).map(d => ({ id: d.id, name: d.name, type: 'directory', parentId: pid }))
+      out = { rows, count: rows.length, folderName: self ? self.name : null, parentId: self ? self.parentId : null }
+    } else if (method === 'POST' && u.pathname === `/workflow/${LOC}/directory`) {
+      const body = JSON.parse(opts.body)
+      posts.push(body)
+      const id = 'new' + posts.length
+      dirs.push({ id, name: body.name, parentId: body.parentId })
+      out = { id }
+    }
+    return { ok: true, status: 200, text: async () => JSON.stringify(out) }
+  }
+  try {
+    assert.deepEqual(await folderPath('a.b.c', LOC, 'f2'), ['WCS', 'Lead Calls'])
+    const same = await ensureFolderPath('a.b.c', LOC, ['wcs', 'Lead Calls'], { companyId: 'co', companyAge: 14 })
+    assert.equal(same.folderId, 'f2')
+    assert.deepEqual(same.created, [])
+    const made = await ensureFolderPath('a.b.c', LOC, ['WCS', 'Lead Calls', 'October'], { companyId: 'co', companyAge: 14 })
+    assert.deepEqual(made.created, ['October'])
+    assert.equal(posts[0].parentId, 'f2')
+    assert.equal(posts[0].type, 'directory')
+    assert.equal(posts[0].company_id, 'co')
+  } finally {
+    global.fetch = orig
+  }
+})

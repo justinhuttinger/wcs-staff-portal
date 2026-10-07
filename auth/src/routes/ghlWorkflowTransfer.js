@@ -102,6 +102,24 @@ router.post('/session-check', async (req, res) => {
   }
 })
 
+// GET /clubs/:club/folder?parentId= — one folder's subfolders and workflows
+// (internal API, needs the session). No parentId = top level.
+router.get('/clubs/:club/folder', async (req, res) => {
+  const token = needSession(req, res)
+  if (!token) return
+  const loc = clubOr404(req, res, req.params.club)
+  if (!loc) return
+  const parentId = req.query.parentId ? String(req.query.parentId) : null
+  if (parentId && !ID_RE.test(parentId)) return res.status(400).json({ error: 'Bad folder id' })
+  try {
+    const folder = await ghl.listFolder(token, loc.id, parentId)
+    const path = parentId ? await ghl.folderPath(token, loc.id, parentId) : []
+    res.json({ club: clubOf(loc), parentId, path, ...folder })
+  } catch (err) {
+    fail(res, err, 'Could not open folder')
+  }
+})
+
 // GET /clubs/:club/workflows/:id/export — the full definition + triggers.
 router.get('/clubs/:club/workflows/:id/export', async (req, res) => {
   const token = needSession(req, res)
@@ -111,7 +129,11 @@ router.get('/clubs/:club/workflows/:id/export', async (req, res) => {
   if (!ID_RE.test(req.params.id)) return res.status(400).json({ error: 'Bad workflow id' })
   try {
     const { workflow, triggers } = await ghl.exportWorkflow(token, loc.id, req.params.id)
+    // The folder it lives in, by name from the top, so copies can land in the
+    // same folder in other clubs.
+    const folderPath = workflow?.parentId ? await ghl.folderPath(token, loc.id, workflow.parentId).catch(() => []) : []
     res.json({
+      folderPath,
       format: EXPORT_FORMAT,
       exportedAt: new Date().toISOString(),
       sourceClub: loc.slug,
@@ -128,9 +150,11 @@ router.get('/clubs/:club/workflows/:id/export', async (req, res) => {
 function parseTarget(t) {
   const loc = getLocationBySlug(String(t?.club || ''))
   if (!loc) throw Object.assign(new Error(`Unknown club "${t?.club}"`), { status: 400 })
-  const mode = t.mode === 'overwrite' ? 'overwrite' : 'new'
-  const targetWorkflowId = mode === 'overwrite' ? String(t.targetWorkflowId || '') : null
-  if (mode === 'overwrite' && !ID_RE.test(targetWorkflowId)) {
+  // 'fill' = write into a draft created moments ago by /prepare (new copy, no
+  // backup needed). 'overwrite' = existing workflow, backed up first.
+  const mode = ['overwrite', 'fill'].includes(t.mode) ? t.mode : 'new'
+  const targetWorkflowId = mode !== 'new' ? String(t.targetWorkflowId || '') : null
+  if (mode !== 'new' && !ID_RE.test(targetWorkflowId)) {
     throw Object.assign(new Error(`Pick the ${loc.name} workflow to overwrite`), { status: 400 })
   }
   const name = typeof t.name === 'string' ? t.name.trim().slice(0, 200) : ''
@@ -138,7 +162,13 @@ function parseTarget(t) {
   for (const [from, to] of Object.entries(t.overrides && typeof t.overrides === 'object' ? t.overrides : {})) {
     if (ID_RE.test(from) && ID_RE.test(String(to))) overrides[from] = String(to)
   }
-  return { loc, mode, targetWorkflowId, name, overrides }
+  // folder: 'source' puts the copy in the same folder path as the source
+  // (created if missing); 'keep' leaves an overwrite where it is and a new
+  // copy at the top level. publish: new copies only, and only when nothing is
+  // left unmatched.
+  const folder = t.folder === 'keep' ? 'keep' : 'source'
+  const publish = t.publish === true
+  return { loc, mode, targetWorkflowId, name, overrides, folder, publish }
 }
 
 // Names a club's records carry besides its own name, ignored when matching.
@@ -185,6 +215,10 @@ router.post('/preview', async (req, res) => {
   try { payload = normalizePayload(req.body?.payload) } catch (err) { return res.status(400).json({ error: err.message }) }
   const targets = Array.isArray(req.body?.targets) ? req.body.targets.slice(0, 20) : []
   if (!targets.length) return res.status(400).json({ error: 'Pick at least one club' })
+  // Names of workflows being created in the same copy: links to them resolve
+  // once their drafts exist, so they are not "not found".
+  const batchNames = new Set((Array.isArray(req.body?.batchNames) ? req.body.batchNames : [])
+    .map(n => String(n).trim().toLowerCase()))
   try {
     const results = []
     for (const raw of targets) {
@@ -205,9 +239,13 @@ router.post('/preview', async (req, res) => {
           options[u.category] = (p.tgtCatalog[u.category] || []).map(r => ({ id: r.id, name: r.email || r.fieldKey || r.name }))
         }
       }
+      const inBatch = out.unmatched.filter(u => u.category === 'workflows' && batchNames.has(String(u.name).trim().toLowerCase()))
+      out.unmatched = out.unmatched.filter(u => !inBatch.includes(u))
+      out.matched.push(...inBatch.map(u => ({ ...u, inBatch: true })))
       results.push({
         club: clubOf(target.loc),
         mode: target.mode,
+        folderPath: payload.folderPath || [],
         name: p.name,
         targetWorkflowId: target.targetWorkflowId,
         sameName: p.sameName.map(w => ({ id: w.id, name: w.name, status: w.status })),
@@ -245,6 +283,47 @@ async function saveSnapshot(token, loc, workflowId, staff, reason) {
   return data.id
 }
 
+// POST /prepare { club, items: [{ name, folderPath }], folder: 'source'|'keep' }
+// Creates an empty draft for every NEW workflow in a batch before any is
+// filled in, so workflows that add/remove each other resolve to the club's
+// new copies. Folders are created as needed. Returns [{ name, id }].
+router.post('/prepare', async (req, res) => {
+  const token = needSession(req, res)
+  if (!token) return
+  const loc = clubOr404(req, res, req.body?.club)
+  if (!loc) return
+  const items = (Array.isArray(req.body?.items) ? req.body.items : []).slice(0, 100)
+  const useFolders = req.body?.folder !== 'keep'
+  const drafts = []
+  try {
+    const folders = new Map()
+    let company = null
+    for (const it of items) {
+      const name = String(it?.name || '').trim().slice(0, 200)
+      if (!name) continue
+      const id = await ghl.createDraft(token, loc.id, name)
+      drafts.push({ name, id })
+      const path = useFolders && Array.isArray(it.folderPath) ? it.folderPath.map(String).slice(0, 10) : []
+      if (path.length) {
+        if (!company) {
+          const wf = await ghl.getWorkflow(token, loc.id, id)
+          company = { companyId: wf.companyId, companyAge: wf.companyAge }
+        }
+        const key = path.join(' ')
+        if (!folders.has(key)) folders.set(key, await ghl.ensureFolderPath(token, loc.id, path, company))
+        await ghl.moveToFolder(token, loc.id, id, folders.get(key).folderId)
+      }
+    }
+    ghl.forgetCatalog(loc.id)
+    const createdFolders = [...new Set([...folders.values()].flatMap(f => f.created))]
+    console.log(`[ghlWorkflowTransfer] ${req.staff.email} prepared ${drafts.length} drafts in ${loc.slug}${createdFolders.length ? `, created folders: ${createdFolders.join(', ')}` : ''}`)
+    res.json({ drafts, createdFolders })
+  } catch (err) {
+    if (drafts.length) err.message += ` (${drafts.length} empty draft(s) already created in ${loc.name}: ${drafts.map(d => d.name).join(', ')})`
+    fail(res, err, `Preparing drafts in ${loc.name} failed`)
+  }
+})
+
 // POST /push { payload, target: { club, mode, targetWorkflowId?, name? } }
 // One club per call; the portal loops so each club reports on its own.
 router.post('/push', async (req, res) => {
@@ -264,7 +343,7 @@ router.post('/push', async (req, res) => {
     if (target.mode === 'overwrite') {
       // Never overwrite without a backup.
       snapshotId = await saveSnapshot(token, target.loc, workflowId, req.staff, 'pre_overwrite')
-    } else {
+    } else if (target.mode === 'new') {
       workflowId = await ghl.createDraft(token, target.loc.id, p.name)
     }
 
@@ -276,19 +355,52 @@ router.post('/push', async (req, res) => {
       extra: srcId ? { [srcId]: workflowId } : null,
       overrides: target.overrides,
     })
+    const isNew = target.mode !== 'overwrite'
+    // Publish only a new copy with nothing left unmatched.
+    const publishBlocked = target.publish && isNew && out.unmatched.length
+      ? `${out.unmatched.length} item(s) not found`
+      : null
+    const publish = target.publish && isNew && !publishBlocked
     let written
     try {
       written = await ghl.writeWorkflow(token, target.loc.id, workflowId, out, {
-        name: target.mode === 'new' || target.name ? p.name : undefined,
+        name: isNew || target.name ? p.name : undefined,
+        publish,
       })
     } catch (err) {
-      if (target.mode === 'new') {
+      if (target.mode !== 'overwrite') {
         err.message += ` (an empty draft "${p.name}" was left in ${target.loc.name}; overwrite it or delete it in GHL)`
       } else {
         err.message += ` (backup snapshot saved first)`
       }
       throw err
     }
+    // Anything that went wrong with triggers means it should not be live.
+    let published = publish
+    let unpublishReason = publishBlocked
+    if (publish && (written.droppedTriggers.length || written.unlinkedTriggerChecks.length)) {
+      await ghl.setStatus(token, target.loc.id, workflowId, 'draft')
+      published = false
+      unpublishReason = 'a trigger did not copy'
+    }
+
+    // Folder: same path as the source, created if missing. A fresh draft from
+    // /prepare is already there; this is a no-op for it.
+    let folder = null
+    if (target.folder === 'source' && payload.folderPath?.length) {
+      const now = await ghl.getWorkflow(token, target.loc.id, workflowId)
+      const { folderId, created } = await ghl.ensureFolderPath(token, target.loc.id, payload.folderPath,
+        { companyId: now.companyId, companyAge: now.companyAge })
+      if (now.parentId !== folderId) await ghl.moveToFolder(token, target.loc.id, workflowId, folderId)
+      const after = await ghl.getWorkflow(token, target.loc.id, workflowId)
+      folder = { path: payload.folderPath, created, ok: after.parentId === folderId }
+    }
+    if (published) {
+      const after = await ghl.getWorkflow(token, target.loc.id, workflowId)
+      published = after.status === 'published'
+      if (!published) unpublishReason = 'GHL kept it as a draft'
+    }
+
     ghl.forgetCatalog(target.loc.id)
     console.log(`[ghlWorkflowTransfer] ${req.staff.email} ${target.mode} "${p.name}" -> ${target.loc.slug} ${workflowId} (${written.steps} steps, ${written.triggers} triggers added, ${written.triggersAlreadyThere} already there${written.droppedTriggers.length ? `, GHL DROPPED: ${written.droppedTriggers.map(t => t.type + ' "' + t.name + '"').join(', ')}` : ''})`)
     res.json({
@@ -304,6 +416,9 @@ router.post('/push', async (req, res) => {
       extraTriggers: written.extraTriggers,
       unlinkedTriggerChecks: written.unlinkedTriggerChecks,
       unmatched: out.unmatched,
+      folder,
+      published,
+      unpublishReason: target.publish && isNew ? unpublishReason : null,
     })
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message })

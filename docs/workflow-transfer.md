@@ -34,3 +34,19 @@ It then replaces every source id anywhere in the definition and triggers (values
 
 ## Export
 Export selected, all in a club, or every club. Several workflows download as one bundle `{ format: 'wcs-ghl-workflow-bundle@1', workflows: [...] }`. **Load JSON file** accepts single exports, bundles and the Chrome extension's format.
+
+## Folders and publishing (captured from the GHL builder, 2026-10-07)
+| Action | Call |
+|---|---|
+| List a folder | `GET /workflow/{loc}/list?parentId=<id or root>&limit=50&offset=..&sortBy=name&sortOrder=asc&includeCustomObjects=true&includeObjectiveBuilder=true` → `{ rows, count, folderName, parentId }`. Folders are rows with `type: 'directory'`; `parentId` at the top level is the listed folder's own parent. |
+| Create a folder | `POST /workflow/{loc}/directory` `{ type: 'directory', name, parentId, company_id, company_age }` → `{ id }` |
+| Move into a folder | `PUT /workflow/{loc}/move-directory/{workflowId}` `{ parentId }` |
+| Publish / unpublish | The normal save, `PUT /workflow/{loc}/{id}`, with `status: 'published'` or `'draft'`. |
+
+**Folder browsing.** The Source panel's **Folders** view browses a club's GHL folders (needs the GHL session). Exports record `folderPath` (folder names from the top).
+
+**Same folder as the source** (on by default). Each push finds that folder path in the target club by name, creates any missing level, and moves the copy in. The result reads back the `parentId` to confirm.
+
+**Batch order.** Per club, every NEW copy first gets an empty draft (`POST /prepare`, which places it in its folder too). Then each draft is filled (`mode: 'fill'`, no backup needed). Workflows in the same batch that add/remove each other therefore link to the club's new copies. Preview treats those links as matched (`batchNames`).
+
+**Publish new copies** (off by default). Applies to new copies only. A copy is published only when nothing is "not found". It is set back to draft if a trigger didn't copy or an if/else trigger check couldn't be linked. The final status is read back.

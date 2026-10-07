@@ -2505,8 +2505,16 @@ export function exportGhlWorkflow(session, club, id) {
   return api('/ghl-workflows/clubs/' + encodeURIComponent(club) + '/workflows/' + encodeURIComponent(id) + '/export', { headers: ghlSessionHeaders(session) })
 }
 
-export function previewWorkflowTransfer(payload, targets) {
-  return api('/ghl-workflows/preview', { method: 'POST', body: JSON.stringify({ payload, targets }) })
+export function previewWorkflowTransfer(payload, targets, batchNames) {
+  return api('/ghl-workflows/preview', { method: 'POST', body: JSON.stringify({ payload, targets, batchNames }) })
+}
+
+export function getWorkflowFolder(session, club, parentId) {
+  return api('/ghl-workflows/clubs/' + encodeURIComponent(club) + '/folder' + (parentId ? '?parentId=' + encodeURIComponent(parentId) : ''), { headers: ghlSessionHeaders(session) })
+}
+
+export function prepareWorkflowDrafts(session, club, items, folder) {
+  return api('/ghl-workflows/prepare', { method: 'POST', headers: ghlSessionHeaders(session), body: JSON.stringify({ club, items, folder }) })
 }
 
 export function pushWorkflowTransfer(session, payload, target) {
