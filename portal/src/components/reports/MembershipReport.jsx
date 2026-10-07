@@ -146,9 +146,10 @@ function LineChart({ points }) {
 // Which rows sit behind each column of the salesperson table.
 //
 // EVERY ONE OF THESE WAS CHECKED AGAINST THIS REPORT'S OWN HANDLER, not assumed
-// from the column name. Total Sales and Same Day count ABC members on
-// sign_date with since_date >= sign_date, which is club-health-sales and NOT
-// Analytics' new-members (that counts on since_date). VIPs is the GHL
+// from the column name. Total Sales and Same Day count ABC members whose
+// since_date is in range, active or not, minus the skip list: Club Health's
+// rule, so club-health-sales (it keeps the Same Day and Sold By columns that
+// Analytics' new-members lacks). VIPs is the GHL
 // vip_team_member field, so club-health-vips rather than the vip_credits set.
 // Day One counts on the BOOKING date and is credited to whoever booked it,
 // which is why it carries both window and personField.
