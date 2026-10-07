@@ -12,6 +12,7 @@
 //   PUT  /workflow/{loc}/{id}                                 save steps + settings
 //   PUT  /workflow/{loc}/only-triggers/{id}                   replace triggers
 const { ghlFetch } = require('./ghlClient')
+const { replaceIds } = require('../lib/ghlWorkflowRemap')
 
 const BACKEND = 'https://backend.leadconnectorhq.com'
 
@@ -114,42 +115,42 @@ function triggerIdOf(resp) {
 }
 
 // Writes `source` (an already-remapped { workflow, triggers }) over the target
-// workflow `id`: steps and settings first, then triggers. The target keeps its
-// own id, version, folder and publish status.
+// workflow `id`. The target keeps its own id, version, folder and publish status.
+//
+// Triggers go FIRST, because steps can point at them: an if/else "Workflow
+// Trigger is ..." condition stores the trigger's id (conditionType 'trigger',
+// conditionValue = trigger id). Once every source trigger has a target trigger,
+// the source trigger ids inside the steps are swapped for the target's, and
+// only then are the steps saved.
 //
 // Triggers are MERGED, not replaced: a source trigger the target already has
-// (same type and conditions) is left alone, a missing one is added, and a
-// target trigger the source lacks is left in place and reported. Adding works
-// the way the builder does it (captured 2026-10-07): POST /workflow/{loc}/trigger
-// creates the record, then PUT /only-triggers/{id} saves the workflow's trigger
-// list with newTriggers = old + created, oldTriggers = old. Sending made-up ids
-// to only-triggers alone (the Chrome extension's way) is accepted and ignored.
+// (same type and conditions) is reused, a missing one is added, and a target
+// trigger the source lacks is left in place and reported. Adding works the way
+// the builder does it (captured 2026-10-07): POST /workflow/{loc}/trigger
+// creates the record, then PUT /only-triggers/{id} saves the trigger list with
+// newTriggers = old + created, oldTriggers = old. Sending made-up ids to
+// only-triggers alone (the Chrome extension's way) is accepted and ignored.
 async function writeWorkflow(token, loc, id, source, { name } = {}) {
-  const target = await getWorkflow(token, loc, id)
   const oldTriggers = (await getTriggers(token, loc, id)).filter(t => !t.deleted)
-
-  target.workflowData = source.workflow.workflowData || { templates: [] }
-  if (source.workflow.meta) target.meta = source.workflow.meta
-  if (name) target.name = name
-  for (const k of COPIED_SETTINGS) if (k in source.workflow) target[k] = source.workflow[k]
-  target.createdSteps = []
-  target.modifiedSteps = []
-  target.deletedSteps = []
-  target.triggersChanged = false
-  await backend(token, `/workflow/${enc(loc)}/${enc(id)}`, { method: 'PUT', body: target })
-
   const srcTriggers = (source.triggers || []).filter(t => !t.deleted)
-  const existingSigs = new Set(oldTriggers.map(triggerSignature))
-  const srcSigs = new Set(srcTriggers.map(triggerSignature))
-  const toCreate = srcTriggers.filter(t => !existingSigs.has(triggerSignature(t)))
+
+  // Source trigger id -> target trigger id.
+  const triggerIds = {}
+  const bySig = new Map()
+  for (const t of oldTriggers) if (!bySig.has(triggerSignature(t))) bySig.set(triggerSignature(t), t)
+  const toCreate = []
+  for (const t of srcTriggers) {
+    const match = bySig.get(triggerSignature(t))
+    if (match) triggerIds[t.id] = match.id
+    else toCreate.push(t)
+  }
   const alreadyThere = srcTriggers.length - toCreate.length
+  const srcSigs = new Set(srcTriggers.map(triggerSignature))
   const extraTriggers = oldTriggers
     .filter(t => !srcSigs.has(triggerSignature(t)))
     .map(t => ({ type: t.type, name: t.name || t.type }))
 
-  let droppedTriggers = []
   if (toCreate.length) {
-    // The PUT above bumped the version; trigger writes must carry the current one.
     let base = await getWorkflow(token, loc, id)
     const created = []
     for (const t of toCreate) {
@@ -165,33 +166,55 @@ async function writeWorkflow(token, loc, id, source, { name } = {}) {
       if (base.companyAge !== undefined) body.company_age = base.companyAge
       body.triggersChanged = true
       const resp = await backend(token, `/workflow/${enc(loc)}/trigger`, { method: 'POST', body })
-      created.push({ sig: triggerSignature(t), resp, triggerId: triggerIdOf(resp) })
+      created.push({ src: t, sig: triggerSignature(t), resp, triggerId: triggerIdOf(resp) })
     }
 
-    // Resolve the created records. Prefer the ids GHL returned; otherwise find
-    // them in the workflow's trigger list by signature.
+    // Resolve the created records: the id GHL returned, else find the new
+    // trigger in the list by signature.
     const listed = (await getTriggers(token, loc, id)).filter(t => !t.deleted)
     const oldIds = new Set(oldTriggers.map(t => t.id))
     const fresh = listed.filter(t => !oldIds.has(t.id))
-    const createdRecords = created.map(c =>
+    const records = created.map(c =>
       (c.triggerId && listed.find(t => t.id === c.triggerId)) ||
       (c.triggerId && typeof c.resp === 'object' && c.resp?.type ? c.resp : null) ||
       fresh.find(t => triggerSignature(t) === c.sig) ||
       null)
-    const missing = createdRecords.map((r, i) => (r ? null : created[i])).filter(Boolean)
-    if (missing.length) {
-      console.warn('[ghlWorkflowBackend] trigger POST gave no usable record:', JSON.stringify(missing.map(m => m.resp)).slice(0, 500))
+    created.forEach((c, i) => {
+      const recId = records[i]?.id || c.triggerId
+      if (recId && c.src.id) triggerIds[c.src.id] = recId
+    })
+    if (records.some(r => !r)) {
+      console.warn('[ghlWorkflowBackend] trigger POST gave no usable record:',
+        JSON.stringify(created.filter((c, i) => !records[i]).map(c => c.resp)).slice(0, 500))
     }
 
     // Save the trigger list, exactly as the builder does after adding one.
     base = await getWorkflow(token, loc, id)
-    const newTriggers = [...oldTriggers, ...createdRecords.filter(Boolean)]
     await backend(token, `/workflow/${enc(loc)}/only-triggers/${enc(id)}`, {
       method: 'PUT',
-      body: { ...base, newTriggers, oldTriggers, triggersChanged: true },
+      body: { ...base, newTriggers: [...oldTriggers, ...records.filter(Boolean)], oldTriggers, triggersChanged: true },
     })
+  }
 
-    // Read back: every trigger we meant to add must now be there.
+  // Steps: swap source trigger ids for the target's, then save.
+  const swaps = new Map(Object.entries(triggerIds).filter(([from, to]) => from && to && from !== to))
+  const { value: workflowData } = replaceIds(source.workflow.workflowData || { templates: [] }, swaps)
+  const unresolved = srcTriggers.filter(t => !triggerIds[t.id] && JSON.stringify(workflowData).includes(t.id))
+
+  const target = await getWorkflow(token, loc, id)
+  target.workflowData = workflowData
+  if (source.workflow.meta) target.meta = source.workflow.meta
+  if (name) target.name = name
+  for (const k of COPIED_SETTINGS) if (k in source.workflow) target[k] = source.workflow[k]
+  target.createdSteps = []
+  target.modifiedSteps = []
+  target.deletedSteps = []
+  target.triggersChanged = false
+  await backend(token, `/workflow/${enc(loc)}/${enc(id)}`, { method: 'PUT', body: target })
+
+  // Read back: every trigger we meant to add must now be there.
+  let droppedTriggers = []
+  if (toCreate.length) {
     const after = (await getTriggers(token, loc, id).catch(() => [])).filter(t => !t.deleted)
     const afterSigs = after.map(triggerSignature)
     droppedTriggers = toCreate
@@ -200,11 +223,14 @@ async function writeWorkflow(token, loc, id, source, { name } = {}) {
   }
 
   return {
-    steps: (target.workflowData.templates || []).length,
+    steps: (workflowData.templates || []).length,
     triggers: toCreate.length - droppedTriggers.length,
     triggersAlreadyThere: alreadyThere,
     droppedTriggers,
     extraTriggers,
+    // Steps that check "Workflow Trigger is ..." against a trigger we could not
+    // place in the target; those branches need fixing by hand.
+    unlinkedTriggerChecks: unresolved.map(t => ({ type: t.type, name: t.name || t.type })),
   }
 }
 
