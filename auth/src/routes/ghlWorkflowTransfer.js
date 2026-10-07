@@ -302,6 +302,7 @@ router.post('/push', async (req, res) => {
       droppedTriggers: written.droppedTriggers,
       triggersAlreadyThere: written.triggersAlreadyThere,
       extraTriggers: written.extraTriggers,
+      unlinkedTriggerChecks: written.unlinkedTriggerChecks,
       unmatched: out.unmatched,
     })
   } catch (err) {

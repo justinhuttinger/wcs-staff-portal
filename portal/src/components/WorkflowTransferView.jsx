@@ -384,6 +384,11 @@ function PairCard({ item, club, plan, clubWorkflows, onChange }) {
           Left in place (not in the source): {result.extraTriggers.map(t => t.name).join(', ')}. Remove in GHL if unwanted.
         </p>
       )}
+      {result?.unlinkedTriggerChecks?.length > 0 && (
+        <p className="text-xs mt-1 font-semibold text-amber-700">
+          An if/else checks "Workflow Trigger is {result.unlinkedTriggerChecks.map(t => t.name).join(', ')}" but that trigger could not be placed here. Fix that branch in GHL.
+        </p>
+      )}
       {result?.droppedTriggers?.length > 0 && (
         <p className="text-xs mt-1 font-semibold text-amber-700">
           GHL did not keep {result.droppedTriggers.length === 1 ? 'this trigger' : 'these triggers'}: {result.droppedTriggers.map(t => t.name).join(', ')}. Add {result.droppedTriggers.length === 1 ? 'it' : 'them'} by hand in GHL.
