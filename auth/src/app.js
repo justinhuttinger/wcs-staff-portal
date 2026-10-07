@@ -76,6 +76,8 @@ app.use('/day-one-program', express.json({ limit: '2mb' }))
 app.use('/webhooks/day-one-booked', express.json({ limit: '2mb' }))
 // Workflow maps save their whole graph on every autosave.
 app.use('/workflow-maps', express.json({ limit: '2mb' }))
+// Workflow Transfer posts whole GHL workflow definitions.
+app.use('/ghl-workflows', express.json({ limit: '5mb' }))
 app.use(express.json())
 app.use(cookieParser())
 
@@ -241,6 +243,7 @@ app.use('/referral-rewards', require('./routes/referralRewards'))
 app.use('/marketing-tracker', require('./routes/marketingTracker'))
 app.use('/event-calendar', require('./routes/eventCalendar'))
 app.use('/workflow-maps', require('./routes/workflowMaps'))
+app.use('/ghl-workflows', require('./routes/ghlWorkflowTransfer'))
 app.use('/blog-automation', require('./routes/blogAutomation'))
 app.use('/kpi-digest', require('./routes/kpiDigest'))
 app.use('/meeting-goals', require('./routes/meetingGoals'))

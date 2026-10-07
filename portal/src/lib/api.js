@@ -2480,3 +2480,43 @@ export async function createCustomValue(location, { name, value }) {
     body: JSON.stringify({ name, value }),
   })
 }
+
+// ── Workflow Transfer (owner only) ─────────────────────────────────────────
+// Full-workflow reads and writes run as the GHL user, so those calls carry the
+// GHL session handed over from the Agency Custom JS (see lib/ghlSession).
+function ghlSessionHeaders(session) {
+  return session ? { 'X-GHL-Session': session } : {}
+}
+
+export function getWorkflowTransferClubs() {
+  return api('/ghl-workflows/clubs')
+}
+
+export function getWorkflowTransferList(club, fresh) {
+  return api('/ghl-workflows/clubs/' + encodeURIComponent(club) + '/workflows' + (fresh ? '?fresh=1' : ''))
+}
+
+export function checkWorkflowTransferSession(session, club) {
+  return api('/ghl-workflows/session-check', { method: 'POST', headers: ghlSessionHeaders(session), body: JSON.stringify({ club }) })
+}
+
+export function exportGhlWorkflow(session, club, id) {
+  return api('/ghl-workflows/clubs/' + encodeURIComponent(club) + '/workflows/' + encodeURIComponent(id) + '/export', { headers: ghlSessionHeaders(session) })
+}
+
+export function previewWorkflowTransfer(payload, targets) {
+  return api('/ghl-workflows/preview', { method: 'POST', body: JSON.stringify({ payload, targets }) })
+}
+
+export function pushWorkflowTransfer(session, payload, target) {
+  return api('/ghl-workflows/push', { method: 'POST', headers: ghlSessionHeaders(session), body: JSON.stringify({ payload, target }) })
+}
+
+export function getWorkflowSnapshots(params = {}) {
+  const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString()
+  return api('/ghl-workflows/snapshots' + (qs ? '?' + qs : ''))
+}
+
+export function getWorkflowSnapshot(id) {
+  return api('/ghl-workflows/snapshots/' + encodeURIComponent(id))
+}
