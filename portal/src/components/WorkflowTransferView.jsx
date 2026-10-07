@@ -111,14 +111,24 @@ function SourcePanel({ clubs, session, onUse, onNeedSession }) {
   const [picked, setPicked] = useState(() => new Set())
   const [progress, setProgress] = useState(null)
   const fileRef = useRef(null)
+  const latestLoad = useRef(0)
 
+  // A slow list for one club must never land after a newer club's list: each
+  // load is numbered and only the latest one is applied. Every row also keeps
+  // the club it came from, so an export always pairs an id with its own club.
   const load = useCallback(async (fresh) => {
     if (!club) return
-    setLoading(true); setError('')
+    const seq = ++latestLoad.current
+    setLoading(true); setError(''); setList([])
     try {
       const data = await getWorkflowTransferList(club, fresh)
-      setList(data.workflows || [])
-    } catch (err) { setError(err.message) } finally { setLoading(false) }
+      if (seq !== latestLoad.current) return
+      setList((data.workflows || []).map(w => ({ ...w, club })))
+    } catch (err) {
+      if (seq === latestLoad.current) setError(err.message)
+    } finally {
+      if (seq === latestLoad.current) setLoading(false)
+    }
   }, [club])
 
   useEffect(() => { setPicked(new Set()); load(false) }, [load])
@@ -162,12 +172,12 @@ function SourcePanel({ clubs, session, onUse, onNeedSession }) {
     return { done, failed }
   }
 
-  const pickedItems = () => list.filter(w => picked.has(w.id)).map(w => ({ club, id: w.id, name: w.name }))
+  const pickedItems = () => list.filter(w => picked.has(w.id)).map(w => ({ club: w.club, id: w.id, name: w.name }))
 
   const download = (result, filename) => {
     if (!result) return
     if (result.done.length === 1 && !result.failed.length) {
-      downloadJson(filename || `${slugify(result.done[0].name)}.json`, result.done[0])
+      downloadJson(filename || `${slugify(result.done[0].name)}-${result.done[0].sourceClub}.json`, result.done[0])
     } else {
       downloadJson(filename, {
         format: 'wcs-ghl-workflow-bundle@1', exportedAt: new Date().toISOString(),
@@ -180,11 +190,11 @@ function SourcePanel({ clubs, session, onUse, onNeedSession }) {
   const exportPicked = async () => {
     const items = pickedItems()
     const r = await exportMany(items, 'Exporting')
-    download(r, items.length === 1 ? undefined : `ghl-workflows-${club}-${items.length}-${today()}.json`)
+    download(r, items.length === 1 ? `${slugify(items[0].name)}-${club}-${today()}.json` : `ghl-workflows-${club}-${items.length}-${today()}.json`)
   }
 
   const exportClub = async () => {
-    const r = await exportMany(list.map(w => ({ club, id: w.id, name: w.name })), `Exporting all of ${clubs.find(c => c.slug === club)?.name}`)
+    const r = await exportMany(list.map(w => ({ club: w.club, id: w.id, name: w.name })), `Exporting all of ${clubs.find(c => c.slug === club)?.name}`)
     download(r, `ghl-workflows-${club}-all-${today()}.json`)
   }
 
@@ -366,7 +376,17 @@ function PairCard({ item, club, plan, clubWorkflows, onChange }) {
         <p className={`text-xs mt-2 font-semibold ${result.error ? 'text-red-700' : 'text-green-700'}`}>
           {result.error
             ? result.error
-            : `${result.mode === 'new' ? 'Created draft' : 'Overwrote'} · ${result.steps} steps · ${result.triggers} triggers${result.snapshotId ? ' · backup saved' : ''}`}
+            : `${result.mode === 'new' ? 'Created draft' : 'Overwrote'} · ${result.steps} steps · ${result.triggers} trigger${result.triggers === 1 ? '' : 's'} added${result.triggersAlreadyThere ? ` · ${result.triggersAlreadyThere} already there` : ''}${result.snapshotId ? ' · backup saved' : ''}`}
+        </p>
+      )}
+      {result?.extraTriggers?.length > 0 && (
+        <p className="text-xs mt-1 text-text-muted">
+          Left in place (not in the source): {result.extraTriggers.map(t => t.name).join(', ')}. Remove in GHL if unwanted.
+        </p>
+      )}
+      {result?.droppedTriggers?.length > 0 && (
+        <p className="text-xs mt-1 font-semibold text-amber-700">
+          GHL did not keep {result.droppedTriggers.length === 1 ? 'this trigger' : 'these triggers'}: {result.droppedTriggers.map(t => t.name).join(', ')}. Add {result.droppedTriggers.length === 1 ? 'it' : 'them'} by hand in GHL.
         </p>
       )}
     </div>
