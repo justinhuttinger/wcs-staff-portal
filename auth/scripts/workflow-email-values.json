@@ -1,11 +1,11 @@
 {
-  "_note": "Per-club values for the workflow email series placeholders. defaults apply to every club; clubs.<slug> overrides. {club} becomes the club slug. Empty = not known yet (push skips that club).",
+  "_note": "Per-club values for the workflow email series placeholders. defaults apply to every club; clubs.<slug> overrides. {club} becomes the club slug. Empty = not known yet (push skips that club). {{contact.id}} is GHL's merge field, resolved per contact at send.",
   "defaults": {
     "tour_booking_link": "https://api.westcoaststrength.com/widget/bookings/{club}-gym-tour",
-    "one_month_free_link": "",
-    "half_off_link": "",
-    "day_one_link": "",
-    "vip_link": "",
+    "one_month_free_link": "https://join.westcoaststrength.com/?location={club}&promo=1monthfree&c={{contact.id}}",
+    "half_off_link": "https://join.westcoaststrength.com/?location={club}&promo=halfoff&c={{contact.id}}",
+    "day_one_link": "https://book.westcoaststrength.com/dayone/{club}",
+    "vip_link": "https://vip.westcoaststrength.com/{club}",
     "vip_reward": "your next month of dues is on us",
     "from_email": "{club}@wcs{club}.app"
   },
