@@ -102,6 +102,28 @@ edge = { id, source, target, sourceHandle? } // sourceHandle = branch id
 
 Export files wrap the map as `{ format: 'wcs-workflow-map', version: 1, workflow: {...} }`.
 
+### Live GHL custom values
+
+SMS, call and email steps can be **linked** to a GHL custom value (the copy
+the workflows send, also edited in the Workflows & Scripts tile). GHL stays the
+source of truth:
+
+- The editor's **GHL copy** picker chooses the club (defaults to the map's
+  first club, else Salem). Linked steps show that club's live value with a
+  green GHL badge, or "Not in club" if that club doesn't have it.
+- Editing a linked step writes to GHL for that club only (copy can be
+  club-specific: links, staff names). Needs the Workflows & Scripts permission;
+  without it linked copy is view-only.
+- Changes made in GHL or the Scripts tile show on open or with the ↻ button.
+  Linked values are re-read by id because GHL's list endpoint lags writes.
+- The step keeps its own copy as a fallback (export, clubs without the value).
+  Undo only reverts the map, never GHL.
+- Link format on the step: `data.cv = { key: 'custom_values.x', name }` (key
+  matched first, then name; ids are per club so they're never stored).
+- Endpoints: `GET /workflow-maps/ghl-values/locations`,
+  `GET /workflow-maps/ghl-values?location=&links=`,
+  `PUT /workflow-maps/ghl-values/:id?location=` (requires `ghlScripts`).
+
 ### GHL sync (not built)
 
 The table already has `source` ('manual' | 'ghl'), `ghl_location_id`,

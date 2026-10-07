@@ -2468,3 +2468,19 @@ export async function duplicateWorkflowMap(id) {
 export async function deleteWorkflowMap(id) {
   return api('/workflow-maps/' + id, { method: 'DELETE' })
 }
+
+// Workflow Maps <-> GHL custom values (live copy for linked steps)
+export async function getWorkflowGhlLocations() {
+  return api('/workflow-maps/ghl-values/locations')
+}
+
+export async function getWorkflowGhlValues(location, links = []) {
+  return api('/workflow-maps/ghl-values?location=' + encodeURIComponent(location) + '&links=' + encodeURIComponent(JSON.stringify(links)))
+}
+
+export async function saveWorkflowGhlValue(location, id, { name, value }) {
+  return api('/workflow-maps/ghl-values/' + encodeURIComponent(id) + '?location=' + encodeURIComponent(location), {
+    method: 'PUT',
+    body: JSON.stringify({ name, value }),
+  })
+}

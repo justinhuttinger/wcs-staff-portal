@@ -10,6 +10,7 @@ import { KINDS, KIND_KEYS, WORKFLOW_STATUSES, blankData, newId } from './kinds'
 import StepNode, { KindIcon } from './StepNode'
 import NodePanel from './NodePanel'
 import { tidyLayout } from './layout'
+import useGhlValues from './useGhlValues'
 import { Modal, MapDetailsForm, downloadJson } from './MapDetails'
 import { btnGhost, STATUS_CLS } from './ui'
 
@@ -93,6 +94,10 @@ function Editor({ id, onClose }) {
   const [showDetails, setShowDetails] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [, setHistoryTick] = useState(0)
+
+  const ghl = useGhlValues({ nodes, preferredClubs: meta ? (meta.clubs || []) : undefined })
+  const ghlRef = useRef(ghl)
+  ghlRef.current = ghl
 
   const latest = useRef({ nodes, edges, meta })
   latest.current = { nodes, edges, meta }
@@ -260,6 +265,14 @@ function Editor({ id, onClose }) {
   }, [present, snapshot])
 
   const updateNodeData = useCallback((nodeId, patch) => {
+    // A linked step's copy lives in GHL: write it there too. The step keeps
+    // its own copy as a fallback (export, a club without the value).
+    if (typeof patch.body === 'string' && !('cv' in patch)) {
+      const node = latest.current.nodes.find(n => n.id === nodeId)
+      const g = ghlRef.current
+      const live = node?.data?.cv && g.canEdit ? g.liveFor(node.data.cv) : null
+      if (live) g.write(live, patch.body)
+    }
     setNodes(ns => ns.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n)))
     // Removing a condition branch drops the connection that hung off it.
     if (patch.branches) {
@@ -382,7 +395,16 @@ function Editor({ id, onClose }) {
     })
   }, [nodes, edges])
 
-  const selectedNode = nodes.find(n => n.id === selectedId) || null
+  // What the canvas and panel show: linked steps carry the club's live GHL
+  // value instead of the stored copy.
+  const displayNodes = useMemo(() => nodes.map(n => {
+    if (!n.data?.cv) return n
+    const live = ghl.liveFor(n.data.cv)
+    const status = live ? 'live' : (ghl.values ? 'missing' : 'loading')
+    return { ...n, data: { ...n.data, body: live ? live.value : n.data.body, _ghl: status } }
+  }), [nodes, ghl.values]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectedNode = displayNodes.find(n => n.id === selectedId) || null
   const hasSelectedEdge = !present && edges.some(e => e.selected)
 
   if (loadError) {
@@ -417,6 +439,20 @@ function Editor({ id, onClose }) {
         </button>
         <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold uppercase tracking-wide ${STATUS_CLS[meta.status] || STATUS_CLS.draft}`}>{WORKFLOW_STATUSES[meta.status] || meta.status}</span>
         {!present && <SaveIndicator state={saveState} onRetry={save} />}
+        {ghl.locations.length > 0 && (ghl.hasLinks || !present) && (
+          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-text-muted" title="Linked steps show this club's live GHL custom values">
+            GHL copy
+            <select value={ghl.club || ''} onChange={e => ghl.setClub(e.target.value)}
+              className="rounded-md border border-border bg-bg px-1.5 py-1 text-xs text-text-primary">
+              {ghl.locations.map(l => <option key={l.slug} value={l.slug}>{l.name}</option>)}
+            </select>
+            <button type="button" onClick={ghl.refresh} disabled={ghl.loading} title="Reload from GHL"
+              className="px-1.5 py-1 rounded-md border border-border bg-surface text-text-muted hover:text-text-primary disabled:opacity-50">
+              {ghl.loading ? '...' : '↻'}
+            </button>
+            {ghl.error && <span className="text-wcs-red" title={ghl.error}>GHL error</span>}
+          </label>
+        )}
 
         <div className="flex flex-wrap items-center gap-1.5 ml-auto">
           {meta.ghl_workflow_url && (
@@ -457,7 +493,7 @@ function Editor({ id, onClose }) {
       <div className="flex-1 min-h-0 flex relative">
         <div ref={wrapperRef} className="flex-1 min-w-0 relative" style={{ visibility: nodes.length && !viewReady ? 'hidden' : undefined }}>
           <ReactFlow
-            nodes={nodes}
+            nodes={displayNodes}
             edges={displayEdges}
             nodeTypes={nodeTypes}
             defaultEdgeOptions={defaultEdgeOptions}
@@ -502,6 +538,9 @@ function Editor({ id, onClose }) {
           <aside className="absolute inset-x-0 bottom-0 h-[65vh] rounded-t-2xl shadow-2xl md:static md:h-auto md:w-[380px] md:rounded-none md:shadow-none bg-surface border-t md:border-t-0 md:border-l border-border z-10 overflow-hidden">
             <NodePanel
               node={selectedNode}
+              ghl={ghl}
+              onLink={(v) => { snapshot(); updateNodeData(selectedNode.id, { cv: { key: v.fieldKey, name: v.name }, body: v.value }) }}
+              onUnlink={() => { snapshot(); updateNodeData(selectedNode.id, { cv: null, body: selectedNode.data.body }) }}
               readOnly={present}
               onChange={updateNodeData}
               onBeforeEdit={snapshot}

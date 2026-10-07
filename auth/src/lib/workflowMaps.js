@@ -80,4 +80,24 @@ function sanitizeMapInput(body, { requireName = false } = {}) {
   return { fields }
 }
 
-module.exports = { sanitizeMapInput, NODE_TYPES }
+// A step linked to a GHL custom value stores { key, name }: key is the
+// fieldKey ("custom_values.new_lead_sms_1"), the same in every club built from
+// the snapshot; ids differ per club, so they are never stored on the step.
+function normalizeCvKey(k) {
+  return String(k || '').replace(/[{}\s]/g, '').toLowerCase()
+}
+
+// The club's value for a link: by key first, then by name (links made from
+// a name only, e.g. the seeded flows).
+function findLinkedValue(values, link) {
+  if (!link) return null
+  const key = normalizeCvKey(link.key)
+  if (key) {
+    const hit = values.find(v => normalizeCvKey(v.fieldKey) === key)
+    if (hit) return hit
+  }
+  const name = String(link.name || '').trim().toLowerCase()
+  return name ? values.find(v => String(v.name || '').trim().toLowerCase() === name) || null : null
+}
+
+module.exports = { sanitizeMapInput, NODE_TYPES, normalizeCvKey, findLinkedValue }
