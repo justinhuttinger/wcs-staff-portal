@@ -4,15 +4,16 @@ import {
 } from './kinds'
 import { KindIcon, MergeText } from './StepNode'
 import { inputCls, btnGhost } from './ui'
+import EmailHtmlPreview, { EmailPreviewModal, WidthToggle, looksLikeHtml } from './EmailHtmlPreview'
 
-function CopyButton({ text }) {
+function CopyButton({ text, label = 'Copy' }) {
   const [copied, setCopied] = useState(false)
   if (!text) return null
   return (
     <button type="button"
       onClick={() => { navigator.clipboard?.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }).catch(() => {}) }}
       className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition-colors ${copied ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'border-border text-text-muted hover:text-text-primary'}`}>
-      {copied ? 'Copied!' : 'Copy'}
+      {copied ? 'Copied!' : label}
     </button>
   )
 }
@@ -59,7 +60,7 @@ function MergeFieldPicker({ onPick }) {
   )
 }
 
-function BodyEditor({ label, value, onChange, onFocus, rows = 6, sms = false, placeholder }) {
+function BodyEditor({ label, value, onChange, onFocus, rows = 6, sms = false, mono = false, placeholder }) {
   const [el, setEl] = useState(null)
   function insert(field) {
     const v = value || ''
@@ -71,7 +72,7 @@ function BodyEditor({ label, value, onChange, onFocus, rows = 6, sms = false, pl
   }
   return (
     <Field label={label} extra={<MergeFieldPicker onPick={insert} />}>
-      <textarea ref={setEl} className={inputCls + ' font-normal'} rows={rows} value={value || ''} placeholder={placeholder}
+      <textarea ref={setEl} className={inputCls + (mono ? ' font-mono text-xs' : ' font-normal')} spellCheck={!mono} rows={rows} value={value || ''} placeholder={placeholder}
         onFocus={onFocus} onChange={e => onChange(e.target.value)} />
       {sms && <div className="mt-1"><SmsMeta text={value} /></div>}
     </Field>
@@ -89,8 +90,14 @@ const BODY_LABEL = {
 }
 
 export default function NodePanel({ node, readOnly, onChange, onBeforeEdit, onDelete, onDuplicate, onClose, edgesFromBranch }) {
+  const [previewWidth, setPreviewWidth] = useState('desktop')
+  const [fullPreview, setFullPreview] = useState(false)
   if (!node) return null
   const { type, data } = node
+  const isHtmlEmail = type === 'email' && data.bodyFormat === 'html'
+  const modal = fullPreview && isHtmlEmail && (
+    <EmailPreviewModal subject={data.subject} previewText={data.previewText} html={data.body} onClose={() => setFullPreview(false)} />
+  )
   const kind = KINDS[type] || KINDS.note
   const set = (patch) => onChange(node.id, patch)
   // One undo step per field focus, not per keystroke.
@@ -124,7 +131,25 @@ export default function NodePanel({ node, readOnly, onChange, onBeforeEdit, onDe
               </div>
             </div>
           )}
-          {type === 'email' && (
+          {isHtmlEmail && (
+            <div className="space-y-2">
+              <div className="rounded-lg border border-border bg-bg px-3 py-2 space-y-0.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-text-primary"><MergeText text={data.subject || '(no subject)'} /></div>
+                  <CopyButton text={data.subject} />
+                </div>
+                {data.previewText && <div className="text-xs text-text-muted"><MergeText text={data.previewText} /></div>}
+              </div>
+              {data.body ? <EmailHtmlPreview html={data.body} onClick={() => setFullPreview(true)} /> : <p className="text-xs text-text-muted">No email HTML yet.</p>}
+              {data.body && (
+                <div className="flex gap-2">
+                  <button type="button" className={btnGhost} onClick={() => setFullPreview(true)}>Full preview</button>
+                  <CopyButton text={data.body} label="Copy HTML" />
+                </div>
+              )}
+            </div>
+          )}
+          {type === 'email' && !isHtmlEmail && (
             <div className="rounded-lg border border-border overflow-hidden">
               <div className="bg-bg px-3 py-2 border-b border-border space-y-0.5">
                 <div className="flex items-center justify-between gap-2">
@@ -147,6 +172,7 @@ export default function NodePanel({ node, readOnly, onChange, onBeforeEdit, onDe
           )}
           {data.notes && <ReadBlock label="Internal notes" text={data.notes} copy={false} />}
         </div>
+        {modal}
       </div>
     )
   }
@@ -167,6 +193,14 @@ export default function NodePanel({ node, readOnly, onChange, onBeforeEdit, onDe
           <>
             <Field label="Subject line"><input className={inputCls} value={data.subject || ''} onFocus={focus} onChange={e => set({ subject: e.target.value })} /></Field>
             <Field label="Preview text"><input className={inputCls} value={data.previewText || ''} onFocus={focus} onChange={e => set({ previewText: e.target.value })} /></Field>
+            <Field label="Body format">
+              <div className="flex gap-1 bg-bg rounded-lg p-1">
+                {[['text', 'Plain text'], ['html', 'HTML (rendered)']].map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => { focus(); set({ bodyFormat: k }) }}
+                    className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold ${(data.bodyFormat || 'text') === k ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted'}`}>{l}</button>
+                ))}
+              </div>
+            </Field>
           </>
         )}
 
@@ -219,9 +253,23 @@ export default function NodePanel({ node, readOnly, onChange, onBeforeEdit, onDe
         )}
 
         {type !== 'wait' && type !== 'condition' && (
-          <BodyEditor label={BODY_LABEL[type] || 'Details'} value={data.body} onFocus={focus} onChange={v => set({ body: v })}
-            rows={type === 'email' ? 10 : 5} sms={type === 'sms'}
-            placeholder={type === 'sms' ? 'Hey {{contact.first_name}}...' : undefined} />
+          <BodyEditor label={isHtmlEmail ? 'Email HTML' : (BODY_LABEL[type] || 'Details')} value={data.body} onFocus={focus} onChange={v => set({ body: v })}
+            rows={isHtmlEmail ? 8 : type === 'email' ? 10 : 5} sms={type === 'sms'} mono={isHtmlEmail}
+            placeholder={type === 'sms' ? 'Hey {{contact.first_name}}...' : isHtmlEmail ? 'Paste the email HTML from GHL or your email builder' : undefined} />
+        )}
+
+        {type === 'email' && !isHtmlEmail && looksLikeHtml(data.body) && (
+          <button type="button" onClick={() => { focus(); set({ bodyFormat: 'html' }) }}
+            className="w-full text-left rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
+            This looks like HTML. Show it as a rendered email
+          </button>
+        )}
+
+        {isHtmlEmail && data.body && (
+          <Field label="Preview" extra={<WidthToggle value={previewWidth} onChange={setPreviewWidth} />}>
+            <EmailHtmlPreview html={data.body} width={previewWidth} onClick={() => setFullPreview(true)} />
+            <button type="button" className={btnGhost + ' mt-2'} onClick={() => setFullPreview(true)}>Full preview</button>
+          </Field>
         )}
 
         {type !== 'note' && (
@@ -244,6 +292,7 @@ export default function NodePanel({ node, readOnly, onChange, onBeforeEdit, onDe
         <button className={btnGhost + ' flex-1'} onClick={onDuplicate}>Duplicate</button>
         <button className="flex-1 px-3 py-1.5 rounded-lg border border-wcs-red/40 text-xs font-semibold text-wcs-red hover:bg-wcs-red/10" onClick={onDelete}>Delete step</button>
       </div>
+      {modal}
     </div>
   )
 }

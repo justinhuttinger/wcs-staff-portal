@@ -35,7 +35,7 @@ Marketing Tracker. Corporate and above always have it.
 | --- | --- |
 | Trigger | What starts the workflow (form, tag, filters) |
 | Text (SMS) | Message body, merge fields, live character and SMS segment count |
-| Email | Subject, preview text, body |
+| Email | Subject, preview text, body as plain text or HTML (shown as the rendered email, desktop/phone widths, full-size preview) |
 | Wait | A set time (number + minutes/hours/days/weeks) or "until an event" |
 | Condition | If / else split with 2+ labeled branches (default Yes / No), one outgoing dot per branch |
 | Call | Staff phone call and its script |
@@ -63,7 +63,7 @@ Paused / Idea), clubs, and a link to the workflow in GHL.
 | Table, permission, example map | `auth/migrations/233_workflow_maps.sql` |
 | UI | `portal/src/components/workflowMaps/` |
 
-UI files: `WorkflowMapsHome.jsx` (list), `WorkflowEditor.jsx` (canvas, autosave,
+UI files: `WorkflowMapsHome.jsx` (list), `EmailHtmlPreview.jsx` (rendered HTML emails: sandboxed frame, no scripts), `WorkflowEditor.jsx` (canvas, autosave,
 undo), `StepNode.jsx` (cards), `NodePanel.jsx` (side panel), `kinds.js` (step
 types: colors, icons, defaults), `templates.js` (templates + JSON import/export),
 `layout.js` (Tidy up, dagre), `MapDetails.jsx` (details form), `ui.js`.
@@ -91,7 +91,7 @@ All routes need a portal login and the `workflows` marketing capability.
 ```js
 node = { id, type: 'sms', position: { x, y }, data: {
   title, body, link, notes, change,       // all types
-  subject, previewText,                    // email
+  subject, previewText, bodyFormat,        // email ('text' | 'html')
   waitMode, waitAmount, waitUnit, waitUntil, // wait
   branches: [{ id, label }],               // condition
   actionType,                              // action
