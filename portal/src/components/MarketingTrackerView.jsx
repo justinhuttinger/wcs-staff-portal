@@ -290,7 +290,7 @@ function changePhrase(effort, c) {
 
 // --- Main view ---
 
-export default function MarketingTrackerView({ onBack, access, eventMode = false }) {
+export default function MarketingTrackerView({ onBack, access, eventMode = false, section = null }) {
   const backend = eventMode ? EVENT_BACKEND : TRACKER_BACKEND
   // Effective capabilities from marketingAccess(); default to full when the
   // prop is absent (e.g. legacy callers) so nothing regresses. The event
@@ -303,7 +303,9 @@ export default function MarketingTrackerView({ onBack, access, eventMode = false
     { key: 'needs', label: 'Needs List', show: !!caps.needs },
     { key: 'research', label: 'Research', show: !!caps.research },
     { key: 'workflows', label: 'Workflows', show: !!caps.workflows },
-  ].filter(t => t.show), [caps.tracker, caps.needs, caps.research, caps.workflows])
+  // Opened from one of the Marketing folder tiles: that section alone.
+  ].filter(t => t.show && (!section || t.key === section)), [caps.tracker, caps.needs, caps.research, caps.workflows, section])
+  const SECTION_TITLES = { tracker: 'Marketing Tracker', needs: 'Needs List', research: 'Research', workflows: 'Workflows' }
 
   const [efforts, setEfforts] = useState([])
   // Clubs the event calendar may plan for (null = tracker, no limit).
@@ -315,7 +317,7 @@ export default function MarketingTrackerView({ onBack, access, eventMode = false
   const [currentDate, setCurrentDate] = useState(todayStr())
   const [typeValue, setTypeValue] = useState('all')
   const [locationValue, setLocationValue] = useState('all')
-  const [tab, setTab] = useState(() => (caps.tracker !== false ? 'tracker' : (caps.needs ? 'needs' : (caps.research ? 'research' : 'workflows'))))
+  const [tab, setTab] = useState(() => section || (caps.tracker !== false ? 'tracker' : (caps.needs ? 'needs' : (caps.research ? 'research' : 'workflows'))))
 
   // Keep the active tab within the granted set (e.g. a member with only the
   // Needs section should never land on a hidden Tracker tab).
@@ -344,7 +346,10 @@ export default function MarketingTrackerView({ onBack, access, eventMode = false
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [backend])
+  // Opened as Needs List, Research or Workflows alone: no tracker data needed.
+  const trackerOff = !!section && section !== 'tracker'
+
+  useEffect(() => { if (!trackerOff) load() }, [backend, trackerOff])
 
   // Near-live updates: while the tracker is open and the tab is visible,
   // silently re-poll so people working the board together see each other's
@@ -352,6 +357,7 @@ export default function MarketingTrackerView({ onBack, access, eventMode = false
   // the tab is hidden and refreshes immediately on refocus. Silent = no spinner
   // and last-good data is kept on a transient error.
   useEffect(() => {
+    if (trackerOff) return
     const POLL_MS = 15000
     let cancelled = false
     async function refresh() {
@@ -370,7 +376,7 @@ export default function MarketingTrackerView({ onBack, access, eventMode = false
       document.removeEventListener('visibilitychange', refresh)
       window.removeEventListener('focus', refresh)
     }
-  }, [backend])
+  }, [backend, trackerOff])
 
   const locationSet = useMemo(() => {
     if (!locationValue || locationValue === 'all') return null // null = all
@@ -442,7 +448,7 @@ export default function MarketingTrackerView({ onBack, access, eventMode = false
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <h2 className="text-xl font-bold text-text-primary">{eventMode ? 'Event Calendar' : 'Marketing'}</h2>
+              <h2 className="text-xl font-bold text-text-primary">{eventMode ? 'Event Calendar' : (section ? SECTION_TITLES[section] : 'Marketing')}</h2>
             </div>
             {/* Tab nav — inline with the title */}
             {TABS.length > 1 && <div className="flex gap-1 bg-bg rounded-lg p-1">
