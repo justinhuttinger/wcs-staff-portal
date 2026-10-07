@@ -9,10 +9,10 @@ import OnlineJoinPromoDues from './OnlineJoinPromoDues'
 import OnlineJoinPreview from './OnlineJoinPreview'
 
 const TABS = [
+  { key: 'types',     label: 'Memberships', desc: 'Per club: membership cards, their 1-Year / Month-to-Month plans, promo links, and an ABC check' },
   { key: 'preview',   label: 'Preview',   desc: 'Live widget preview — pick a location and walk the flow' },
   { key: 'locations', label: 'Locations', desc: 'Address, hours, hero copy per club' },
-  { key: 'types',     label: 'Membership Types', desc: 'Membership types: amenities, badge, age rule, promo + child plans' },
-  { key: 'plans',     label: 'Plans',     desc: 'Per-location plans + ABC IDs (with Pull-from-ABC picker)' },
+  { key: 'plans',     label: 'All Plans', desc: 'Every plan in one list (edit opens the same ABC-linked editor)' },
   { key: 'age-rules', label: 'Age Rules', desc: 'Named age ranges with live preview' },
   { key: 'copy',      label: 'Copy',      desc: 'Editable global strings' },
   { key: 'signups',   label: 'Signups',   desc: 'Read-only signup log + error trail' },
@@ -20,7 +20,7 @@ const TABS = [
 ]
 
 export default function OnlineJoinAdmin() {
-  const [tab, setTab] = useState('preview')
+  const [tab, setTab] = useState('types')
 
   return (
     <div className="space-y-4">
