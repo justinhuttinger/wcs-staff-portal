@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { findLinks, replaceLink, collectClubLinks, emailPairs, labelForUrl } from './messageLinks.js'
+import { findLinks, replaceLink, collectClubLinks, emailPairs, labelForUrl, setPreheader } from './messageLinks.js'
 
 const SMS = "Grab a time here:\n\napi.westcoaststrength.com/widget/bookings/salem-gym-tour\n\nOr finish online: https://join.westcoaststrength.com/salem. Thanks!"
 
@@ -64,4 +64,20 @@ test('a bare URL is not replaced inside its https form', () => {
   const out = ['api.westcoaststrength.com/widget/bookings/salem-gym-tour', 'https://api.westcoaststrength.com/widget/bookings/salem-gym-tour']
     .reduce((acc, x) => replaceLink(acc, x, 'https://t.co/new'), v)
   assert.equal(out, '<a href="https://t.co/new">x</a> https://t.co/new')
+})
+
+test('preview values join their email and sender values are collected', () => {
+  const { pairs, sender, ids } = emailPairs([
+    { id: 'a', name: 'New Lead Email 1 Subject' }, { id: 'b', name: 'New Lead Email 1 Preview' }, { id: 'c', name: 'New Lead Email 1 HTML' },
+    { id: 's', name: 'Email From Name' }, { id: 't', name: 'Email From Address' },
+  ])
+  assert.deepEqual(pairs.map(p => [p.base, p.subject.id, p.preview.id, p.html.id]), [['New Lead Email 1', 'a', 'b', 'c']])
+  assert.deepEqual([sender.name.id, sender.address.id], ['s', 't'])
+  assert.deepEqual([...ids].sort(), ['a', 'b', 'c', 's', 't'])
+})
+
+test('setPreheader swaps the hidden preview text and keeps the padding', () => {
+  const html = '<body><div style="display:none; mso-hide:all; font-size:1px;">Old preview&#8199;&#847;</div><p>Hi</p></body>'
+  assert.equal(setPreheader(html, 'New & <better>'), '<body><div style="display:none; mso-hide:all; font-size:1px;">New &amp; &lt;better&gt;&#8199;&#847;</div><p>Hi</p></body>')
+  assert.equal(setPreheader('<p>no preheader</p>', 'x'), '<p>no preheader</p>')
 })
