@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, MarkerType,
-  applyNodeChanges, applyEdgeChanges, addEdge, useReactFlow,
+  applyNodeChanges, applyEdgeChanges, addEdge, useReactFlow, useNodesInitialized,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { getWorkflowMap, saveWorkflowMap } from '../../lib/api'
@@ -17,6 +17,9 @@ const nodeTypes = Object.fromEntries(KIND_KEYS.map(k => [k, StepNode]))
 const META_FIELDS = ['name', 'description', 'category', 'status', 'clubs', 'ghl_workflow_url']
 const HISTORY_LIMIT = 100
 const SAVE_DELAY_MS = 800
+// Below this zoom, fitting a whole map makes the cards unreadable.
+const MIN_READABLE_ZOOM = 0.75
+const START_ZOOM = 0.85
 
 const defaultEdgeOptions = {
   type: 'smoothstep',
@@ -75,6 +78,9 @@ function AddMenu({ onAdd, onClose }) {
 
 function Editor({ id, onClose }) {
   const rf = useReactFlow()
+  const nodesInitialized = useNodesInitialized()
+  const openedRef = useRef(false)
+  const [viewReady, setViewReady] = useState(false)
   const wrapperRef = useRef(null)
   const [meta, setMeta] = useState(null)
   const [loadError, setLoadError] = useState('')
@@ -116,6 +122,31 @@ function Editor({ id, onClose }) {
       .catch(err => { if (!cancelled) setLoadError(err.message || 'Failed to load workflow') })
     return () => { cancelled = true }
   }, [id, applyServerMap])
+
+  // Opening view: fit the whole map when it's readable that way, otherwise
+  // start at a readable zoom with the top of the map (the trigger) in view,
+  // centered across. Fit View in the corner still shows everything.
+  const showStart = useCallback((duration = 0) => {
+    const ns = rf.getNodes()
+    const box = wrapperRef.current?.getBoundingClientRect()
+    if (!ns.length || !box?.width) return
+    const b = rf.getNodesBounds(ns)
+    const pad = 60
+    const fitZoom = Math.min(box.width / (b.width + pad * 2), box.height / (b.height + pad * 2))
+    if (fitZoom >= MIN_READABLE_ZOOM) {
+      rf.fitView({ padding: 0.15, maxZoom: 1, duration })
+      return
+    }
+    const zoom = Math.max(0.4, Math.min(START_ZOOM, box.width / (b.width + pad * 2)))
+    rf.setViewport({ x: box.width / 2 - (b.x + b.width / 2) * zoom, y: 40 - b.y * zoom, zoom }, { duration })
+  }, [rf])
+
+  useEffect(() => {
+    if (!meta || !nodesInitialized || openedRef.current) return
+    openedRef.current = true
+    showStart()
+    setViewReady(true)
+  }, [meta, nodesInitialized, showStart])
 
   // ── Save ────────────────────────────────────────────────────────────────
   // The whole map is sent each time with the version it was based on; the
@@ -292,7 +323,7 @@ function Editor({ id, onClose }) {
   function tidy() {
     snapshot()
     setNodes(tidyLayout(latest.current.nodes, latest.current.edges))
-    requestAnimationFrame(() => rf.fitView({ padding: 0.15, duration: 300 }))
+    requestAnimationFrame(() => showStart(300))
   }
 
   function saveDetails(form) {
@@ -424,7 +455,7 @@ function Editor({ id, onClose }) {
       )}
 
       <div className="flex-1 min-h-0 flex relative">
-        <div ref={wrapperRef} className="flex-1 min-w-0 relative">
+        <div ref={wrapperRef} className="flex-1 min-w-0 relative" style={{ visibility: nodes.length && !viewReady ? 'hidden' : undefined }}>
           <ReactFlow
             nodes={nodes}
             edges={displayEdges}
@@ -445,7 +476,6 @@ function Editor({ id, onClose }) {
             deleteKeyCode={present ? null : ['Delete', 'Backspace']}
             snapToGrid
             snapGrid={[10, 10]}
-            fitView
             fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
             minZoom={0.1}
             maxZoom={2}
