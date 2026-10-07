@@ -140,13 +140,38 @@ async function writeWorkflow(token, loc, id, source, { name } = {}) {
         .map(a => ({ ...a, workflow_id: id }))
       return nt
     })
-    await backend(token, `/workflow/${enc(loc)}/only-triggers/${enc(id)}`, {
+    const resp = await backend(token, `/workflow/${enc(loc)}/only-triggers/${enc(id)}`, {
       method: 'PUT',
       body: { ...base, newTriggers, oldTriggers, triggersChanged: true },
     })
+    // GHL answered 2xx yet applied nothing on the first live run (2026-10-07),
+    // so keep the shape of its answer for diagnosis. No token is in it.
+    console.log('[ghlWorkflowBackend] only-triggers response:', JSON.stringify(resp)?.slice(0, 500))
     triggersWritten = newTriggers.length
   }
-  return { steps: (target.workflowData.templates || []).length, triggers: triggersWritten }
+
+  // GHL can accept a triggers write and still not keep every trigger, without
+  // an error. Read them back so a dropped trigger is reported, not silent.
+  let droppedTriggers = []
+  if (srcTriggers.length) {
+    const kept = await getTriggers(token, loc, id).catch(() => null)
+    if (kept) {
+      // Triggers that were there before the write don't count as copied: if
+      // GHL ignores the whole triggers call, the old ones are all still there.
+      const oldIds = new Set(oldTriggers.map(t => t.id))
+      const pool = kept.filter(t => !t.deleted && !oldIds.has(t.id)).map(t => `${t.type}|${t.name}`)
+      for (const t of srcTriggers) {
+        const i = pool.indexOf(`${t.type}|${t.name}`)
+        if (i === -1) droppedTriggers.push({ type: t.type, name: t.name || t.type })
+        else pool.splice(i, 1)
+      }
+    }
+  }
+  return {
+    steps: (target.workflowData.templates || []).length,
+    triggers: triggersWritten - droppedTriggers.length,
+    droppedTriggers,
+  }
 }
 
 // ── Catalog (public API, per-location private integration token) ─────────

@@ -290,7 +290,7 @@ router.post('/push', async (req, res) => {
       throw err
     }
     ghl.forgetCatalog(target.loc.id)
-    console.log(`[ghlWorkflowTransfer] ${req.staff.email} ${target.mode} "${p.name}" -> ${target.loc.slug} ${workflowId} (${written.steps} steps, ${written.triggers} triggers)`)
+    console.log(`[ghlWorkflowTransfer] ${req.staff.email} ${target.mode} "${p.name}" -> ${target.loc.slug} ${workflowId} (${written.steps} steps, ${written.triggers} triggers${written.droppedTriggers.length ? `, GHL DROPPED: ${written.droppedTriggers.map(t => t.type + ' "' + t.name + '"').join(', ')}` : ''})`)
     res.json({
       club: clubOf(target.loc),
       mode: target.mode,
@@ -299,6 +299,7 @@ router.post('/push', async (req, res) => {
       snapshotId,
       steps: written.steps,
       triggers: written.triggers,
+      droppedTriggers: written.droppedTriggers,
       unmatched: out.unmatched,
     })
   } catch (err) {
