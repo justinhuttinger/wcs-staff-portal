@@ -414,6 +414,9 @@ function PairCard({ item, club, plan, clubWorkflows, onChange }) {
             )}
             {!unmatched.length && !matchedCounts.length && <span className="text-[11px] text-text-muted">No club-specific ids</span>}
           </div>
+          {p.webhookKey?.status === 'swapped' && (
+            <p className="text-[11px] text-text-muted">Webhook key: switched to {club.name}'s own ({p.webhookKey.target})</p>
+          )}
           {p.warnings?.map(w => <p key={w} className="text-[11px] text-amber-700">{w}</p>)}
           {(open || unmatched.length <= 3) && unmatched.map(u => (
             <div key={u.id} className="flex items-center gap-2 text-xs">

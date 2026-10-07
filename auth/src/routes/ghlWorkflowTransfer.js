@@ -17,6 +17,7 @@ const { requireRole } = require('../middleware/role')
 const { LOCATIONS, getLocationBySlug, getLocationById } = require('../config/ghlLocations')
 const ghl = require('../services/ghlWorkflowBackend')
 const { buildIdMap, remapPayload, normalizePayload } = require('../lib/ghlWorkflowRemap')
+const { keysIn, pickClubKey, maskKey } = require('../lib/webhookKeys')
 
 const router = Router()
 
@@ -190,7 +191,36 @@ async function plan(payload, target) {
   for (const [from, to] of Object.entries(target.overrides)) if (!known.has(to)) delete target.overrides[from]
   const name = target.name || payload.workflow.name || 'Imported workflow'
   const sameName = (tgtCatalog.workflows || []).filter(w => w.name.trim().toLowerCase() === name.trim().toLowerCase())
-  return { sourceLoc, map, unavailable, name, sameName, tgtCatalog }
+  const webhookKey = await planWebhookKey(payload, sourceLoc, target.loc)
+  return { sourceLoc, map, unavailable, name, sameName, tgtCatalog, webhookKey }
+}
+
+// Webhook keys (see lib/webhookKeys): swap the source club's key for the
+// target club's own, learned from that club's backups.
+const keyHistoryCache = new Map()
+const KEY_HISTORY_MS = 10 * 60 * 1000
+
+async function clubKeyHistory(slug) {
+  const hit = keyHistoryCache.get(slug)
+  if (hit && Date.now() - hit.at < KEY_HISTORY_MS) return hit.rows
+  const { data, error } = await supabaseAdmin.from('ghl_workflow_snapshots')
+    .select('payload').eq('club_slug', slug)
+    .order('created_at', { ascending: false }).limit(40)
+  if (error) throw error
+  const rows = (data || []).map(r => [...keysIn(r.payload)].join(' ')).filter(Boolean)
+  keyHistoryCache.set(slug, { at: Date.now(), rows })
+  return rows
+}
+
+async function planWebhookKey(payload, sourceLoc, targetLoc) {
+  const sourceKeys = keysIn(payload.workflow)
+  if (!sourceKeys.size) return { status: 'none', swaps: {} }
+  if (sourceLoc && sourceLoc.id === targetLoc.id) return { status: 'same-club', swaps: {} }
+  if (sourceKeys.size > 1) return { status: 'several', swaps: {} }
+  const [src] = sourceKeys
+  const { key } = pickClubKey(await clubKeyHistory(targetLoc.slug).catch(() => []), sourceKeys)
+  if (!key) return { status: 'missing', swaps: {}, source: maskKey(src) }
+  return { status: 'swapped', swaps: { [src]: key }, source: maskKey(src), target: maskKey(key) }
 }
 
 const CATEGORY_LABELS = {
@@ -201,6 +231,9 @@ const CATEGORY_LABELS = {
 
 function warningsFor(p, payload) {
   const w = []
+  const k = p.webhookKey || {}
+  if (k.status === 'missing') w.push(`Custom webhooks use another club's key (${k.source}) and this club's own key is not known yet. Set it on those webhook steps in GHL after pushing.`)
+  if (k.status === 'several') w.push('Custom webhooks use more than one key; check their keys in GHL after pushing.')
   if (!payload.sourceLocationId) w.push('The file does not say which sub-account it came from, so ids were not remapped.')
   else if (!p.sourceLoc) w.push('The file came from a sub-account outside the 7 clubs, so ids were not remapped.')
   for (const u of p.unavailable) {
@@ -229,7 +262,7 @@ router.post('/preview', async (req, res) => {
         idMap: p.map,
         sourceLocationId: payload.sourceLocationId,
         targetLocationId: target.loc.id,
-        extra: srcId && target.targetWorkflowId ? { [srcId]: target.targetWorkflowId } : null,
+        extra: { ...(srcId && target.targetWorkflowId ? { [srcId]: target.targetWorkflowId } : {}), ...p.webhookKey.swaps },
         overrides: target.overrides,
       })
       // Target records to pick from for anything that did not match by name.
@@ -254,6 +287,7 @@ router.post('/preview', async (req, res) => {
         matched: out.matched,
         unmatched: out.unmatched,
         options,
+        webhookKey: { status: p.webhookKey.status, source: p.webhookKey.source, target: p.webhookKey.target },
         warnings: warningsFor(p, payload),
       })
     }
@@ -352,7 +386,7 @@ router.post('/push', async (req, res) => {
       idMap: p.map,
       sourceLocationId: payload.sourceLocationId,
       targetLocationId: target.loc.id,
-      extra: srcId ? { [srcId]: workflowId } : null,
+      extra: { ...(srcId ? { [srcId]: workflowId } : {}), ...p.webhookKey.swaps },
       overrides: target.overrides,
     })
     const isNew = target.mode !== 'overwrite'
@@ -419,6 +453,7 @@ router.post('/push', async (req, res) => {
       unlinkedTriggerChecks: written.unlinkedTriggerChecks,
       unmatched: out.unmatched,
       folder,
+      webhookKey: { status: p.webhookKey.status, target: p.webhookKey.target },
       published,
       unpublishReason: target.publish && isNew ? unpublishReason : null,
     })
