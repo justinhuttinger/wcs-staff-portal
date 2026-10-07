@@ -183,8 +183,11 @@ async function moveToFolder(token, loc, workflowId, folderId) {
   })
 }
 
+// Workflow settings carried over on a push. 'window' is Settings -> Time
+// Window ({ condition: 'when', start: '08:00', end: '19:00', days: [0..6] }),
+// which keeps messages and tasks inside business hours.
 const COPIED_SETTINGS = ['timezone', 'allowMultiple', 'allowMultipleOpportunity', 'stopOnResponse',
-  'removeContactFromLastStep', 'autoMarkAsRead']
+  'removeContactFromLastStep', 'autoMarkAsRead', 'window']
 
 // Trigger fields copied into a new trigger. Ids, dates, origin and ownership
 // are GHL's to assign.

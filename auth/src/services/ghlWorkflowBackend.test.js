@@ -165,3 +165,17 @@ test('a source with no trigger list never deletes the club\'s triggers', async (
     global.fetch = orig
   }
 })
+
+test('a push carries the time window (8-7) setting', async () => {
+  const { writeWorkflow } = require('./ghlWorkflowBackend')
+  const g = fakeGhl('L', 'W', [])
+  const orig = global.fetch
+  global.fetch = g.fetch
+  try {
+    const window = { condition: 'when', start: '08:00', end: '19:00', days: [0, 1, 2, 3, 4, 5, 6] }
+    await writeWorkflow('a.b.c', 'L', 'W', { workflow: { window, workflowData: { templates: [] } }, triggers: [], triggersKnown: true })
+    assert.deepEqual(g.state.workflow.window, window)
+  } finally {
+    global.fetch = orig
+  }
+})
