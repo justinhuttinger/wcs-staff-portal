@@ -64,7 +64,7 @@ test('editing: name, slug and number are fixed; other fields update; unsent fiel
 
 test('default Action Links follow the house pattern', () => {
   assert.deepEqual(defaultActionLinks('bend'), {
-    dayone_url_bend: 'https://book.westcoaststrength.com/dayone/bend',
+    dayone_url_bend: 'https://book.westcoaststrength.com/dayone/bend/staff',
     vip_url_bend: 'https://vip.westcoaststrength.com/bend/staff',
   })
 })
