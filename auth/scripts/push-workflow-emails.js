@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // Push the workflow email series into each club's GHL as custom values:
-// "<Name> Subject" and "<Name> HTML" (e.g. "New Lead Email 1 Subject"), which
-// the workflows' Send Email actions reference. Edited afterwards in the portal
+// "<Name> Subject", "<Name> Preview" and "<Name> HTML" (e.g. "New Lead Email 1
+// Subject"), plus the shared "Email From Name" and "Email From Address", which
+// the workflows' Send Email actions reference. The shared sender values are
+// only created when missing, never overwritten, so edits made in the portal
+// stick. Edited afterwards in the portal
 // (Marketing -> Workflows & Scripts -> Emails / Links).
 //
 //   node scripts/push-workflow-emails.js --dir <series dir> [options]
@@ -79,8 +82,8 @@ function loadClubEmails(clubDir) {
     .filter(e => !ONLY || ONLY.has(e.slug))
     .map(e => {
       const html = fs.readFileSync(path.join(clubDir, e.slug, 'email.html'), 'utf8')
-      const { subject } = pickSubject(fs.readFileSync(path.join(clubDir, e.slug, 'subject.txt'), 'utf8'))
-      return { ...e, name: emailName(e), html, subject }
+      const { subject, preview } = pickSubject(fs.readFileSync(path.join(clubDir, e.slug, 'subject.txt'), 'utf8'))
+      return { ...e, name: emailName(e), html, subject, preview }
     })
 }
 
@@ -129,6 +132,7 @@ ${loc.name}: no emails built yet, skipped`); continue }
     // doesn't leave images behind in its Media Library.
     const precheck = [...new Set(emails.flatMap(e => [
       ...renderEmailHtml(e.html, values).missing, ...renderSubject(e.subject, values).missing,
+      ...renderSubject(e.preview, values).missing,
     ]))]
     if (precheck.length && APPLY) {
       console.log(`
@@ -142,6 +146,7 @@ ${loc.name}: MISSING values: ${precheck.join(', ')}
       e,
       html: renderEmailHtml(e.html, values, urlsBySlug[e.slug]).html,
       subject: renderSubject(e.subject, values).text,
+      preview: renderSubject(e.preview, values).text,
     }))
     const maxKb = Math.max(...rendered.map(r => Buffer.byteLength(r.html) / 1024)).toFixed(1)
     console.log(`
@@ -151,10 +156,11 @@ ${loc.name}: ${emails.length} emails, largest HTML ${maxKb} KB, images ${uploads
     const byName = new Map((existing.customValues || []).map(cv => [cv.name.trim().toLowerCase(), cv]))
     let created = 0, updated = 0, same = 0
     for (const r of rendered) {
-      for (const [suffix, value] of [['Subject', r.subject], ['HTML', r.html]]) {
+      for (const [suffix, value] of [['Subject', r.subject], ['Preview', r.preview], ['HTML', r.html]]) {
         const name = `${r.e.name} ${suffix}`
         const cv = byName.get(name.toLowerCase())
-        if (cv && String(cv.value) === value) { same++; continue }
+        // GHL trims saved values, so compare trimmed.
+        if (cv && String(cv.value).trim() === value.trim()) { same++; continue }
         if (APPLY) {
           if (cv) await ghlFetch(`/locations/${loc.id}/customValues/${cv.id}`, loc.apiKey, { method: 'PUT', body: { name: cv.name, value } })
           else await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey, { method: 'POST', body: { name, value } })
@@ -162,6 +168,14 @@ ${loc.name}: ${emails.length} emails, largest HTML ${maxKb} KB, images ${uploads
         if (cv) updated++
         else created++
       }
+    }
+    // Shared sender values: create once, never overwrite.
+    for (const [name, key] of [['Email From Name', 'from_name'], ['Email From Address', 'from_email']]) {
+      if (byName.has(name.toLowerCase())) continue
+      if (!values[key]) { console.log(`  ${name}: no ${key} value, not created`); continue }
+      if (APPLY) await ghlFetch(`/locations/${loc.id}/customValues`, loc.apiKey, { method: 'POST', body: { name, value: values[key] } })
+      created++
+      console.log(`  ${APPLY ? 'created' : 'would create'} ${name}: ${values[key]}`)
     }
     console.log(`  ${APPLY ? '' : 'would '}create ${created}, update ${updated}, unchanged ${same}`)
   }

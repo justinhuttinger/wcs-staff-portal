@@ -6,16 +6,16 @@
     "half_off_link": "",
     "day_one_link": "",
     "vip_link": "",
-    "club_address": "",
-    "vip_reward": "your next month of dues is on us"
+    "vip_reward": "your next month of dues is on us",
+    "from_email": "{club}@wcs{club}.app"
   },
   "clubs": {
-    "salem": { "club_name": "WCS Salem" },
-    "keizer": { "club_name": "WCS Keizer" },
-    "eugene": { "club_name": "WCS Eugene" },
-    "springfield": { "club_name": "WCS Springfield" },
-    "clackamas": { "club_name": "WCS Clackamas" },
-    "milwaukie": { "club_name": "WCS Milwaukie", "vip_reward": "a $50 credit" },
-    "medford": { "club_name": "WCS Medford" }
+    "salem": { "club_name": "WCS Salem", "from_name": "West Coast Strength Salem", "club_address": "290 Moyer Lane NW, Salem, OR 97304" },
+    "keizer": { "club_name": "WCS Keizer", "from_name": "West Coast Strength Keizer", "club_address": "5045 River Rd N, Keizer, OR 97303" },
+    "eugene": { "club_name": "WCS Eugene", "from_name": "West Coast Strength Eugene", "club_address": "1009 Green Acres Rd, Eugene, OR 97408" },
+    "springfield": { "club_name": "WCS Springfield", "from_name": "West Coast Strength Springfield", "club_address": "2728 Pheasant Blvd, Springfield, OR 97477" },
+    "clackamas": { "club_name": "WCS Clackamas", "from_name": "West Coast Strength Clackamas", "club_address": "9100 SE Sunnyside Rd, Clackamas, OR 97015" },
+    "milwaukie": { "club_name": "WCS Milwaukie", "from_name": "West Coast Strength Milwaukie", "club_address": "4606 SE Boardman Ave, Milwaukie, OR 97267", "vip_reward": "a $50 credit" },
+    "medford": { "club_name": "WCS Medford", "from_name": "West Coast Strength Medford", "club_address": "1600 N Riverside Ave #1094, Medford, OR 97501" }
   }
 }

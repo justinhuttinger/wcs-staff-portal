@@ -131,23 +131,40 @@ export function collectClubLinks(customValues) {
   return [...byId.values()].sort((a, b) => b.uses.length - a.uses.length || a.label.localeCompare(b.label))
 }
 
-// Email custom values come in pairs named "<Name> Subject" and "<Name> HTML",
-// where the name includes the word Email ("New Lead Email 1 Subject").
-// Returns [{ base, subject, html }] sorted by name, plus the ids that belong
-// to an email (so the texts list can leave them out).
-const EMAIL_SUFFIX_RE = /^(.*\bemail\b.*?)\s+(subject|html)$/i
+// Email custom values are named "<Name> Subject", "<Name> Preview" and
+// "<Name> HTML", where the name includes the word Email ("New Lead Email 1
+// Subject"). Every email in the club shares the sender values "Email From
+// Name" and "Email From Address". Returns { pairs: [{ base, subject, preview,
+// html }] sorted by name, sender: { name, address }, ids }, where ids holds
+// every value that belongs to the emails (so the texts list leaves them out).
+const EMAIL_SUFFIX_RE = /^(.*\bemail\b.*?)\s+(subject|html|preview)$/i
+const SENDER_NAMES = { 'email from name': 'name', 'email from address': 'address' }
 
 export function emailPairs(customValues) {
   const byBase = new Map()
+  const sender = { name: null, address: null }
   for (const cv of customValues || []) {
+    const senderKey = SENDER_NAMES[(cv.name || '').trim().toLowerCase()]
+    if (senderKey) { sender[senderKey] = cv; continue }
     const m = (cv.name || '').match(EMAIL_SUFFIX_RE)
     if (!m) continue
     const base = m[1].trim()
-    const pair = byBase.get(base.toLowerCase()) || { base, subject: null, html: null }
-    pair[m[2].toLowerCase() === 'subject' ? 'subject' : 'html'] = cv
+    const pair = byBase.get(base.toLowerCase()) || { base, subject: null, preview: null, html: null }
+    pair[m[2].toLowerCase()] = cv
     byBase.set(base.toLowerCase(), pair)
   }
   const pairs = [...byBase.values()].sort((a, b) => a.base.localeCompare(b.base, undefined, { numeric: true, sensitivity: 'base' }))
-  const ids = new Set(pairs.flatMap(p => [p.subject?.id, p.html?.id].filter(Boolean)))
-  return { pairs, ids }
+  const ids = new Set([
+    ...pairs.flatMap(p => [p.subject?.id, p.preview?.id, p.html?.id]),
+    sender.name?.id, sender.address?.id,
+  ].filter(Boolean))
+  return { pairs, sender, ids }
+}
+
+// The email's hidden preheader (the inbox preview line) is the text at the
+// start of a display:none div styled mso-hide:all, before its zero-width
+// padding. Swap it so the HTML matches the "<Name> Preview" value.
+export function setPreheader(html, text) {
+  const esc = String(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return html.replace(/(<div\b[^>]*mso-hide:\s*all[^>]*>)([^<&]*)/i, (m, open) => open + esc)
 }
