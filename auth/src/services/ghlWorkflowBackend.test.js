@@ -104,3 +104,64 @@ test('folders: path walks up by folderName, ensureFolderPath reuses existing and
     global.fetch = orig
   }
 })
+
+function fakeGhl(LOC, WF, initialTriggers) {
+  const state = { triggers: initialTriggers, workflow: { id: WF, status: 'published', companyId: 'co', version: 1, workflowData: { templates: [] } }, calls: [] }
+  const fetch = async (url, opts = {}) => {
+    const u = new URL(url)
+    const method = opts.method || 'GET'
+    const body = opts.body ? JSON.parse(opts.body) : null
+    state.calls.push(`${method} ${u.pathname}${u.search}`)
+    let out = null
+    if (method === 'GET' && u.pathname === `/workflow/${LOC}/trigger`) out = state.triggers
+    else if (method === 'GET' && u.pathname === `/workflow/${LOC}/${WF}`) out = state.workflow
+    else if (method === 'DELETE' && u.pathname.startsWith(`/workflow/${LOC}/trigger/`)) {
+      const tid = u.pathname.split('/').pop()
+      state.triggers = state.triggers.filter(t => t.id !== tid)
+      out = { ok: true }
+    } else if (method === 'POST' && u.pathname === `/workflow/${LOC}/trigger`) {
+      const t = { ...body, id: 'created' + state.calls.length }
+      state.triggers = [...state.triggers, t]
+      out = t
+    } else if (method === 'PUT') { if (u.pathname === `/workflow/${LOC}/${WF}`) state.workflow = { ...body }; out = { ok: true } }
+    return { ok: true, status: 200, text: async () => JSON.stringify(out) }
+  }
+  return { state, fetch }
+}
+
+test('overwrite mirrors the source: a trigger the source no longer has is deleted with userId', async () => {
+  const { writeWorkflow } = require('./ghlWorkflowBackend')
+  const date = { type: 'custom_date_reminder', name: 'Custom Date Reminder', conditions: [{ id: 'custom-field', value: 'cfT' }] }
+  const tag = { type: 'contact_tag', name: 'Contact Tag', conditions: [{ id: 'tag-added', value: 'checked in-90days' }] }
+  const g = fakeGhl('L', 'W', [{ ...date, id: 'oldDate' }, { ...tag, id: 'oldTag' }])
+  const orig = global.fetch
+  global.fetch = g.fetch
+  try {
+    const r = await writeWorkflow('a.b.c', 'L', 'W', { workflow: { workflowData: { templates: [] } }, triggers: [{ ...tag, id: 'srcTag' }], triggersKnown: true })
+    assert.deepEqual(r.removedTriggers.map(t => t.name), ['Custom Date Reminder'])
+    assert.deepEqual(r.notRemovedTriggers, [])
+    assert.equal(r.triggersAlreadyThere, 1)
+    assert.deepEqual(g.state.triggers.map(t => t.id), ['oldTag'])
+    const del = g.state.calls.find(c => c.startsWith('DELETE'))
+    assert.match(del, /\/trigger\/oldDate\?userId=qHho9M6pxIE8YEgBhlxK$/)
+    // Delete happens before the workflow save, as in the builder.
+    assert.ok(g.state.calls.indexOf(del) < g.state.calls.indexOf('PUT /workflow/L/W'))
+  } finally {
+    global.fetch = orig
+  }
+})
+
+test('a source with no trigger list never deletes the club\'s triggers', async () => {
+  const { writeWorkflow } = require('./ghlWorkflowBackend')
+  const g = fakeGhl('L', 'W', [{ id: 'keep', type: 'contact_tag', name: 'Contact Tag', conditions: [] }])
+  const orig = global.fetch
+  global.fetch = g.fetch
+  try {
+    const r = await writeWorkflow('a.b.c', 'L', 'W', { workflow: { workflowData: { templates: [] } }, triggers: [], triggersKnown: false })
+    assert.equal(r.triggersUntouched, true)
+    assert.deepEqual(r.removedTriggers, [])
+    assert.ok(!g.state.calls.some(c => c.startsWith('DELETE')))
+  } finally {
+    global.fetch = orig
+  }
+})

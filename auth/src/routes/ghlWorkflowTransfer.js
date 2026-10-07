@@ -309,7 +309,7 @@ router.post('/prepare', async (req, res) => {
           const wf = await ghl.getWorkflow(token, loc.id, id)
           company = { companyId: wf.companyId, companyAge: wf.companyAge }
         }
-        const key = path.join(' ')
+        const key = path.join('\u0000')
         if (!folders.has(key)) folders.set(key, await ghl.ensureFolderPath(token, loc.id, path, company))
         await ghl.moveToFolder(token, loc.id, id, folders.get(key).folderId)
       }
@@ -402,7 +402,7 @@ router.post('/push', async (req, res) => {
     }
 
     ghl.forgetCatalog(target.loc.id)
-    console.log(`[ghlWorkflowTransfer] ${req.staff.email} ${target.mode} "${p.name}" -> ${target.loc.slug} ${workflowId} (${written.steps} steps, ${written.triggers} triggers added, ${written.triggersAlreadyThere} already there${written.droppedTriggers.length ? `, GHL DROPPED: ${written.droppedTriggers.map(t => t.type + ' "' + t.name + '"').join(', ')}` : ''})`)
+    console.log(`[ghlWorkflowTransfer] ${req.staff.email} ${target.mode} "${p.name}" -> ${target.loc.slug} ${workflowId} (${written.steps} steps, ${written.triggers} triggers added, ${written.triggersAlreadyThere} already there, ${written.removedTriggers.length} removed${written.droppedTriggers.length ? `, GHL DROPPED: ${written.droppedTriggers.map(t => t.type + ' "' + t.name + '"').join(', ')}` : ''})`)
     res.json({
       club: clubOf(target.loc),
       mode: target.mode,
@@ -413,7 +413,9 @@ router.post('/push', async (req, res) => {
       triggers: written.triggers,
       droppedTriggers: written.droppedTriggers,
       triggersAlreadyThere: written.triggersAlreadyThere,
-      extraTriggers: written.extraTriggers,
+      removedTriggers: written.removedTriggers,
+      notRemovedTriggers: written.notRemovedTriggers,
+      triggersUntouched: written.triggersUntouched,
       unlinkedTriggerChecks: written.unlinkedTriggerChecks,
       unmatched: out.unmatched,
       folder,

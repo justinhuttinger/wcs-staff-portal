@@ -436,7 +436,7 @@ function PairCard({ item, club, plan, clubWorkflows, onChange }) {
         <p className={`text-xs mt-2 font-semibold ${result.error ? 'text-red-700' : 'text-green-700'}`}>
           {result.error
             ? result.error
-            : `${result.mode === 'new' ? 'Created draft' : 'Overwrote'} · ${result.steps} steps · ${result.triggers} trigger${result.triggers === 1 ? '' : 's'} added${result.triggersAlreadyThere ? ` · ${result.triggersAlreadyThere} already there` : ''}${result.snapshotId ? ' · backup saved' : ''}`}
+            : `${result.mode === 'new' ? 'Created draft' : 'Overwrote'} · ${result.steps} steps · ${result.triggers} trigger${result.triggers === 1 ? '' : 's'} added${result.triggersAlreadyThere ? ` · ${result.triggersAlreadyThere} already there` : ''}${result.removedTriggers?.length ? ` · ${result.removedTriggers.length} removed` : ''}${result.snapshotId ? ' · backup saved' : ''}`}
         </p>
       )}
       {result?.folder && (
@@ -449,10 +449,18 @@ function PairCard({ item, club, plan, clubWorkflows, onChange }) {
       {result?.unpublishReason && (
         <p className="text-xs mt-1 font-semibold text-amber-700">Left as a draft: {result.unpublishReason}.</p>
       )}
-      {result?.extraTriggers?.length > 0 && (
+      {result?.removedTriggers?.length > 0 && (
         <p className="text-xs mt-1 text-text-muted">
-          Left in place (not in the source): {result.extraTriggers.map(t => t.name).join(', ')}. Remove in GHL if unwanted.
+          Removed (not in the source): {result.removedTriggers.map(t => t.name).join(', ')}. The backup still has {result.removedTriggers.length === 1 ? 'it' : 'them'}.
         </p>
+      )}
+      {result?.notRemovedTriggers?.length > 0 && (
+        <p className="text-xs mt-1 font-semibold text-amber-700">
+          GHL did not remove: {result.notRemovedTriggers.map(t => t.name).join(', ')}. Delete {result.notRemovedTriggers.length === 1 ? 'it' : 'them'} by hand in GHL.
+        </p>
+      )}
+      {result?.triggersUntouched && (
+        <p className="text-xs mt-1 text-amber-700">This file has no trigger list, so the club's triggers were left as they were.</p>
       )}
       {result?.unlinkedTriggerChecks?.length > 0 && (
         <p className="text-xs mt-1 font-semibold text-amber-700">
