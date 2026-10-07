@@ -60,7 +60,7 @@ function MergeFieldPicker({ onPick }) {
   )
 }
 
-function BodyEditor({ label, value, onChange, onFocus, rows = 6, sms = false, mono = false, placeholder }) {
+function BodyEditor({ label, value, onChange, onFocus, rows = 6, sms = false, mono = false, placeholder, readOnly = false }) {
   const [el, setEl] = useState(null)
   function insert(field) {
     const v = value || ''
@@ -71,13 +71,81 @@ function BodyEditor({ label, value, onChange, onFocus, rows = 6, sms = false, mo
     requestAnimationFrame(() => { if (el) { el.focus(); el.selectionStart = el.selectionEnd = start + field.length } })
   }
   return (
-    <Field label={label} extra={<MergeFieldPicker onPick={insert} />}>
-      <textarea ref={setEl} className={inputCls + (mono ? ' font-mono text-xs' : ' font-normal')} spellCheck={!mono} rows={rows} value={value || ''} placeholder={placeholder}
+    <Field label={label} extra={readOnly ? null : <MergeFieldPicker onPick={insert} />}>
+      <textarea ref={setEl} readOnly={readOnly} className={inputCls + (mono ? ' font-mono text-xs' : ' font-normal') + (readOnly ? ' opacity-80' : '')} spellCheck={!mono} rows={rows} value={value || ''} placeholder={placeholder}
         onFocus={onFocus} onChange={e => onChange(e.target.value)} />
       {sms && <div className="mt-1"><SmsMeta text={value} /></div>}
     </Field>
   )
 }
+
+// Link a step to a GHL custom value, or show the link it already has.
+function GhlLink({ node, ghl, onLink, onUnlink }) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const cv = node.data.cv
+  if (!ghl) return null
+
+  if (cv) {
+    const live = ghl.liveFor(cv)
+    return (
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 space-y-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-emerald-800">Linked to GHL custom value</div>
+            <div className="text-sm font-semibold text-text-primary break-words">{cv.name || cv.key}</div>
+          </div>
+          <button type="button" onClick={onUnlink} className="shrink-0 text-[11px] font-semibold text-text-muted hover:text-wcs-red">Unlink</button>
+        </div>
+        {!ghl.values && ghl.loading && <p className="text-[11px] text-text-muted">Loading from GHL...</p>}
+        {ghl.values && !live && <p className="text-[11px] font-semibold text-amber-800">Not found in GHL. Showing the last saved copy.</p>}
+        {live && <p className="text-[11px] text-text-muted">Showing the live copy from GHL. To change it, edit the custom value in GHL or Workflows &amp; Scripts.</p>}
+      </div>
+    )
+  }
+
+  const values = ghl.values || []
+  const suggestedName = (node.data.notes || '').match(/GHL custom value:\s*(.+)/)?.[1]?.trim()
+  const suggested = suggestedName ? ghl.liveFor({ name: suggestedName }) : null
+  const needle = q.trim().toLowerCase()
+  const matches = values.filter(v => !needle || v.name.toLowerCase().includes(needle) || v.value.toLowerCase().includes(needle)).slice(0, 50)
+
+  return (
+    <div className="rounded-lg border border-border bg-bg p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-text-muted">GHL custom value</span>
+        {!open && <button type="button" className={btnGhost} onClick={() => setOpen(true)}>Link...</button>}
+      </div>
+      {suggested && !open && (
+        <button type="button" onClick={() => onLink(suggested)}
+          className="w-full text-left rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
+          Link to "{suggested.name}" so this step shows the live GHL copy
+        </button>
+      )}
+      {!open && !suggested && <p className="text-[11px] text-text-muted">Link this step to a custom value to show its live copy from GHL.</p>}
+      {open && (
+        <>
+          <input className={inputCls} autoFocus placeholder="Search custom values" value={q} onChange={e => setQ(e.target.value)} />
+          {ghl.loading && !ghl.values && <p className="text-[11px] text-text-muted">Loading from GHL...</p>}
+          {ghl.error && <p className="text-[11px] text-wcs-red">{ghl.error}</p>}
+          <div className="max-h-64 overflow-y-auto space-y-1">
+            {matches.map(v => (
+              <button key={v.id} type="button" onClick={() => { onLink(v); setOpen(false); setQ('') }}
+                className="w-full text-left rounded-md border border-border bg-surface px-2.5 py-1.5 hover:border-text-muted">
+                <span className="block text-xs font-semibold text-text-primary">{v.name}</span>
+                <span className="block text-[11px] text-text-muted truncate">{v.value || '(empty)'}</span>
+              </button>
+            ))}
+            {ghl.values && matches.length === 0 && <p className="text-[11px] text-text-muted">No custom values match.</p>}
+          </div>
+          <button type="button" className={btnGhost} onClick={() => { setOpen(false); setQ('') }}>Cancel</button>
+        </>
+      )}
+    </div>
+  )
+}
+
+const LINKABLE = new Set(['sms', 'call', 'email'])
 
 const BODY_LABEL = {
   trigger: 'Trigger details (form, tag, filters)',
@@ -89,7 +157,7 @@ const BODY_LABEL = {
   note: 'Note',
 }
 
-export default function NodePanel({ node, readOnly, onChange, onBeforeEdit, onDelete, onDuplicate, onClose, edgesFromBranch }) {
+export default function NodePanel({ node, readOnly, onChange, onBeforeEdit, onDelete, onDuplicate, onClose, edgesFromBranch, ghl, onLink, onUnlink }) {
   const [previewWidth, setPreviewWidth] = useState('desktop')
   const [fullPreview, setFullPreview] = useState(false)
   if (!node) return null
@@ -120,6 +188,11 @@ export default function NodePanel({ node, readOnly, onChange, onBeforeEdit, onDe
         {header}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <h3 className="text-lg font-bold text-text-primary leading-snug">{data.title || kind.label}</h3>
+          {data.cv && (
+            <p className="text-[11px] font-semibold text-emerald-800">
+              {data._ghl === 'missing' ? 'Linked custom value not found in GHL; showing the last saved copy.' : `Live from GHL: ${data.cv.name || data.cv.key}`}
+            </p>
+          )}
           {flag?.color && <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold text-white" style={{ background: flag.color }}>{flag.label}</span>}
           {type === 'wait' && <ReadBlock label="Wait" text={waitSummary(data)} copy={false} />}
           {type === 'action' && <ReadBlock label="Action" text={data.actionType} copy={false} />}
@@ -252,8 +325,10 @@ export default function NodePanel({ node, readOnly, onChange, onBeforeEdit, onDe
           </Field>
         )}
 
+        {LINKABLE.has(type) && <GhlLink node={node} ghl={ghl} onLink={onLink} onUnlink={onUnlink} />}
+
         {type !== 'wait' && type !== 'condition' && (
-          <BodyEditor label={isHtmlEmail ? 'Email HTML' : (BODY_LABEL[type] || 'Details')} value={data.body} onFocus={focus} onChange={v => set({ body: v })}
+          <BodyEditor readOnly={!!data.cv} label={isHtmlEmail ? 'Email HTML' : (BODY_LABEL[type] || 'Details')} value={data.body} onFocus={focus} onChange={v => set({ body: v })}
             rows={isHtmlEmail ? 8 : type === 'email' ? 10 : 5} sms={type === 'sms'} mono={isHtmlEmail}
             placeholder={type === 'sms' ? 'Hey {{contact.first_name}}...' : isHtmlEmail ? 'Paste the email HTML from GHL or your email builder' : undefined} />
         )}

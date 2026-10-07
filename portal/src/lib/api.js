@@ -2468,3 +2468,8 @@ export async function duplicateWorkflowMap(id) {
 export async function deleteWorkflowMap(id) {
   return api('/workflow-maps/' + id, { method: 'DELETE' })
 }
+
+// Workflow Maps: live GHL custom values for linked steps (read only)
+export async function getWorkflowGhlValues(links = []) {
+  return api('/workflow-maps/ghl-values?links=' + encodeURIComponent(JSON.stringify(links)))
+}

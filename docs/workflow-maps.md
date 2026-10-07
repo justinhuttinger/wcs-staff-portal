@@ -7,9 +7,10 @@ changes. Clicking a step shows the exact copy behind it.
 **Where:** Portal → Marketing tile → **Workflows** tab (desktop), or the
 Tracker / Workflows switch on the mobile Marketing screen.
 
-**Who:** anyone with the `marketing:workflows` permission (Admin → Roles,
-Marketing section). Migration 233 grants it to every role that already had the
-Marketing Tracker. Corporate and above always have it.
+**Who:** anyone with the `marketing:workflows` permission can view (Admin →
+Roles, Marketing section; corporate and above, and marketing add-on staff,
+always have it). Only **admins** can create, edit, rename, duplicate, delete or
+import maps; everyone else gets the read-only Present view.
 
 ## Using it
 
@@ -73,7 +74,7 @@ Workflows tab opens. The portal is plain JS/JSX, so this is too.
 
 ### API
 
-All routes need a portal login and the `workflows` marketing capability.
+All routes need a portal login and the `workflows` marketing capability. Create, save, duplicate and delete are admin only (403 otherwise); list and get return `canEdit`.
 
 - `GET /workflow-maps`: list (no graph, includes `step_count`)
 - `GET /workflow-maps/:id`: one map with `nodes` / `edges`
@@ -101,6 +102,23 @@ edge = { id, source, target, sourceHandle? } // sourceHandle = branch id
 ```
 
 Export files wrap the map as `{ format: 'wcs-workflow-map', version: 1, workflow: {...} }`.
+
+### Live GHL custom values
+
+SMS, call and email steps can be **linked** to a GHL custom value (the copy
+the workflows send). The map only reads GHL, it never writes to it:
+
+- Linked steps show the live value with a green GHL badge, or "Not found" if
+  the value doesn't exist (the step's saved copy shows instead).
+- Linked copy is read-only in the map. Change it in GHL or the Workflows &
+  Scripts tile; the map shows it on open or with the "↻ GHL copy" button.
+- Values come from the Salem sub-account (`BASE_CLUB` in the route); the UI
+  doesn't name a club.
+- Linked values are re-read by id because GHL's list endpoint lags writes.
+- Steps whose notes say `GHL custom value: X` get a one-click link suggestion.
+- Link format on the step: `data.cv = { key: 'custom_values.x', name }` (key
+  matched first, then name).
+- Endpoint: `GET /workflow-maps/ghl-values?links=`.
 
 ### GHL sync (not built)
 
