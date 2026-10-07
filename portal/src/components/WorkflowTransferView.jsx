@@ -376,7 +376,12 @@ function PairCard({ item, club, plan, clubWorkflows, onChange }) {
         <p className={`text-xs mt-2 font-semibold ${result.error ? 'text-red-700' : 'text-green-700'}`}>
           {result.error
             ? result.error
-            : `${result.mode === 'new' ? 'Created draft' : 'Overwrote'} · ${result.steps} steps · ${result.triggers} triggers${result.snapshotId ? ' · backup saved' : ''}`}
+            : `${result.mode === 'new' ? 'Created draft' : 'Overwrote'} · ${result.steps} steps · ${result.triggers} trigger${result.triggers === 1 ? '' : 's'} added${result.triggersAlreadyThere ? ` · ${result.triggersAlreadyThere} already there` : ''}${result.snapshotId ? ' · backup saved' : ''}`}
+        </p>
+      )}
+      {result?.extraTriggers?.length > 0 && (
+        <p className="text-xs mt-1 text-text-muted">
+          Left in place (not in the source): {result.extraTriggers.map(t => t.name).join(', ')}. Remove in GHL if unwanted.
         </p>
       )}
       {result?.droppedTriggers?.length > 0 && (

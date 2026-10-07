@@ -92,23 +92,41 @@ async function createDraft(token, loc, name) {
   return id
 }
 
-// GHL-style 20-character id for fresh trigger records.
-function genId(len = 20) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let s = ''
-  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)]
-  return s
-}
-
 const COPIED_SETTINGS = ['timezone', 'allowMultiple', 'allowMultipleOpportunity', 'stopOnResponse',
   'removeContactFromLastStep', 'autoMarkAsRead']
+
+// Trigger fields copied into a new trigger. Ids, dates, origin and ownership
+// are GHL's to assign.
+const TRIGGER_FIELDS = ['type', 'name', 'active', 'conditions', 'masterType', 'schedule_config',
+  'custom_date_reminder_config', 'reminder_trigger_config', 'match_year']
+
+// Two triggers are the same when type and conditions match (ids already
+// remapped, so a copied Custom Date Reminder matches the club's own one).
+function triggerSignature(t) {
+  const conds = (Array.isArray(t.conditions) ? t.conditions : [])
+    .map(c => [c.id, c.operator, c.field, JSON.stringify(c.value ?? null)].join('~'))
+    .sort()
+  return `${t.type}|${conds.join('&')}`
+}
+
+function triggerIdOf(resp) {
+  return resp?.id || resp?._id || resp?.trigger?.id || resp?.trigger?._id || resp?.data?.id || null
+}
 
 // Writes `source` (an already-remapped { workflow, triggers }) over the target
 // workflow `id`: steps and settings first, then triggers. The target keeps its
 // own id, version, folder and publish status.
+//
+// Triggers are MERGED, not replaced: a source trigger the target already has
+// (same type and conditions) is left alone, a missing one is added, and a
+// target trigger the source lacks is left in place and reported. Adding works
+// the way the builder does it (captured 2026-10-07): POST /workflow/{loc}/trigger
+// creates the record, then PUT /only-triggers/{id} saves the workflow's trigger
+// list with newTriggers = old + created, oldTriggers = old. Sending made-up ids
+// to only-triggers alone (the Chrome extension's way) is accepted and ignored.
 async function writeWorkflow(token, loc, id, source, { name } = {}) {
   const target = await getWorkflow(token, loc, id)
-  const oldTriggers = await getTriggers(token, loc, id)
+  const oldTriggers = (await getTriggers(token, loc, id)).filter(t => !t.deleted)
 
   target.workflowData = source.workflow.workflowData || { templates: [] }
   if (source.workflow.meta) target.meta = source.workflow.meta
@@ -120,57 +138,73 @@ async function writeWorkflow(token, loc, id, source, { name } = {}) {
   target.triggersChanged = false
   await backend(token, `/workflow/${enc(loc)}/${enc(id)}`, { method: 'PUT', body: target })
 
-  const srcTriggers = source.triggers || []
-  let triggersWritten = 0
-  if (srcTriggers.length || oldTriggers.length) {
-    // The PUT above bumped the version; the triggers write must carry the
-    // current one or GHL answers 422 "Your version is outdated".
-    const base = await getWorkflow(token, loc, id)
-    const now = new Date().toISOString()
-    const newTriggers = srcTriggers.map((t) => {
-      const nt = { ...t }
-      delete nt._id
-      nt.id = genId()
-      nt.workflow_id = id
-      nt.location_id = loc
-      nt.deleted = false
-      nt.date_added = now
-      nt.date_updated = now
-      nt.actions = (Array.isArray(nt.actions) && nt.actions.length ? nt.actions : [{ type: 'add_to_workflow' }])
+  const srcTriggers = (source.triggers || []).filter(t => !t.deleted)
+  const existingSigs = new Set(oldTriggers.map(triggerSignature))
+  const srcSigs = new Set(srcTriggers.map(triggerSignature))
+  const toCreate = srcTriggers.filter(t => !existingSigs.has(triggerSignature(t)))
+  const alreadyThere = srcTriggers.length - toCreate.length
+  const extraTriggers = oldTriggers
+    .filter(t => !srcSigs.has(triggerSignature(t)))
+    .map(t => ({ type: t.type, name: t.name || t.type }))
+
+  let droppedTriggers = []
+  if (toCreate.length) {
+    // The PUT above bumped the version; trigger writes must carry the current one.
+    let base = await getWorkflow(token, loc, id)
+    const created = []
+    for (const t of toCreate) {
+      const body = {}
+      for (const k of TRIGGER_FIELDS) if (k in t) body[k] = t[k]
+      if (!body.schedule_config) body.schedule_config = {}
+      body.actions = (Array.isArray(t.actions) && t.actions.length ? t.actions : [{ type: 'add_to_workflow' }])
         .map(a => ({ ...a, workflow_id: id }))
-      return nt
-    })
-    const resp = await backend(token, `/workflow/${enc(loc)}/only-triggers/${enc(id)}`, {
+      body.location_id = loc
+      body.workflowId = id
+      body.status = base.status
+      body.company_id = base.companyId
+      if (base.companyAge !== undefined) body.company_age = base.companyAge
+      body.triggersChanged = true
+      const resp = await backend(token, `/workflow/${enc(loc)}/trigger`, { method: 'POST', body })
+      created.push({ sig: triggerSignature(t), resp, triggerId: triggerIdOf(resp) })
+    }
+
+    // Resolve the created records. Prefer the ids GHL returned; otherwise find
+    // them in the workflow's trigger list by signature.
+    const listed = (await getTriggers(token, loc, id)).filter(t => !t.deleted)
+    const oldIds = new Set(oldTriggers.map(t => t.id))
+    const fresh = listed.filter(t => !oldIds.has(t.id))
+    const createdRecords = created.map(c =>
+      (c.triggerId && listed.find(t => t.id === c.triggerId)) ||
+      (c.triggerId && typeof c.resp === 'object' && c.resp?.type ? c.resp : null) ||
+      fresh.find(t => triggerSignature(t) === c.sig) ||
+      null)
+    const missing = createdRecords.map((r, i) => (r ? null : created[i])).filter(Boolean)
+    if (missing.length) {
+      console.warn('[ghlWorkflowBackend] trigger POST gave no usable record:', JSON.stringify(missing.map(m => m.resp)).slice(0, 500))
+    }
+
+    // Save the trigger list, exactly as the builder does after adding one.
+    base = await getWorkflow(token, loc, id)
+    const newTriggers = [...oldTriggers, ...createdRecords.filter(Boolean)]
+    await backend(token, `/workflow/${enc(loc)}/only-triggers/${enc(id)}`, {
       method: 'PUT',
       body: { ...base, newTriggers, oldTriggers, triggersChanged: true },
     })
-    // GHL answered 2xx yet applied nothing on the first live run (2026-10-07),
-    // so keep the shape of its answer for diagnosis. No token is in it.
-    console.log('[ghlWorkflowBackend] only-triggers response:', JSON.stringify(resp)?.slice(0, 500))
-    triggersWritten = newTriggers.length
+
+    // Read back: every trigger we meant to add must now be there.
+    const after = (await getTriggers(token, loc, id).catch(() => [])).filter(t => !t.deleted)
+    const afterSigs = after.map(triggerSignature)
+    droppedTriggers = toCreate
+      .filter(t => !afterSigs.includes(triggerSignature(t)))
+      .map(t => ({ type: t.type, name: t.name || t.type }))
   }
 
-  // GHL can accept a triggers write and still not keep every trigger, without
-  // an error. Read them back so a dropped trigger is reported, not silent.
-  let droppedTriggers = []
-  if (srcTriggers.length) {
-    const kept = await getTriggers(token, loc, id).catch(() => null)
-    if (kept) {
-      // Triggers that were there before the write don't count as copied: if
-      // GHL ignores the whole triggers call, the old ones are all still there.
-      const oldIds = new Set(oldTriggers.map(t => t.id))
-      const pool = kept.filter(t => !t.deleted && !oldIds.has(t.id)).map(t => `${t.type}|${t.name}`)
-      for (const t of srcTriggers) {
-        const i = pool.indexOf(`${t.type}|${t.name}`)
-        if (i === -1) droppedTriggers.push({ type: t.type, name: t.name || t.type })
-        else pool.splice(i, 1)
-      }
-    }
-  }
   return {
     steps: (target.workflowData.templates || []).length,
-    triggers: triggersWritten - droppedTriggers.length,
+    triggers: toCreate.length - droppedTriggers.length,
+    triggersAlreadyThere: alreadyThere,
     droppedTriggers,
+    extraTriggers,
   }
 }
 
@@ -234,5 +268,5 @@ function forgetCatalog(locId) {
 
 module.exports = {
   GhlSessionError, exportWorkflow, getWorkflow, getTriggers, checkSession,
-  createDraft, writeWorkflow, loadCatalog, forgetCatalog,
+  createDraft, writeWorkflow, loadCatalog, forgetCatalog, triggerSignature,
 }
