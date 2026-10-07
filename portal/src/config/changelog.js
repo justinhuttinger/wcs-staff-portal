@@ -74,6 +74,12 @@ export function visibleChangelog(ctx) {
 
 export const CHANGELOG = [
   {
+    id: 23, date: '2026-10-07',
+    title: 'Marketing tools each have their own tile',
+    body: 'Open the Marketing tile to find Tracker, Needs List, Research, Workflows, Workflows & Scripts, Ads Manager, Forms and Quiz Funnels as separate tiles, so each opens straight to what you need. Workflows & Scripts moved off the main board into Marketing.',
+    audience: { tool: 'marketing:workflows' },
+  },
+  {
     id: 22, date: '2026-10-06',
     title: 'Workflow Maps',
     body: 'New Workflows tab in Marketing. Draw any GHL workflow as a map of triggers, texts, emails, waits, calls and Yes/No branches, then click a step to read or edit its exact copy. Changes save automatically for everyone. Use Present to walk staff through a workflow without risk of editing it, and mark steps as New, Change or Remove to keep a to-do list for GHL.',
