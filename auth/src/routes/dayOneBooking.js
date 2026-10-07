@@ -470,28 +470,82 @@ router.get('/api/slot-trainers', readLimiter, async (req, res) => {
   }
 })
 
+// ---------------------------------------------------------------------------
+// Personal booking links: /dayone/<slug>?c={{contact.id}} from a GHL text.
+// ---------------------------------------------------------------------------
+// The person is already a GHL contact, so the page skips name / email / phone
+// and books that contact directly (no upsert, so no chance of a duplicate). The
+// id is unsigned, so the page only ever gets a first name + last initial; the
+// contact must belong to this club's GHL location or it counts as not found and
+// the page shows the normal form.
+async function linkedContact(loc, rawId) {
+  const id = String(rawId || '').trim()
+  if (!/^[A-Za-z0-9]{6,64}$/.test(id)) return null
+  let contact
+  try {
+    contact = (await ghlFetch(`/contacts/${id}`, loc.apiKey))?.contact
+  } catch (e) {
+    // 403 = another club's contact (this key can't see it); same as not found.
+    if (/GHL API error (400|403|404)/.test(e.message)) return null
+    throw e
+  }
+  if (!contact?.id || contact.locationId !== loc.id) return null
+  if (!String(contact.firstName || '').trim()) return null
+  return contact
+}
+
+router.get('/api/prefill', readLimiter, async (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  const loc = getLocationBySlug(String(req.query.location || '').toLowerCase())
+  try {
+    const contact = loc ? await linkedContact(loc, req.query.c) : null
+    if (!contact) return res.status(404).json({ error: 'Link not recognized' })
+    res.json({
+      firstName: String(contact.firstName).trim(),
+      lastInitial: String(contact.lastName || '').trim().charAt(0).toUpperCase(),
+    })
+  } catch (e) {
+    console.error('[DayOneWidget] prefill failed:', e.message)
+    res.status(502).json({ error: 'Could not look you up' })
+  }
+})
+
 // Book. Three steps, in this order:
 //   1. upsert the contact (so we have a contactId and the notification merge
-//      fields resolve to a real person)
+//      fields resolve to a real person), or, from a personal ?c= link, use
+//      that existing contact as-is
 //   2. create the appointment with toNotify — this is what fires the SMS
 //   3. write the Day One custom fields onto the contact
 // Step 3 is last on purpose: a custom-field failure must not cost us the booking,
 // so it is reported but non-fatal.
 router.post('/api/book', bookLimiter, async (req, res) => {
   const {
-    location, firstName, lastName, email, phone,
+    location, email, phone, contactId: linkId,
     userId, calendarId, startTime, tourMember, notes,
   } = req.body || {}
+  let { firstName, lastName } = req.body || {}
 
   const loc = getLocationBySlug(String(location || '').toLowerCase())
   if (!loc) return res.status(400).json({ error: 'Unknown location' })
   if (!startTime) return res.status(400).json({ error: 'startTime is required' })
-  if (!firstName?.trim()) return res.status(400).json({ error: 'First name is required' })
-  if (!email?.trim() && !phone?.trim()) {
-    return res.status(400).json({ error: 'An email or phone is required' })
+  if (!linkId) {
+    if (!firstName?.trim()) return res.status(400).json({ error: 'First name is required' })
+    if (!email?.trim() && !phone?.trim()) {
+      return res.status(400).json({ error: 'An email or phone is required' })
+    }
   }
 
   try {
+    // A personal link books that GHL contact; the name comes from GHL, never
+    // from the request. Checked before anything is written.
+    let linked = null
+    if (linkId) {
+      linked = await linkedContact(loc, linkId)
+      if (!linked) return res.status(400).json({ error: 'contact_not_found' })
+      firstName = linked.firstName
+      lastName = linked.lastName || ''
+    }
+
     const calendar = await resolveBookingCalendar(loc, calendarId)
     const isExtra = calendar.id !== (await getDayOneCalendar(loc)).id
 
@@ -526,19 +580,23 @@ router.post('/api/book', bookLimiter, async (req, res) => {
     }
 
     // 1. Contact. upsert matches on email/phone so re-booking an existing member
-    // updates them instead of creating a duplicate.
-    const contactBody = {
-      locationId: loc.id,
-      firstName: firstName.trim(),
-      lastName: (lastName || '').trim(),
+    // updates them instead of creating a duplicate. A linked contact is used
+    // as-is.
+    let contactId = linked?.id
+    if (!contactId) {
+      const contactBody = {
+        locationId: loc.id,
+        firstName: firstName.trim(),
+        lastName: (lastName || '').trim(),
+      }
+      if (email?.trim()) contactBody.email = email.trim()
+      if (phone?.trim()) contactBody.phone = phone.trim()
+      const upserted = await ghlFetch('/contacts/upsert', loc.apiKey, {
+        method: 'POST', body: contactBody,
+      })
+      contactId = upserted?.contact?.id
+      if (!contactId) throw new Error('Contact upsert returned no id')
     }
-    if (email?.trim()) contactBody.email = email.trim()
-    if (phone?.trim()) contactBody.phone = phone.trim()
-    const upserted = await ghlFetch('/contacts/upsert', loc.apiKey, {
-      method: 'POST', body: contactBody,
-    })
-    const contactId = upserted?.contact?.id
-    if (!contactId) throw new Error('Contact upsert returned no id')
 
     // 2. Appointment. endTime is derived from the calendar's own slot duration so
     // we never disagree with what the slot picker offered.

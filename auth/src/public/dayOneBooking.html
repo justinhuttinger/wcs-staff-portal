@@ -157,6 +157,8 @@
   }
   .who b { color: var(--ink); }
   .who .hint { color: var(--muted); font-size: 13px; display: block; margin-top: 3px; }
+  .linked { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  .linked .btn.link { padding: 0 4px; font-size: 13px; }
   .row-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
   .btn { background: var(--ink); color: #fff; border: 0; border-radius: 8px; padding: 12px 22px; font: inherit; font-weight: 600; cursor: pointer; }
   .btn:hover:not(:disabled) { background: #000; }
@@ -406,13 +408,20 @@
     <div class="form-pane hide" id="pane-form">
       <h2>Member details</h2>
       <div class="who" id="who"></div>
-      <div class="two">
-        <div class="field"><label for="firstName">First name</label><input id="firstName" autocomplete="off"></div>
-        <div class="field"><label for="lastName">Last name</label><input id="lastName" autocomplete="off"></div>
+      <!-- Personal ?c= link: who is booking comes from GHL, not these fields. -->
+      <div class="linked hide" id="linked">
+        <span>Booking for <b id="linked-name"></b></span>
+        <button class="btn link" id="not-you" type="button">Not you?</button>
       </div>
-      <div class="two">
-        <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="off"></div>
-        <div class="field"><label for="phone">Phone</label><input id="phone" type="tel" autocomplete="off"></div>
+      <div id="contact-fields">
+        <div class="two">
+          <div class="field"><label for="firstName">First name</label><input id="firstName" autocomplete="off"></div>
+          <div class="field"><label for="lastName">Last name</label><input id="lastName" autocomplete="off"></div>
+        </div>
+        <div class="two">
+          <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="off"></div>
+          <div class="field"><label for="phone">Phone</label><input id="phone" type="tel" autocomplete="off"></div>
+        </div>
       </div>
       <div class="field">
         <label for="tourMember">Booking Team Member</label>
@@ -904,8 +913,26 @@
   }
 
   function syncBook() {
-    $('book').disabled = !(S.startTime && $('firstName').value.trim() &&
-      ($('email').value.trim() || $('phone').value.trim()))
+    $('book').disabled = !(S.startTime && (S.linked || ($('firstName').value.trim() &&
+      ($('email').value.trim() || $('phone').value.trim()))))
+  }
+
+  // Personal link from a GHL text: /dayone/<slug>?c={{contact.id}}. The server
+  // books that contact as-is and only tells the page a first name + last
+  // initial. Unknown id (or another club's contact) = the normal fields.
+  var LINK_ID = (qp.get('c') || '').trim()
+  function setLinked(who) {
+    S.linked = who
+    if (who) $('linked-name').textContent = who.firstName + (who.lastInitial ? ' ' + who.lastInitial + '.' : '')
+    show($('linked'), !!who)
+    show($('contact-fields'), !who)
+    syncBook()
+  }
+  $('not-you').addEventListener('click', function () { setLinked(null) })
+  if (LINK_ID && S.location) {
+    api('/api/prefill?location=' + encodeURIComponent(S.location) + '&c=' + encodeURIComponent(LINK_ID))
+      .then(function (d) { if (d.firstName) setLinked(d) })
+      .catch(function () {})
   }
   ;['firstName', 'email', 'phone'].forEach(function (id) {
     $(id).addEventListener('input', syncBook)
@@ -936,10 +963,11 @@
       expectedUserId: S.key ? undefined : (S.pick || undefined),
       timezone: S.tz,
       startTime: S.startTime,
-      firstName: $('firstName').value.trim(),
-      lastName: $('lastName').value.trim(),
-      email: $('email').value.trim(),
-      phone: $('phone').value.trim(),
+      contactId: S.linked ? LINK_ID : undefined,
+      firstName: S.linked ? undefined : $('firstName').value.trim(),
+      lastName: S.linked ? undefined : $('lastName').value.trim(),
+      email: S.linked ? undefined : $('email').value.trim(),
+      phone: S.linked ? undefined : $('phone').value.trim(),
       tourMember: $('tourMember').value,
       notes: $('notes').value.trim(),
     }}).then(function (r) {
@@ -949,7 +977,7 @@
       // Who and when, nothing else. Ids and field-write status were useful while
       // building this, but they are noise to the person who just booked — and
       // the API response and server logs still carry them if support needs them.
-      var first = ($('firstName').value.trim().split(/\s+/)[0]) || ''
+      var first = S.linked ? S.linked.firstName : (($('firstName').value.trim().split(/\s+/)[0]) || '')
       var when = fmtDayName(r.startTime)
       $('done-line').innerHTML =
         (first ? 'Thanks, ' + esc(first) + '! ' : 'Thank you! ') +
@@ -958,8 +986,15 @@
       $('done-sub').textContent = 'We’ve sent you a confirmation. See you then!'
       show($('pane-form'), false); show($('pane-done'), true)
     }).catch(function (e) {
-      fail($('book-err'), e.message)
       $('book-state').textContent = ''
+      // GHL no longer has the linked contact (merged, deleted): ask for their
+      // details instead of an error they can't fix.
+      if (S.linked && e.message === 'contact_not_found') {
+        setLinked(null)
+        fail($('book-err'), 'Please enter your details to finish booking.')
+        return
+      }
+      fail($('book-err'), e.message)
       $('book').disabled = false
     })
   })
