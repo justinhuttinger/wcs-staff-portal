@@ -215,7 +215,9 @@ function optionLabel(o) {
 const PAGE_PATH = path.join(__dirname, '..', 'public', 'dayOneBooking.html')
 let pageTemplate = null
 
-function renderPage(req, res, slug) {
+// `staff` is the /:location/staff link the portal and launcher open: it adds
+// the "Booking Team Member" picker. Members get the page without it.
+function renderPage(req, res, slug, staff = false) {
   try {
     if (!pageTemplate || process.env.NODE_ENV !== 'production') {
       pageTemplate = fs.readFileSync(PAGE_PATH, 'utf8')
@@ -223,6 +225,7 @@ function renderPage(req, res, slug) {
     const html = pageTemplate
       .split('{{WIDGET_BASE}}').join(req.baseUrl || '/day-one-booking')
       .split('{{WIDGET_LOCATION}}').join(slug || '')
+      .split('{{WIDGET_STAFF}}').join(staff ? '1' : '')
     res.type('html').send(html)
   } catch (e) {
     console.error('[DayOneWidget] page render failed:', e.message)
@@ -1028,6 +1031,12 @@ router.get('/:location/reschedule', (req, res, next) => {
   const slug = String(req.params.location || '').toLowerCase()
   if (!getLocationBySlug(slug)) return next()
   renderManagePage(req, res, slug, 'reschedule')
+})
+
+router.get('/:location/staff', (req, res, next) => {
+  const slug = String(req.params.location || '').toLowerCase()
+  if (!getLocationBySlug(slug)) return next()
+  renderPage(req, res, slug, true)
 })
 
 // Per-location link: /day-one-booking/salem. Declared LAST so it can never

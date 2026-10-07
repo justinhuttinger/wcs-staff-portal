@@ -123,7 +123,7 @@ function validateClubInput(input, existing, { current = null } = {}) {
 // Action Links every club follows (Admin -> Action Links can override).
 function defaultActionLinks(slug) {
   return {
-    [`dayone_url_${slug}`]: `https://book.westcoaststrength.com/dayone/${slug}`,
+    [`dayone_url_${slug}`]: `https://book.westcoaststrength.com/dayone/${slug}/staff`,
     [`vip_url_${slug}`]: `https://vip.westcoaststrength.com/${slug}/staff`,
   }
 }

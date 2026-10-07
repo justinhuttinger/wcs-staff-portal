@@ -423,7 +423,7 @@
           <div class="field"><label for="phone">Phone</label><input id="phone" type="tel" autocomplete="off"></div>
         </div>
       </div>
-      <div class="field">
+      <div class="field hide" id="tourMember-field">
         <label for="tourMember">Booking Team Member</label>
         <select id="tourMember"></select>
       </div>
@@ -474,6 +474,10 @@
     (qp.get('embed') !== '0' && window.parent !== window)
   if (COMPACT) document.body.classList.add('compact')
 
+  // /dayone/<slug>/staff: staff are booking for someone, so they say who they
+  // are. The member link (/dayone/<slug>) doesn't ask.
+  var STAFF = '{{WIDGET_STAFF}}' === '1'
+
   var S = {
     // One link per location, so this is fixed for the life of the page.
     location: '{{WIDGET_LOCATION}}',
@@ -488,6 +492,7 @@
   // per-location link visited with a trailing slash.
   $('logo').src = API + '/logo.png'
   function show(el, on) { el.classList.toggle('hide', !on) }
+  show($('tourMember-field'), STAFF)
   function fail(el, msg) { el.textContent = msg || ''; show(el, !!msg) }
   function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') }
 
