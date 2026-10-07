@@ -143,7 +143,7 @@ function marketingScope(staff) {
 // marketing:research and any subset of marketing_type:<slug>. Legacy access
 // (corporate+ tier or the marketing_addon flag) still grants all three
 // capabilities and preserves the member's existing club/type scope.
-const MARKETING_CAPS = ['tracker', 'needs', 'research']
+const MARKETING_CAPS = ['tracker', 'needs', 'research', 'workflows']
 
 async function marketingContext(staff) {
   // Fast path: corporate+ is unconditionally full marketing (all caps, all

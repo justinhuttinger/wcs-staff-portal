@@ -26,13 +26,13 @@ function run(mw, staff) {
 
 test('marketingContext: corporate tier grants all caps, unrestricted types', async () => {
   const ctx = await marketingContext({ role: 'corporate' })
-  assert.deepStrictEqual([...ctx.capabilities].sort(), ['needs', 'research', 'tracker'])
+  assert.deepStrictEqual([...ctx.capabilities].sort(), ['needs', 'research', 'tracker', 'workflows'])
   assert.deepStrictEqual(ctx.types, []) // [] = unrestricted (corporate is full tier)
 })
 
 test('marketingContext: add-on grants all caps and preserves legacy type scope', async () => {
   const ctx = await marketingContext({ role: 'team_member', marketing_addon: true, marketing_types: ['flyer'] })
-  assert.deepStrictEqual([...ctx.capabilities].sort(), ['needs', 'research', 'tracker'])
+  assert.deepStrictEqual([...ctx.capabilities].sort(), ['needs', 'research', 'tracker', 'workflows'])
   assert.deepStrictEqual(ctx.types, ['flyer'])
 })
 

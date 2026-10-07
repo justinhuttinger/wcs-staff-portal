@@ -2443,3 +2443,28 @@ export async function getRenderStatus(options = {}) {
 export async function getRenderServiceLogs(serviceId, options = {}) {
   return api('/render-status/' + encodeURIComponent(serviceId) + '/logs', options)
 }
+
+// Workflow Maps (Marketing -> Workflows)
+export async function getWorkflowMaps() {
+  return api('/workflow-maps')
+}
+
+export async function getWorkflowMap(id) {
+  return api('/workflow-maps/' + id)
+}
+
+export async function createWorkflowMap(data) {
+  return api('/workflow-maps', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function saveWorkflowMap(id, data) {
+  return api('/workflow-maps/' + id, { method: 'PUT', body: JSON.stringify(data) })
+}
+
+export async function duplicateWorkflowMap(id) {
+  return api('/workflow-maps/' + id + '/duplicate', { method: 'POST' })
+}
+
+export async function deleteWorkflowMap(id) {
+  return api('/workflow-maps/' + id, { method: 'DELETE' })
+}
