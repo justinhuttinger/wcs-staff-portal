@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { sanitizeMapInput } = require('./workflowMaps')
+const { sanitizeMapInput, findLinkedValue, normalizeCvKey } = require('./workflowMaps')
 
 const node = (id, type = 'sms', extra = {}) => ({ id, type, position: { x: 1, y: 2 }, data: { title: id }, ...extra })
 
@@ -40,4 +40,17 @@ test('validates status and viewport', () => {
   assert.equal(sanitizeMapInput({ status: 'nope' }).error, 'Invalid status')
   assert.equal(sanitizeMapInput({ viewport: { x: 'a' } }).fields.viewport, null)
   assert.deepEqual(sanitizeMapInput({ viewport: { x: 1, y: 2, zoom: 0.5, extra: 1 } }).fields.viewport, { x: 1, y: 2, zoom: 0.5 })
+})
+
+test('linked custom values resolve by key, then by name', () => {
+  const values = [
+    { id: '1', name: 'New Lead SMS 1', fieldKey: 'custom_values.new_lead_sms_1' },
+    { id: '2', name: 'Past Due SMS 1', fieldKey: 'custom_values.past_due_sms_1' },
+  ]
+  assert.equal(normalizeCvKey('{{ custom_values.New_Lead_SMS_1 }}'), 'custom_values.new_lead_sms_1')
+  assert.equal(findLinkedValue(values, { key: '{{ custom_values.past_due_sms_1 }}' }).id, '2')
+  assert.equal(findLinkedValue(values, { name: ' new lead sms 1' }).id, '1')
+  assert.equal(findLinkedValue(values, { key: 'custom_values.gone', name: 'Past Due SMS 1' }).id, '2')
+  assert.equal(findLinkedValue(values, { key: 'custom_values.gone' }), null)
+  assert.equal(findLinkedValue(values, null), null)
 })

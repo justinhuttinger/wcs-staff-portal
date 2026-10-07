@@ -32,12 +32,15 @@ export default function WorkflowMapsHome() {
   const [modal, setModal] = useState(null)       // { kind: 'new' } | { kind: 'edit', map } | { kind: 'delete', map }
   const [openId, setOpenId] = useState(null)
   const [busy, setBusy] = useState(null)
+  // Only admins create, rename, duplicate, delete or import maps.
+  const [canEdit, setCanEdit] = useState(false)
   const fileRef = useRef(null)
 
   async function load() {
     try {
       const res = await getWorkflowMaps()
       setMaps(res.maps || [])
+      setCanEdit(!!res.canEdit)
       setError('')
     } catch (err) {
       setError(err.message || 'Failed to load workflow maps')
@@ -113,11 +116,13 @@ export default function WorkflowMapsHome() {
             {folders.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
         )}
-        <div className="flex gap-2 ml-auto">
-          <button className={btnGhost} onClick={() => fileRef.current?.click()}>Import JSON</button>
-          <button className={btnPrimary} onClick={() => setModal({ kind: 'new' })}>+ New workflow</button>
-          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={importFile} />
-        </div>
+        {canEdit && (
+          <div className="flex gap-2 ml-auto">
+            <button className={btnGhost} onClick={() => fileRef.current?.click()}>Import JSON</button>
+            <button className={btnPrimary} onClick={() => setModal({ kind: 'new' })}>+ New workflow</button>
+            <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={importFile} />
+          </div>
+        )}
       </div>
 
       {error && <div className="bg-surface rounded-xl border border-border p-3 mb-4 text-sm text-wcs-red">{error}</div>}
@@ -125,7 +130,7 @@ export default function WorkflowMapsHome() {
 
       {!loading && shown.length === 0 && (
         <div className="bg-surface rounded-xl border border-border p-8 text-center">
-          <p className="text-sm text-text-muted">{maps.length === 0 ? 'No workflow maps yet. Start one with + New workflow.' : 'No workflows match that search.'}</p>
+          <p className="text-sm text-text-muted">{maps.length === 0 ? (canEdit ? 'No workflow maps yet. Start one with + New workflow.' : 'No workflow maps yet.') : 'No workflows match that search.'}</p>
         </div>
       )}
 
@@ -147,10 +152,10 @@ export default function WorkflowMapsHome() {
             <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-border">
               <span className="text-[11px] text-text-muted">Edited {timeAgo(m.updated_at)}{m.updated_by_name ? ' by ' + m.updated_by_name : ''}</span>
               <div className="flex gap-1">
-                <button className="px-2 py-1 rounded text-[11px] font-semibold text-text-muted hover:text-text-primary hover:bg-bg" onClick={() => setModal({ kind: 'edit', map: m })}>Rename</button>
-                <button className="px-2 py-1 rounded text-[11px] font-semibold text-text-muted hover:text-text-primary hover:bg-bg disabled:opacity-50" disabled={busy === m.id} onClick={() => duplicate(m)}>Duplicate</button>
+                {canEdit && <button className="px-2 py-1 rounded text-[11px] font-semibold text-text-muted hover:text-text-primary hover:bg-bg" onClick={() => setModal({ kind: 'edit', map: m })}>Rename</button>}
+                {canEdit && <button className="px-2 py-1 rounded text-[11px] font-semibold text-text-muted hover:text-text-primary hover:bg-bg disabled:opacity-50" disabled={busy === m.id} onClick={() => duplicate(m)}>Duplicate</button>}
                 <button className="px-2 py-1 rounded text-[11px] font-semibold text-text-muted hover:text-text-primary hover:bg-bg disabled:opacity-50" disabled={busy === m.id} onClick={() => exportMap(m)}>Export</button>
-                <button className="px-2 py-1 rounded text-[11px] font-semibold text-wcs-red hover:bg-wcs-red/10" onClick={() => setModal({ kind: 'delete', map: m })}>Delete</button>
+                {canEdit && <button className="px-2 py-1 rounded text-[11px] font-semibold text-wcs-red hover:bg-wcs-red/10" onClick={() => setModal({ kind: 'delete', map: m })}>Delete</button>}
               </div>
             </div>
           </div>

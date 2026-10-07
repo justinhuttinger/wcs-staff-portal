@@ -56,6 +56,12 @@ function StepNode({ type, data, selected }) {
         </span>
         <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: kind.color }}>{kind.label}</span>
         <span className="ml-auto flex items-center gap-1">
+          {data.cv && (
+            <span title={data._ghl === 'missing' ? 'Linked custom value not found in GHL' : 'Live from GHL: ' + (data.cv.name || data.cv.key)}
+              className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide ${data._ghl === 'missing' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+              {data._ghl === 'missing' ? 'Not found' : 'GHL'}
+            </span>
+          )}
           {data.notes && <span title="Has internal notes" className="w-1.5 h-1.5 rounded-full bg-text-muted/60" />}
           {data.link && (
             <a href={data.link} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
