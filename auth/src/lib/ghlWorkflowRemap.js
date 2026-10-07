@@ -172,6 +172,7 @@ function normalizePayload(input) {
       workflow: input.workflow,
       triggers: Array.isArray(input.triggers) ? input.triggers : [],
       sourceLocationId: input.sourceLocationId || input.workflow.locationId || null,
+      folderPath: Array.isArray(input.folderPath) ? input.folderPath.map(String).slice(0, 10) : [],
     }
   }
   const wf = input.workflowData ? input : (input.data?.workflowData ? input.data : null)
@@ -180,6 +181,7 @@ function normalizePayload(input) {
     workflow: wf,
     triggers: Array.isArray(wf.exportedTriggers) ? wf.exportedTriggers : [],
     sourceLocationId: wf.locationId || null,
+    folderPath: [],
   }
 }
 

@@ -93,6 +93,96 @@ async function createDraft(token, loc, name) {
   return id
 }
 
+// ── Folders ────────────────────────────────────────────────────────────────
+// Folders are workflow records with type 'directory'. Calls captured from the
+// GHL workflows list page (2026-10-07):
+//   GET  /workflow/{loc}/list?parentId=..&limit=50&offset=..&sortBy=name&sortOrder=asc
+//        -> { rows, count, folderName, parentId (the folder's own parent) }
+//   POST /workflow/{loc}/directory { type, name, parentId, company_id, company_age } -> { id }
+//   PUT  /workflow/{loc}/move-directory/{workflowId} { parentId }
+const ROOT = 'root'
+const LIST_PAGE = 50
+
+async function listFolder(token, loc, parentId) {
+  const rows = []
+  let first = null
+  for (let offset = 0; offset < 5000; offset += LIST_PAGE) {
+    const qs = new URLSearchParams({
+      parentId: parentId || ROOT, limit: String(LIST_PAGE), offset: String(offset),
+      sortBy: 'name', sortOrder: 'asc', includeCustomObjects: 'true', includeObjectiveBuilder: 'true',
+    })
+    const page = await backend(token, `/workflow/${enc(loc)}/list?${qs}`)
+    if (!first) first = page || {}
+    const got = (page?.rows || []).filter(r => !r.deleted)
+    const before = rows.length
+    for (const r of got) if (!rows.some(x => x.id === r.id)) rows.push(r)
+    if (got.length < LIST_PAGE || rows.length === before || rows.length >= (page?.count || 0)) break
+  }
+  return {
+    folderName: first?.folderName || null,
+    parentId: first?.parentId || null,
+    folders: rows.filter(r => r.type === 'directory').map(r => ({ id: r.id, name: r.name })),
+    workflows: rows.filter(r => r.type !== 'directory').map(r => ({ id: r.id, name: r.name, status: r.status, parentId: r.parentId })),
+  }
+}
+
+// Folder names from the top down to `folderId`, e.g. ['WCS', 'Lead Calls'].
+async function folderPath(token, loc, folderId, cache = new Map()) {
+  const path = []
+  let id = folderId
+  for (let depth = 0; id && id !== ROOT && depth < 10; depth++) {
+    let info = cache.get(id)
+    if (!info) {
+      info = await listFolder(token, loc, id)
+      cache.set(id, info)
+    }
+    if (!info.folderName) break
+    path.unshift(info.folderName)
+    id = info.parentId
+  }
+  return path
+}
+
+const sameName = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
+
+// Finds (or creates) the folder path in a location; returns the deepest
+// folder's id, or null for the top level. `company` = { companyId, companyAge }.
+async function ensureFolderPath(token, loc, path, company) {
+  let parent = null
+  const created = []
+  for (const name of path || []) {
+    const here = await listFolder(token, loc, parent)
+    const found = here.folders.find(f => sameName(f.name, name))
+    if (found) { parent = found.id; continue }
+    const body = { type: 'directory', name, parentId: parent }
+    if (company?.companyId) body.company_id = company.companyId
+    if (company?.companyAge !== undefined) body.company_age = company.companyAge
+    const resp = await backend(token, `/workflow/${enc(loc)}/directory`, { method: 'POST', body })
+    const id = resp?.id || resp?._id
+    if (!id) throw new Error(`GHL did not return an id for new folder "${name}"`)
+    created.push(name)
+    parent = id
+  }
+  return { folderId: parent, created }
+}
+
+async function setStatus(token, loc, id, status) {
+  const wf = await getWorkflow(token, loc, id)
+  if (wf.status === status) return
+  wf.status = status
+  wf.createdSteps = []
+  wf.modifiedSteps = []
+  wf.deletedSteps = []
+  wf.triggersChanged = false
+  await backend(token, `/workflow/${enc(loc)}/${enc(id)}`, { method: 'PUT', body: wf })
+}
+
+async function moveToFolder(token, loc, workflowId, folderId) {
+  await backend(token, `/workflow/${enc(loc)}/move-directory/${enc(workflowId)}`, {
+    method: 'PUT', body: { parentId: folderId || null },
+  })
+}
+
 const COPIED_SETTINGS = ['timezone', 'allowMultiple', 'allowMultipleOpportunity', 'stopOnResponse',
   'removeContactFromLastStep', 'autoMarkAsRead']
 
@@ -130,7 +220,7 @@ function triggerIdOf(resp) {
 // creates the record, then PUT /only-triggers/{id} saves the trigger list with
 // newTriggers = old + created, oldTriggers = old. Sending made-up ids to
 // only-triggers alone (the Chrome extension's way) is accepted and ignored.
-async function writeWorkflow(token, loc, id, source, { name } = {}) {
+async function writeWorkflow(token, loc, id, source, { name, publish } = {}) {
   const oldTriggers = (await getTriggers(token, loc, id)).filter(t => !t.deleted)
   const srcTriggers = (source.triggers || []).filter(t => !t.deleted)
 
@@ -210,6 +300,8 @@ async function writeWorkflow(token, loc, id, source, { name } = {}) {
   target.modifiedSteps = []
   target.deletedSteps = []
   target.triggersChanged = false
+  // Publishing is the same save with status 'published' (the builder's toggle).
+  if (publish) target.status = 'published'
   await backend(token, `/workflow/${enc(loc)}/${enc(id)}`, { method: 'PUT', body: target })
 
   // Read back: every trigger we meant to add must now be there.
@@ -295,4 +387,5 @@ function forgetCatalog(locId) {
 module.exports = {
   GhlSessionError, exportWorkflow, getWorkflow, getTriggers, checkSession,
   createDraft, writeWorkflow, loadCatalog, forgetCatalog, triggerSignature,
+  listFolder, folderPath, ensureFolderPath, moveToFolder, setStatus,
 }
