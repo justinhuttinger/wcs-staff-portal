@@ -1,0 +1,21 @@
+{
+  "_note": "Per-club values for the workflow email series placeholders. defaults apply to every club; clubs.<slug> overrides. {club} becomes the club slug. Empty = not known yet (push skips that club).",
+  "defaults": {
+    "tour_booking_link": "https://api.westcoaststrength.com/widget/bookings/{club}-gym-tour",
+    "one_month_free_link": "",
+    "half_off_link": "",
+    "day_one_link": "",
+    "vip_link": "",
+    "club_address": "",
+    "vip_reward": "your next month of dues is on us"
+  },
+  "clubs": {
+    "salem": { "club_name": "WCS Salem" },
+    "keizer": { "club_name": "WCS Keizer" },
+    "eugene": { "club_name": "WCS Eugene" },
+    "springfield": { "club_name": "WCS Springfield" },
+    "clackamas": { "club_name": "WCS Clackamas" },
+    "milwaukie": { "club_name": "WCS Milwaukie", "vip_reward": "a $50 credit" },
+    "medford": { "club_name": "WCS Medford" }
+  }
+}
