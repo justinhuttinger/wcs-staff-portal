@@ -67,7 +67,7 @@ export function blankData(kind) {
   switch (kind) {
     case 'trigger': return { ...base, title: 'New trigger' }
     case 'sms': return { ...base, title: 'Text message' }
-    case 'email': return { ...base, title: 'Email', subject: '', previewText: '' }
+    case 'email': return { ...base, title: 'Email', subject: '', previewText: '', bodyFormat: 'text' }
     case 'wait': return { ...base, title: 'Wait', waitMode: 'duration', waitAmount: 1, waitUnit: 'days', waitUntil: '' }
     case 'condition': return { ...base, title: 'Condition?', branches: defaultBranches() }
     case 'call': return { ...base, title: 'Call' }
@@ -87,7 +87,7 @@ export function waitSummary(d) {
 // One-line preview shown on the card.
 export function stepSummary(type, d) {
   if (type === 'wait') return waitSummary(d)
-  if (type === 'email') return d.subject ? 'Subject: ' + d.subject : d.body
+  if (type === 'email') return d.subject ? 'Subject: ' + d.subject : (d.bodyFormat === 'html' ? 'HTML email' : d.body)
   if (type === 'action') return [d.actionType, d.body].filter(Boolean).join(': ')
   if (type === 'condition') return d.body
   return d.body
