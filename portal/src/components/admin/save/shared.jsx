@@ -109,7 +109,11 @@ export function describeConfig(type, config = {}) {
     const fee = Number(config.fee) || 0
     return `Freeze for ${n} month${n === 1 ? '' : 's'}${fee > 0 ? `, ${money(fee)}/month` : ', no fee'}`
   }
-  if (type === 'perk') return 'Staff hands this out'
+  if (type === 'perk') {
+    return config.abc_sale_item
+      ? `Adds ${config.abc_sale_quantity || 1} x ${config.abc_sale_item} in ABC (staff if no card)`
+      : 'Staff hands this out'
+  }
   return ''
 }
 
