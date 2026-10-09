@@ -48,6 +48,7 @@ const {
   parseDays,
   computeStats,
 } = require('../services/saveOffersSchema')
+const { completeTicketForRequest } = require('../services/saveTicketSync')
 
 const router = Router()
 router.use(authenticate)
@@ -370,6 +371,9 @@ router.put('/requests/:id/resolve', async (req, res) => {
       .maybeSingle()
     if (error) throw error
     if (!data) return res.status(404).json({ error: 'Request not found' })
+    // Its "Cancel Action" ticket is done too.
+    completeTicketForRequest(supabaseAdmin, { request: data, staffId: staffId(req) })
+      .catch(err => console.error('[save] ticket sync failed:', err.message))
     res.json({ request: data })
   } catch (err) {
     serverError(res, 'resolve request', err)
