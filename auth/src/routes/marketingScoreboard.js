@@ -15,6 +15,8 @@ const { ga4 } = require('./googleAnalytics')
 // counting rules live in migration 221; this adds Meta spend / impressions /
 // link clicks (split by club from the campaign name) and GA4 organic sessions.
 // Meta leads = Meta's Instant Form count + GHL's paid website leads (231).
+// Each Meta day then takes Meta's own lead / purchase count when that's
+// higher (view-through and in-club joins Meta matched to an ad).
 //
 // Admin only for now (Justin's view). The roles grid entry is admin-only too.
 // ---------------------------------------------------------------------------
@@ -69,11 +71,20 @@ async function metaFetchAll(endpoint, params) {
 // Facebook integration delivered (none at all Oct 3-5 2026) and never counts a
 // repeat lead, so its count can fall far short.
 const INSTANT_FORM_ACTION = 'onsite_conversion.lead_grouped'
+// Meta's own totals in the account's default attribution window (7-day click
+// + 1-day view): every lead (Instant Form + pixel), and every purchase (the
+// in-club joins ghl-sync sends as offline Purchases + Online Join pixel).
+const REPORTED_LEAD_ACTION = 'lead'
+const REPORTED_JOIN_ACTION = 'omni_purchase'
+const actionCount = (actions, type) => {
+  const a = (actions || []).find(x => x.action_type === type)
+  return a ? parseInt(a.value || 0, 10) : 0
+}
 
-// day -> { spend, impressions, clicks, instantLeads } for one club (campaign
-// name) or all.
+// day -> { spend, impressions, clicks, instantLeads, reportedLeads,
+// reportedJoins } for one club (campaign name) or all.
 async function metaDaily(start, end, clubSlug) {
-  const rows = await wrapSWR(`scoreboard:meta2:${start}:${end}`, FRESH_MS, STALE_MS, () =>
+  const rows = await wrapSWR(`scoreboard:meta3:${start}:${end}`, FRESH_MS, STALE_MS, () =>
     metaFetchAll('/insights', {
       level: 'campaign',
       fields: 'campaign_name,spend,impressions,inline_link_clicks,actions',
@@ -85,12 +96,13 @@ async function metaDaily(start, end, clubSlug) {
   for (const r of rows) {
     if (clubSlug !== 'all' && clubForCampaign(r.campaign_name, CLUBS) !== clubSlug) continue
     const day = r.date_start
-    const cur = byDay.get(day) || { spend: 0, impressions: 0, clicks: 0, instantLeads: 0 }
+    const cur = byDay.get(day) || { spend: 0, impressions: 0, clicks: 0, instantLeads: 0, reportedLeads: 0, reportedJoins: 0 }
     cur.spend += parseFloat(r.spend || 0)
     cur.impressions += parseInt(r.impressions || 0, 10)
     cur.clicks += parseInt(r.inline_link_clicks || 0, 10)
-    const lead = (r.actions || []).find(a => a.action_type === INSTANT_FORM_ACTION)
-    cur.instantLeads += lead ? parseInt(lead.value || 0, 10) : 0
+    cur.instantLeads += actionCount(r.actions, INSTANT_FORM_ACTION)
+    cur.reportedLeads += actionCount(r.actions, REPORTED_LEAD_ACTION)
+    cur.reportedJoins += actionCount(r.actions, REPORTED_JOIN_ACTION)
     byDay.set(day, cur)
   }
   return byDay
@@ -175,7 +187,7 @@ router.get('/', async (req, res) => {
     // Instant Form leads come from Meta when we have Meta's numbers and the
     // RPC splits them out (migration 231); otherwise GHL's count stands.
     const instantFromMeta = metaOk && (dailyRes.data || []).some(r => r.instant_leads !== undefined)
-    const board = buildScoreboard({ month, today, daily: dailyRes.data, metaByDay, sessionsByDay, goals, instantFromMeta })
+    const board = buildScoreboard({ month, today, daily: dailyRes.data, metaByDay, sessionsByDay, goals, instantFromMeta, useMetaReported: metaOk })
     if (OWN_WEBSITE.has(sel.slug)) {
       warnings.push('East Side Athletic Club has its own website, which is not in Google Analytics here.')
     }

@@ -151,7 +151,7 @@ function MetaTable({ data, month, club, onSaved }) {
     <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
       <div className="px-4 py-3 border-b border-border">
         <h3 className="text-sm font-bold text-text-primary">Meta</h3>
-        <p className="text-xs text-text-muted">Paid Facebook &amp; Instagram: Instant Form leads, and website / Online Join visits from a paid click.</p>
+        <p className="text-xs text-text-muted">Paid Facebook &amp; Instagram: Instant Form leads, and website / Online Join visits from a paid click. Each day's leads and joins use Meta's own count when it's higher (7-day click + 1-day view, in-club joins included).</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

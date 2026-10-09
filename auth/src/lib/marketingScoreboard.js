@@ -51,13 +51,18 @@ function goalBlock(pace, goal) {
  * @param {string} opts.month        'YYYY-MM'
  * @param {string} opts.today        'YYYY-MM-DD' (Pacific)
  * @param {Array}  opts.daily        [{ day, channel, leads, carts, joins }] from marketing_scoreboard_daily
- * @param {Map}    [opts.metaByDay]  day -> { spend, impressions, clicks, instantLeads }
+ * @param {Map}    [opts.metaByDay]  day -> { spend, impressions, clicks, instantLeads,
+ *   reportedLeads, reportedJoins }
  * @param {Map}    [opts.sessionsByDay] day -> organic website sessions (null when unavailable)
  * @param {object} [opts.goals]      { meta: {leads,carts,joins,target_cpl}, organic: {...} }
  * @param {boolean} [opts.instantFromMeta] take Instant Form leads from Meta
  *   (metaByDay.instantLeads) in place of the ones GHL received (instant_leads)
+ * @param {boolean} [opts.useMetaReported] a Meta day's leads / joins are the
+ *   higher of our traced count and Meta's own (reportedLeads / reportedJoins,
+ *   its default attribution window, view-through included). The higher, not
+ *   the sum: the two overlap (an Online Join from an ad click is in both).
  */
-function buildScoreboard({ month, today, daily, metaByDay = new Map(), sessionsByDay = null, goals = {}, instantFromMeta = false }) {
+function buildScoreboard({ month, today, daily, metaByDay = new Map(), sessionsByDay = null, goals = {}, instantFromMeta = false, useMetaReported = false }) {
   const monthLength = daysInMonth(month)
   const lastDay = `${month}-${String(monthLength).padStart(2, '0')}`
   const through = today < lastDay ? today : lastDay
@@ -78,6 +83,17 @@ function buildScoreboard({ month, today, daily, metaByDay = new Map(), sessionsB
       carts: Number(r.carts) || 0,
       joins: Number(r.joins) || 0,
     })
+  }
+  if (useMetaReported) {
+    for (const [day, m] of metaByDay) {
+      if (day < `${month}-01` || day > through) continue
+      const c = counts.meta.get(day) || { leads: 0, carts: 0, joins: 0 }
+      counts.meta.set(day, {
+        ...c,
+        leads: Math.max(c.leads, Number(m.reportedLeads) || 0),
+        joins: Math.max(c.joins, Number(m.reportedJoins) || 0),
+      })
+    }
   }
   const zero = { leads: 0, carts: 0, joins: 0 }
 

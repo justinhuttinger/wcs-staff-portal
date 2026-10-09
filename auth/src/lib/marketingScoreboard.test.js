@@ -100,3 +100,17 @@ test('Instant Form leads come from Meta when instantFromMeta, GHL otherwise', ()
   const fromGhl = buildScoreboard({ month: '2026-10', today: '2026-10-03', daily: rows, metaByDay: byDay })
   assert.deepEqual(fromGhl.meta.rows.map(r => r.leads), [0, 14, 1])
 })
+
+test("Meta days take Meta's own lead / join count when higher", () => {
+  const reported = new Map([
+    ['2026-09-01', { spend: 250, impressions: 10000, clicks: 80, reportedLeads: 12, reportedJoins: 0 }],
+    ['2026-09-02', { spend: 100, impressions: 4000, clicks: 30, reportedLeads: 0, reportedJoins: 3 }],
+    ['2026-09-03', { spend: 150, impressions: 6000, clicks: 40, reportedLeads: 4, reportedJoins: 2 }],
+    ['2026-09-04', { spend: 0, impressions: 0, clicks: 0, reportedLeads: 9, reportedJoins: 9 }], // after today
+  ])
+  const s = buildScoreboard({ month: '2026-09', today: '2026-09-03', daily, metaByDay: reported, useMetaReported: true })
+  assert.deepEqual(s.meta.rows.map(r => [r.leads, r.carts, r.joins]), [[12, 2, 1], [0, 1, 3], [5, 0, 2]])
+  assert.equal(s.meta.totals.joins, 6)
+  const off = buildScoreboard({ month: '2026-09', today: '2026-09-03', daily, metaByDay: reported })
+  assert.equal(off.meta.totals.joins, 3)
+})
