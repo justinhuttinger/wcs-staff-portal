@@ -15,6 +15,7 @@ const {
 const { notifiableMentionIds } = require('../services/ticketMentions')
 const { SHARE_TOKEN_BYTES, apiOrigin, buildShareUrl } = require('../lib/ticketShareLink')
 const ticketNotify = require('../services/ticketNotify')
+const { resolveRequestForTicket } = require('../services/saveTicketSync')
 
 const router = Router()
 router.use(authenticate)
@@ -588,6 +589,12 @@ router.patch('/:id', requireHandler, async (req, res) => {
     if (error) throw error
     for (const body of logs) {
       await supabaseAdmin.from('ticket_comments').insert({ ticket_id: ticket.id, author_id: req.staff.id, body, system: true })
+    }
+
+    // A cancel-tool ticket finished here resolves its save request too.
+    if (patch.status) {
+      resolveRequestForTicket(supabaseAdmin, { ticketId: ticket.id, typeSlug: req._type?.slug, status: patch.status, staffId: req.staff.id })
+        .catch(err => console.error('[Ticketing] save request sync failed:', err.message))
     }
 
     // Assignment bridge: the new assignee starts watching, and — unless they
