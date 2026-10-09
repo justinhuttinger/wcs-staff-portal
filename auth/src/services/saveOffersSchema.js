@@ -259,7 +259,14 @@ function normalizeOfferConfig(offerType, config) {
   if (offerType === 'perk') {
     const instructions = String(c.staff_instructions ?? '').trim()
     if (!instructions) return { ok: false, error: 'Staff instructions are required for a perk' }
-    return { ok: true, config: { staff_instructions: instructions } }
+    // Optional ABC online item the cancel tool sells on the member's card on
+    // file (wcs-save). Staff instructions stay as the fallback.
+    const item = String(c.abc_sale_item ?? '').trim()
+    if (!item) return { ok: true, config: { staff_instructions: instructions } }
+    if (item.length > 60) return { ok: false, error: 'ABC item name must be 60 characters or fewer' }
+    const qty = c.abc_sale_quantity === '' || c.abc_sale_quantity == null ? 1 : toNumber(c.abc_sale_quantity)
+    if (!isIntIn(qty, 1, 99)) return { ok: false, error: 'ABC item quantity must be a whole number from 1 to 99' }
+    return { ok: true, config: { staff_instructions: instructions, abc_sale_item: item, abc_sale_quantity: qty } }
   }
 
   return { ok: false, error: `Offer type must be one of ${OFFER_TYPES.join(', ')}` }

@@ -122,6 +122,16 @@ test('freeze months 1-12 and fee >= 0, unknown keys stripped', () => {
   assert.strictEqual(normalizeOfferConfig('freeze', { months: 1 }).ok, false)
 })
 
+test('perk can name an ABC sale item and quantity', () => {
+  assert.deepStrictEqual(normalizeOfferConfig('perk', { staff_instructions: 'Book 3 PT', abc_sale_item: ' PTCANCELOFFER1 ', abc_sale_quantity: '3' }),
+    { ok: true, config: { staff_instructions: 'Book 3 PT', abc_sale_item: 'PTCANCELOFFER1', abc_sale_quantity: 3 } })
+  assert.deepStrictEqual(normalizeOfferConfig('perk', { staff_instructions: 'Book 1 PT', abc_sale_item: 'PTCANCELOFFER1' }).config.abc_sale_quantity, 1)
+  assert.deepStrictEqual(normalizeOfferConfig('perk', { staff_instructions: 'x', abc_sale_item: '  ', abc_sale_quantity: 3 }),
+    { ok: true, config: { staff_instructions: 'x' } })
+  assert.strictEqual(normalizeOfferConfig('perk', { staff_instructions: 'x', abc_sale_item: 'PT', abc_sale_quantity: 0 }).ok, false)
+  assert.strictEqual(normalizeOfferConfig('perk', { staff_instructions: 'x', abc_sale_item: 'PT', abc_sale_quantity: 2.5 }).ok, false)
+})
+
 test('perk needs staff_instructions', () => {
   assert.deepStrictEqual(normalizeOfferConfig('perk', { staff_instructions: ' Free PT session ', percent_off: 5 }),
     { ok: true, config: { staff_instructions: 'Free PT session' } })

@@ -20,6 +20,8 @@ function initialState(offer) {
     months: c.months != null ? String(c.months) : '1',
     fee: c.fee != null ? String(c.fee) : '0',
     staff_instructions: c.staff_instructions || '',
+    abc_sale_item: c.abc_sale_item || '',
+    abc_sale_quantity: c.abc_sale_quantity != null ? String(c.abc_sale_quantity) : '1',
     all_reasons: !(o.reason_ids && o.reason_ids.length),
     reason_ids: o.reason_ids || [],
     all_clubs: !(o.club_numbers && o.club_numbers.length),
@@ -38,7 +40,10 @@ function buildConfig(s) {
       : { amount_off: Number(s.amount_off), invoices: Number(s.invoices) }
   }
   if (s.offer_type === 'freeze') return { months: Number(s.months), fee: Number(s.fee || 0) }
-  return { staff_instructions: s.staff_instructions.trim() }
+  const item = s.abc_sale_item.trim()
+  return item
+    ? { staff_instructions: s.staff_instructions.trim(), abc_sale_item: item, abc_sale_quantity: Number(s.abc_sale_quantity || 1) }
+    : { staff_instructions: s.staff_instructions.trim() }
 }
 
 // Mirrors services/saveOffersSchema.js so obvious mistakes show before a round trip.
@@ -57,6 +62,7 @@ function clientProblems(s) {
     if (s.fee !== '' && !(Number(s.fee) >= 0)) p.config = 'Monthly fee must be 0 or more'
   }
   if (s.offer_type === 'perk' && !s.staff_instructions.trim()) p.config = 'Tell staff what to hand out'
+  if (s.offer_type === 'perk' && s.abc_sale_item.trim() && !isInt(s.abc_sale_quantity || '1', 1, 99)) p.config = 'ABC item quantity must be from 1 to 99'
   if (!s.all_reasons && !s.reason_ids.length) p.reason_ids = 'Pick at least one reason, or choose all reasons'
   if (!s.all_clubs && !s.club_numbers.length) p.club_numbers = 'Pick at least one club, or choose all clubs'
   if (s.priority !== '' && !isInt(s.priority, 0, 100000)) p.priority = 'Priority must be a whole number'
@@ -142,7 +148,7 @@ export default function OfferForm({ offer, reasons, onCancel, onSaved }) {
 
   function set(key, value) {
     setS(prev => ({ ...prev, [key]: value }))
-    const errKey = ['percent_off', 'amount_off', 'invoices', 'months', 'fee', 'staff_instructions', 'discount_mode', 'offer_type'].includes(key) ? 'config' : key
+    const errKey = ['percent_off', 'amount_off', 'invoices', 'months', 'fee', 'staff_instructions', 'abc_sale_item', 'abc_sale_quantity', 'discount_mode', 'offer_type'].includes(key) ? 'config' : key
     if (errors[errKey]) setErrors(prev => ({ ...prev, [errKey]: undefined }))
   }
 
@@ -269,6 +275,18 @@ export default function OfferForm({ offer, reasons, onCancel, onSaved }) {
                 placeholder="e.g. Give one free 30 minute PT session and book it with the member"
                 className={inputClass(errors.config)} />
             </Field>
+          )}
+          {s.offer_type === 'perk' && (
+            <div className="grid grid-cols-[1fr_6rem] gap-3">
+              <Field label="ABC item to add (optional)" help="Online item name in ABC, e.g. PTCANCELOFFER1. Added on the member's card on file; no card or no item at that club falls back to staff.">
+                <input value={s.abc_sale_item} onChange={e => set('abc_sale_item', e.target.value)}
+                  placeholder="PTCANCELOFFER1" className={inputClass(errors.config)} />
+              </Field>
+              <Field label="Quantity">
+                <input type="number" min="1" max="99" step="1" value={s.abc_sale_quantity} disabled={!s.abc_sale_item.trim()}
+                  onChange={e => set('abc_sale_quantity', e.target.value)} className={inputClass(errors.config)} />
+              </Field>
+            </div>
           )}
           {errors.config && <p className="text-xs text-wcs-red">{errors.config}</p>}
         </div>
