@@ -137,3 +137,9 @@ test('an unknown club is refused rather than silently widened to all', async () 
   const { status } = await call(handler, { clubs: 'atlantis' })
   assert.equal(status, 400)
 })
+
+test('PT Roster selects inactive_date, which stillRunning() dates services out on', () => {
+  const src = require('node:fs').readFileSync(path.join(base, 'routes/analyticsPtRoster.js'), 'utf8')
+  const fields = src.match(/const FIELDS =([\s\S]*?)\r?\n\r?\n/)[1]
+  assert.match(fields, /\binactive_date\b/)
+})
