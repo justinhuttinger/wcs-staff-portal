@@ -74,10 +74,11 @@ function MapPanel({ data, mode, ring, selectedClubs }) {
   useEffect(() => {
     if (!el.current || map.current) return
     map.current = L.map(el.current, { preferCanvas: true, zoomControl: true, scrollWheelZoom: true })
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    // Esri's public street basemap: no API key. CARTO now answers every tile
+    // with an "API KEY REQUIRED" image, and OSM's own servers block apps.
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19,
-      subdomains: 'abcd',
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, USGS, NGA, EPA, USDA, NPS',
     }).addTo(map.current)
     layers.current = L.layerGroup().addTo(map.current)
     return () => { map.current?.remove(); map.current = null }
