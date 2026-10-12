@@ -111,4 +111,48 @@ function buildMemberMap({ members, geocodes, clubs, selected }) {
   }
 }
 
-module.exports = { buildMemberMap, milesBetween, RINGS }
+// ---------------------------------------------------------------------------
+// Who is on the map. Each population uses the same rule as the report that
+// owns that number, so the map never disagrees with it:
+//   active    Membership Mix: counted (abc_members_counted), not a lost status, not skip-listed
+//   new       New Members records: since_date in range, not skip-listed
+//   cancelled Attrition Analysis' cancels: lost status dated in range, not skip-listed
+//   pending   Scheduled to Cancel: active + Pending Cancel, not skip-listed
+//   pt        PT Roster today: a recurring service still running or PIF in the last 12 months
+// ---------------------------------------------------------------------------
+
+const LOST_STATUSES = ['Cancelled', 'Expired', 'Return For Collection']
+const POPULATIONS = ['active', 'new', 'cancelled', 'pending', 'pt']
+// How far back New Members / Cancelled can reach: what the geocoder covers (migration 237).
+const HORIZON_DAYS = 730
+
+const day = v => (v ? String(v).slice(0, 10) : null)
+const inRange = (d, start, end) => !!d && d >= start && d <= end
+
+/**
+ * @param rows      abc_members rows (id, member_id, club_number, is_active,
+ *                  member_status, member_status_date, since_date, membership_type, ...)
+ * @param opts.countedIds Set of abc_members.id that count as members
+ * @param opts.skip       Set of lower-cased skip-listed membership types
+ * @param opts.ptKeys     Set of `${club_number}|${member_id}` on the PT roster
+ */
+function selectPopulation(rows, { population, start, end, countedIds, skip, ptKeys }) {
+  const skipped = r => skip.has(String(r.membership_type || '').toLowerCase())
+  switch (population) {
+    case 'new':
+      return rows.filter(r => !skipped(r) && inRange(day(r.since_date), start, end))
+    case 'cancelled':
+      return rows.filter(r => !skipped(r) && LOST_STATUSES.includes(r.member_status)
+        && inRange(day(r.member_status_date), start, end))
+    case 'pending':
+      return rows.filter(r => !skipped(r) && r.is_active && r.member_status === 'Pending Cancel')
+    case 'pt':
+      return rows.filter(r => r.is_active && ptKeys.has(`${r.club_number}|${r.member_id}`))
+    case 'active':
+    default:
+      return rows.filter(r => !skipped(r) && r.is_active && countedIds.has(r.id)
+        && !LOST_STATUSES.includes(r.member_status))
+  }
+}
+
+module.exports = { buildMemberMap, selectPopulation, milesBetween, RINGS, POPULATIONS, HORIZON_DAYS, LOST_STATUSES }

@@ -23,6 +23,16 @@ import { zebra, HOVER_TINT } from './tableTints'
 
 const MISMATCH_COLOR = PALETTE[7]
 const MATCH_COLOR = '#8a8f98'
+// Who is plotted. New Members and Cancelled read the shell's date range; the
+// rest are as of today. Definitions live server-side in lib/memberMap.
+const POPULATIONS = [
+  { key: 'active', label: 'Active Members', ranged: false },
+  { key: 'new', label: 'New Members', ranged: true },
+  { key: 'cancelled', label: 'Cancelled', ranged: true },
+  { key: 'pending', label: 'Pending Cancel', ranged: false },
+  { key: 'pt', label: 'PT Clients', ranged: false },
+]
+
 const MODES = [
   { key: 'club', label: 'Home Club' },
   { key: 'nearer', label: 'Closer to Another Club' },
@@ -142,11 +152,33 @@ function MapPanel({ data, mode, ring, selectedClubs }) {
   return <div ref={el} className="w-full h-[640px] rounded-b-xl" style={{ zIndex: 0 }} />
 }
 
-export default function MemberMap({ locationSlug }) {
+function PopulationBar({ population, setPopulation }) {
+  return (
+    <div className="bg-surface rounded-xl border border-border px-3 py-2 flex flex-wrap items-center gap-1.5">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-text-muted mr-1">Show</span>
+      {POPULATIONS.map(p => (
+        <Chip key={p.key} active={population === p.key} onClick={() => setPopulation(p.key)}>{p.label}</Chip>
+      ))}
+    </div>
+  )
+}
+
+const fmtDay = iso => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+export default function MemberMap({ locationSlug, startDate, endDate }) {
   const clubs = locationSlug || 'all'
+  const [population, setPopulation] = useState('active')
+  const ranged = POPULATIONS.find(p => p.key === population)?.ranged
+  const query = useMemo(() => {
+    const q = new URLSearchParams({ clubs, population })
+    // Only the ranged populations send dates, so flipping the range does not
+    // refetch a map it cannot change.
+    if (ranged && startDate && endDate) { q.set('start', startDate); q.set('end', endDate) }
+    return q.toString()
+  }, [clubs, population, ranged, startDate, endDate])
   const { data, loading, error } = useCancellableFetch(
-    (signal) => api(`/analytics/member-map?clubs=${encodeURIComponent(clubs)}`, { signal }),
-    [clubs]
+    (signal) => api(`/analytics/member-map?${query}`, { signal }),
+    [query]
   )
   const [mode, setMode] = useState('club')
   const [ring, setRing] = useState(0)
@@ -156,12 +188,18 @@ export default function MemberMap({ locationSlug }) {
     [data]
   )
 
-  if (loading) return <DesktopLoading />
+  const popLabel = POPULATIONS.find(p => p.key === population)?.label || 'Members'
+  const bar = <PopulationBar population={population} setPopulation={setPopulation} />
+
+  if (loading) return <div className="space-y-3">{bar}<DesktopLoading /></div>
   if (error) {
     return (
+      <div className="space-y-3">
+      {bar}
       <div className="bg-surface rounded-xl border border-border p-8 text-center">
         <p className="text-sm text-wcs-red font-semibold">Could not load the report</p>
         <p className="text-xs text-text-muted mt-1">{String(error.message || error)}</p>
+      </div>
       </div>
     )
   }
@@ -174,18 +212,27 @@ export default function MemberMap({ locationSlug }) {
   const sortedMiles = data.points.map(p => p[6]).filter(n => n !== null).sort((a, b) => a - b)
   const median = sortedMiles.length ? sortedMiles[Math.floor((sortedMiles.length - 1) / 2)] : null
 
+  const rangeNote = data.range
+    ? `${popLabel} ${fmtDay(data.range.start)} to ${fmtDay(data.range.end)}.`
+    : `${popLabel} as of today.`
+  const beforeHorizon = data.range && data.horizon && data.range.start < data.horizon
+
   if (data.stats.length === 0) {
     return (
-      <div className="bg-surface rounded-xl border border-border p-8 text-center">
-        <p className="text-sm text-text-muted">No active members for the selected clubs.</p>
+      <div className="space-y-3">
+        {bar}
+        <div className="bg-surface rounded-xl border border-border p-8 text-center">
+          <p className="text-sm text-text-muted">No {popLabel.toLowerCase()} for the selected clubs{data.range ? ' in this range' : ''}.</p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-3">
+      {bar}
       <div className="grid grid-cols-2 xl:grid-cols-5 gap-2">
-        <Tile label="Active Members" value={fmtInt(totals.members)} />
+        <Tile label={popLabel} value={fmtInt(totals.members)} />
         <Tile label="On the Map" value={fmtInt(totals.mapped)} />
         <Tile label="Not Mapped" value={fmtInt(totals.unmapped)} />
         <Tile label="Median Distance" value={fmtMi(median)} />
@@ -258,7 +305,10 @@ export default function MemberMap({ locationSlug }) {
       </div>
 
       <div className="space-y-1 px-1">
-        <p className="text-[11px] text-text-muted">Active members by the same rule as Membership Mix. Distances are straight-line miles from home to club.</p>
+        <p className="text-[11px] text-text-muted">{rangeNote} Active uses Membership Mix's rule, New Members and Cancelled the New Members and Attrition Analysis rules, PT Clients the PT Roster as of today. Distances are straight-line miles from home to club.</p>
+        {beforeHorizon && (
+          <p className="text-[11px] text-wcs-red">Addresses are only geocoded back to {fmtDay(data.horizon)}, so anyone before that shows as Not Mapped.</p>
+        )}
         <p className="text-[11px] text-text-muted">Not Mapped = no address in ABC, or the address did not match in the US Census geocoder.</p>
       </div>
     </div>
