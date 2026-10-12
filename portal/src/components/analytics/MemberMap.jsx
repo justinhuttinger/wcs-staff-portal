@@ -76,8 +76,8 @@ function clubPin(name, color) {
   })
 }
 
-function MapPanel({ data, mode, ring, selectedClubs }) {
-  const el = useRef(null)
+function MapPanel({ data, mode, ring, selectedClubs, elRef }) {
+  const el = elRef
   const map = useRef(null)
   const layers = useRef(null)
 
@@ -88,6 +88,8 @@ function MapPanel({ data, mode, ring, selectedClubs }) {
     // with an "API KEY REQUIRED" image, and OSM's own servers block apps.
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19,
+      // Lets Export draw the street map onto a canvas (Esri sends CORS headers).
+      crossOrigin: 'anonymous',
       attribution: 'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, USGS, NGA, EPA, USDA, NPS',
     }).addTo(map.current)
     layers.current = L.layerGroup().addTo(map.current)
@@ -183,6 +185,9 @@ export default function MemberMap({ locationSlug, startDate, endDate }) {
   )
   const [mode, setMode] = useState('club')
   const [ring, setRing] = useState(0)
+  const mapEl = useRef(null)
+  const [exporting, setExporting] = useState(null)
+  const [exportError, setExportError] = useState(null)
 
   const selectedClubs = useMemo(
     () => new Set((data?.stats || []).map(s => s.club_number)),
@@ -212,6 +217,51 @@ export default function MemberMap({ locationSlug, startDate, endDate }) {
   }), { members: 0, mapped: 0, unmapped: 0, nearer: 0 })
   const sortedMiles = data.points.map(p => p[6]).filter(n => n !== null).sort((a, b) => a - b)
   const median = sortedMiles.length ? sortedMiles[Math.floor((sortedMiles.length - 1) / 2)] : null
+
+  const clubLabel = data.stats.length === data.clubs.length ? 'All Clubs' : data.stats.map(s => s.name).join(', ')
+  const legendItems = mode === 'club'
+    ? data.clubs.map((c, i) => ({ c, i })).filter(({ c }) => selectedClubs.has(c.club_number))
+        .map(({ c, i }) => ({ label: c.name, color: PALETTE[i % PALETTE.length] }))
+    : [{ label: 'Another club is closer to home', color: MISMATCH_COLOR }, { label: 'Home club is the closest', color: MATCH_COLOR }]
+
+  async function runExport(kind) {
+    if (!mapEl.current || exporting) return
+    setExporting(kind)
+    setExportError(null)
+    const stamp = new Date().toISOString().slice(0, 10)
+    const base = `Member Map - ${popLabel} - ${clubLabel}`.replace(/[\/:*?"<>|]/g, '')
+    try {
+      // Loaded on demand: only somebody exporting downloads these libraries.
+      const { exportMapPng, exportMapPdf } = await import('./memberMapExport')
+      if (kind === 'png') {
+        await exportMapPng(mapEl.current, `${base} - ${stamp}.png`)
+      } else {
+        await exportMapPdf(mapEl.current, {
+          title: `Member Map · ${popLabel}`,
+          subtitle: `${clubLabel} · ${data.range ? `${fmtDay(data.range.start)} to ${fmtDay(data.range.end)}` : 'As of today'} · Colored by ${MODES.find(m => m.key === mode)?.label}${ring ? ` · ${ring} mi rings` : ''} · Exported ${fmtDay(stamp)}`,
+          legend: legendItems,
+          tiles: [
+            { label: popLabel, value: fmtInt(totals.members) },
+            { label: 'On the Map', value: fmtInt(totals.mapped) },
+            { label: 'Not Mapped', value: fmtInt(totals.unmapped) },
+            { label: 'Median Distance', value: fmtMi(median) },
+            { label: 'Closer to Another Club', value: fmtInt(totals.nearer) },
+          ],
+          columns: ['Club', 'Members', 'Mapped', 'Median', '90th pct', ...data.rings.map(r => `Within ${r} mi`), 'Closer to Another'],
+          rows: data.stats.map(s => [
+            s.name, fmtInt(s.members), fmtInt(s.mapped), fmtMi(s.median_mi), fmtMi(s.p90_mi),
+            ...data.rings.map(r => fmtPctOrDash(s.within_pct[r])), fmtInt(s.nearer_other),
+          ]),
+          notes: ['Distances are straight-line miles from home to club. Not Mapped = no address in ABC, or the address did not match in the US Census geocoder.'],
+          filename: `${base} - ${stamp}.pdf`,
+        })
+      }
+    } catch (e) {
+      setExportError(String(e?.message || e))
+    } finally {
+      setExporting(null)
+    }
+  }
 
   const rangeNote = data.range
     ? `${popLabel} ${fmtDay(data.range.start)} to ${fmtDay(data.range.end)}.`
@@ -251,7 +301,15 @@ export default function MemberMap({ locationSlug, startDate, endDate }) {
             <Chip active={ring === 0} onClick={() => setRing(0)}>Off</Chip>
             {data.rings.map(r => <Chip key={r} active={ring === r} onClick={() => setRing(r)}>{r} mi</Chip>)}
           </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-text-muted mr-1">Export</span>
+            <Chip active={exporting === 'pdf'} onClick={() => runExport('pdf')}>{exporting === 'pdf' ? 'Building…' : 'PDF'}</Chip>
+            <Chip active={exporting === 'png'} onClick={() => runExport('png')}>{exporting === 'png' ? 'Building…' : 'Map Image'}</Chip>
+          </div>
         </div>
+        {exportError && (
+          <p className="px-3 py-1.5 border-b border-border text-[11px] text-wcs-red">Export failed: {exportError}</p>
+        )}
         <div className="px-3 py-1.5 border-b border-border flex flex-wrap gap-x-3 gap-y-1">
           {mode === 'club'
             ? data.clubs.map((c, i) => selectedClubs.has(c.club_number) && (
@@ -270,7 +328,7 @@ export default function MemberMap({ locationSlug, startDate, endDate }) {
               </>
             )}
         </div>
-        <MapPanel data={data} mode={mode} ring={ring} selectedClubs={selectedClubs} />
+        <MapPanel data={data} mode={mode} ring={ring} selectedClubs={selectedClubs} elRef={mapEl} />
       </div>
 
       <div className="bg-surface rounded-xl border border-border overflow-x-auto">
