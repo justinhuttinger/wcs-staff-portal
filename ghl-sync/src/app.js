@@ -18,6 +18,7 @@ const { syncRecurringPtServices } = require('./abc/recurringPtServices');
 const { emailStatsSync, emailStatsSyncForSlug } = require('./sync/emailStatsSync');
 const { smsStatsSync, smsStatsSyncForSlug } = require('./sync/smsStatsSync');
 const { runLapsedTaggingAll } = require('./abc/lapsedTaggingJob');
+const { runMemberGeocode } = require('./geo/memberGeocode');
 const { runNpsAll } = require('./nps/npsJob');
 
 const app = express();
@@ -520,6 +521,21 @@ app.post('/api/lapsed-tagging/run', requireSecret, async (req, res) => {
     res.json({ dryRun, summary });
   } catch (err) {
     console.error('[API] Lapsed tagging run failed:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/member-geocode/run: on-demand Member Map geocoding pass (works
+// whether or not MEMBER_GEOCODE_ENABLED is set, so a backfill can be kicked
+// off by hand). Body { max?: number }, default 1000. Awaits and returns the
+// summary { looked_up, matched, no_match, batches }.
+app.post('/api/member-geocode/run', requireSecret, async (req, res) => {
+  try {
+    const max = Math.min(Math.max(parseInt(req.body?.max, 10) || 1000, 1), 10000);
+    const summary = await runMemberGeocode({ maxAddresses: max });
+    res.json({ summary });
+  } catch (err) {
+    console.error('[API] Member geocode run failed:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
