@@ -326,7 +326,6 @@ export default function MobileApp() {
               {({ locationSlug }) => (
                 <MobileAnalyticsHome
                   locationSlug={locationSlug}
-                  user={user}
                   onOpen={(key) => navigate('analytics/' + key)}
                 />
               )}

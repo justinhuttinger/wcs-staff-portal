@@ -1,6 +1,7 @@
 const { Router } = require('express')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
+const { narrowClubsToScope } = require('../services/locationScope')
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('../lib/supabaseFetchAll')
 const { wrapSWR } = require('../services/memoryCache')
@@ -9,12 +10,13 @@ const { buildMemberMap, selectPopulation, POPULATIONS, HORIZON_DAYS } = require(
 const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 // ---------------------------------------------------------------------------
-// Member Map — Analytics (OWNER ONLY)
+// Member Map — Analytics (manager+, club-scoped)
 //
-// Every active member's home address as a pin, against the club pins, with
-// distance-to-club stats. Home addresses are the most sensitive thing the
-// portal shows, so this is gated to MEMBER_MAP_EMAILS (default: the owner)
-// on top of admin, not to a role.
+// Members' home addresses as pins against the club pins, with distance-to-club
+// stats. Managers only ever receive members of the clubs they are assigned to
+// (narrowClubsToScope); corporate+ see every club. Every club's PIN is sent
+// regardless, since "nearest club" is judged against all of them and club
+// addresses are public.
 //
 // ?population= picks who is plotted: active (default), new, cancelled,
 // pending or pt. Each uses the rule of the report that owns that number; see
@@ -26,19 +28,8 @@ const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
 
 const router = Router()
 
-const OWNER_EMAILS = (process.env.MEMBER_MAP_EMAILS || 'justin@wcstrength.com')
-  .split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-
-function requireOwner(req, res, next) {
-  if (!OWNER_EMAILS.includes(String(req.staff?.email || '').toLowerCase())) {
-    return res.status(403).json({ error: 'Not available' })
-  }
-  next()
-}
-
 router.use(authenticate)
-router.use(requireRole('admin'))
-router.use(requireOwner)
+router.use(requireRole('manager'))
 
 const FRESH_MS = 10 * 60 * 1000
 const STALE_MS = 60 * 60 * 1000
@@ -118,10 +109,13 @@ async function load(clubNumbers) {
 router.get('/', async (req, res) => {
   try {
     const clubsParam = String(req.query.clubs || 'all')
-    const slugs = clubsParam === 'all'
+    const asked = clubsParam === 'all'
       ? CLUBS.map(c => c.slug)
       : clubsParam.split(',').map(s => s.trim().toLowerCase()).filter(s => CLUB_BY_SLUG[s])
-    if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    if (asked.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    // Managers are narrowed to the clubs they are assigned; corporate+ keep what they asked for.
+    const slugs = await narrowClubsToScope(req, asked)
+    if (slugs.length === 0) return res.status(403).json({ error: 'no access to the requested clubs' })
     const selected = new Set(slugs.map(s => CLUB_BY_SLUG[s].clubNumber))
     const population = POPULATIONS.includes(String(req.query.population)) ? String(req.query.population) : 'active'
     const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))

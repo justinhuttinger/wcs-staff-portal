@@ -46,7 +46,6 @@ import KpiReport from './analytics/KpiReport'
 import PtSnapshot from './analytics/PtSnapshot'
 import WebJoins from './analytics/WebJoins'
 import MemberMap from './analytics/MemberMapLazy'
-import { canSeeOwnerReports } from '../config/ownerReports'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 import ReportRecords from './analytics/ReportRecords'
 import MemberFilters, { MemberFilterNote, MEMBER_CATEGORY_OPTIONS } from './analytics/MemberFilters'
@@ -175,9 +174,6 @@ export const ANALYTICS_REPORTS = [
   },
   {
     key: 'member-map',
-    // Home addresses: listed only for canSeeOwnerReports(), and the route
-    // refuses everyone else regardless.
-    ownerOnly: true,
     label: 'Member Map',
     desc: 'Where Members Live',
     Component: MemberMap,
@@ -453,9 +449,7 @@ export const REPORT_GROUPS = [
  * Derived here rather than retyped there, so a report added above appears in
  * the grid automatically and can never be toggled into a key nothing reads.
  */
-// Owner-only reports are left out: a per-club toggle for a report nobody at
-// the clubs can see would only be noise.
-export const REPORT_META = ANALYTICS_REPORTS.filter(r => !r.ownerOnly).map(r => ({ key: r.key, label: r.label }))
+export const REPORT_META = ANALYTICS_REPORTS.map(r => ({ key: r.key, label: r.label }))
 
 // The reports that get opened daily, flat at the top of the sidebar and outside
 // any category, in this order.
@@ -603,10 +597,9 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
       : String(locationSlug).split(',').map(x => x.trim()).filter(Boolean)
   ), [locationSlug, seesAllClubs, clubOptions])
 
-  const isOwner = canSeeOwnerReports(user?.staff)
   const canSee = useCallback(
-    (key) => (isOwner || !reportByKey[key]?.ownerOnly) && isReportVisible(visibility, key, scopedSlugs),
-    [visibility, scopedSlugs, isOwner]
+    (key) => isReportVisible(visibility, key, scopedSlugs),
+    [visibility, scopedSlugs]
   )
   // A person's own starred reports. Held in state (not read from localStorage
   // on every render) and refreshed off the change event, so a star clicked in
@@ -756,8 +749,7 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
       .sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }))
   }, [searchTerm, canSee])
 
-  // A deep link to an owner-only report renders nothing for anyone else.
-  const active = ANALYTICS_REPORTS.find(r => r.key === activeReport && (isOwner || !r.ownerOnly)) || null
+  const active = ANALYTICS_REPORTS.find(r => r.key === activeReport) || null
   const showDateControls = active ? active.dates !== false : true
   const ActiveComponent = active?.Component || null
 
