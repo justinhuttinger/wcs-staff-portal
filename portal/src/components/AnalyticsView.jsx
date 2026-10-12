@@ -181,8 +181,8 @@ export const ANALYTICS_REPORTS = [
     label: 'Member Map',
     desc: 'Where Members Live',
     Component: MemberMap,
-    // A snapshot of where today's active members live.
-    dates: false,
+    // The range drives the New Members and Cancelled views; the others are as
+    // of today and ignore it.
   },
   {
     key: 'net-membership',

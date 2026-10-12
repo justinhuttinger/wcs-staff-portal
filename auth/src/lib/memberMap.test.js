@@ -49,3 +49,24 @@ test('buildMemberMap scores distance, nearest club and unmapped members', () => 
   assert.strictEqual(salem.within_pct[5], 100)
   assert.strictEqual(out.clubs.length, 3)
 })
+
+test('selectPopulation applies each report rule', () => {
+  const { selectPopulation } = require('./memberMap')
+  const rows = [
+    { id: 1, member_id: 'a', club_number: '1', is_active: true, member_status: 'Active', since_date: '2026-09-10', membership_type: 'Single' },
+    { id: 2, member_id: 'b', club_number: '1', is_active: true, member_status: 'Pending Cancel', since_date: '2024-01-01', membership_type: 'Single' },
+    { id: 3, member_id: 'c', club_number: '1', is_active: false, member_status: 'Cancelled', member_status_date: '2026-09-20', since_date: '2025-01-01', membership_type: 'Single' },
+    { id: 4, member_id: 'd', club_number: '1', is_active: true, member_status: 'Active', since_date: '2026-09-15', membership_type: 'Club Access' },
+    { id: 5, member_id: 'e', club_number: '1', is_active: true, member_status: 'Active', since_date: '2020-01-01', membership_type: 'Single' },
+  ]
+  const opts = {
+    start: '2026-09-01', end: '2026-09-30',
+    countedIds: new Set([1, 2, 4]), skip: new Set(['club access']), ptKeys: new Set(['1|e']),
+  }
+  const ids = population => selectPopulation(rows, { ...opts, population }).map(r => r.id)
+  assert.deepStrictEqual(ids('active'), [1, 2]) // 4 skip-listed, 5 not counted
+  assert.deepStrictEqual(ids('new'), [1])        // 4 skip-listed
+  assert.deepStrictEqual(ids('cancelled'), [3])
+  assert.deepStrictEqual(ids('pending'), [2])
+  assert.deepStrictEqual(ids('pt'), [5])
+})
