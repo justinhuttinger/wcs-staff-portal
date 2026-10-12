@@ -45,6 +45,8 @@ import ClubSnapshot from './analytics/ClubSnapshot'
 import KpiReport from './analytics/KpiReport'
 import PtSnapshot from './analytics/PtSnapshot'
 import WebJoins from './analytics/WebJoins'
+import MemberMap from './analytics/MemberMapLazy'
+import { canSeeOwnerReports } from '../config/ownerReports'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 import ReportRecords from './analytics/ReportRecords'
 import MemberFilters, { MemberFilterNote, MEMBER_CATEGORY_OPTIONS } from './analytics/MemberFilters'
@@ -170,6 +172,17 @@ export const ANALYTICS_REPORTS = [
     label: 'Web Joins',
     desc: 'Web Share of New Members',
     Component: WebJoins,
+  },
+  {
+    key: 'member-map',
+    // Home addresses: listed only for canSeeOwnerReports(), and the route
+    // refuses everyone else regardless.
+    ownerOnly: true,
+    label: 'Member Map',
+    desc: 'Where Members Live',
+    Component: MemberMap,
+    // A snapshot of where today's active members live.
+    dates: false,
   },
   {
     key: 'net-membership',
@@ -425,8 +438,8 @@ export const ANALYTICS_REPORTS = [
 // alphabetically by label — so a new report can be appended to whichever list
 // it belongs in. The order of the groups themselves is still this order.
 export const REPORT_GROUPS = [
-  { key: 'marketing', label: 'Marketing',     reports: ['lead-sources', 'web-joins'] },
-  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'web-joins', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-analysis', 'attrition-trends', 'member-journey', 'checkins', 'nps', 'vip-analysis', 'average-dues'] },
+  { key: 'marketing', label: 'Marketing',     reports: ['lead-sources', 'web-joins', 'member-map'] },
+  { key: 'members',   label: 'Member Counts', reports: ['membership-trends', 'net-membership', 'web-joins', 'membership-mix', 'past-due', 'revenue-per-member', 'club-snapshot', 'attrition-analysis', 'attrition-trends', 'member-journey', 'checkins', 'nps', 'vip-analysis', 'average-dues', 'member-map'] },
   { key: 'revenue',   label: 'Revenue',       reports: ['revenue-by-profit-center', 'revenue-trends', 'revenue-per-member', 'past-due', 'pos-sales', 'revenue', 'average-dues'] },
   { key: 'training',  label: 'Training',      reports: ['pt-penetration', 'pt-scorecard', 'first-pt-purchase', 'pt-snapshot', 'trainer-snapshot', 'pt-roster', 'session-frequency'] },
   { key: 'employees', label: 'Employees',     reports: ['salesperson-performance', 'trainer-performance', 'salesperson-snapshot', 'trainer-snapshot', 'compliance', 'audits', 'till', 'payroll'] },
@@ -440,7 +453,9 @@ export const REPORT_GROUPS = [
  * Derived here rather than retyped there, so a report added above appears in
  * the grid automatically and can never be toggled into a key nothing reads.
  */
-export const REPORT_META = ANALYTICS_REPORTS.map(r => ({ key: r.key, label: r.label }))
+// Owner-only reports are left out: a per-club toggle for a report nobody at
+// the clubs can see would only be noise.
+export const REPORT_META = ANALYTICS_REPORTS.filter(r => !r.ownerOnly).map(r => ({ key: r.key, label: r.label }))
 
 // The reports that get opened daily, flat at the top of the sidebar and outside
 // any category, in this order.
@@ -588,9 +603,10 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
       : String(locationSlug).split(',').map(x => x.trim()).filter(Boolean)
   ), [locationSlug, seesAllClubs, clubOptions])
 
+  const isOwner = canSeeOwnerReports(user?.staff)
   const canSee = useCallback(
-    (key) => isReportVisible(visibility, key, scopedSlugs),
-    [visibility, scopedSlugs]
+    (key) => (isOwner || !reportByKey[key]?.ownerOnly) && isReportVisible(visibility, key, scopedSlugs),
+    [visibility, scopedSlugs, isOwner]
   )
   // A person's own starred reports. Held in state (not read from localStorage
   // on every render) and refreshed off the change event, so a star clicked in
@@ -740,7 +756,8 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
       .sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }))
   }, [searchTerm, canSee])
 
-  const active = ANALYTICS_REPORTS.find(r => r.key === activeReport) || null
+  // A deep link to an owner-only report renders nothing for anyone else.
+  const active = ANALYTICS_REPORTS.find(r => r.key === activeReport && (isOwner || !r.ownerOnly)) || null
   const showDateControls = active ? active.dates !== false : true
   const ActiveComponent = active?.Component || null
 
