@@ -49,9 +49,13 @@ function monthsBefore(iso, months) {
   return d.toISOString().slice(0, 10)
 }
 
+// inactive_date is what stillRunning() dates a service out on. It was missing
+// from this list, so every row arrived with it undefined, stillRunning() kept
+// everything, and the roster counted every recurring client ever sold
+// (1,042 vs 386 actually running on 2026-10-12).
 const FIELDS =
   'member_id, member_name, club_number, trainer_name, service_item, recurring_type_desc, ' +
-  'status, sub_status, frequency, invoice_total, sale_date'
+  'status, sub_status, frequency, invoice_total, sale_date, inactive_date'
 
 router.get('/', async (req, res) => {
   try {
