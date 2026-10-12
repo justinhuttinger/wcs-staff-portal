@@ -13,6 +13,7 @@ const { smsStatsSync } = require('./sync/smsStatsSync');
 const { enrichAll: enrichAttributionAll } = require('./sync/attributionEnrich');
 const { runLapsedTaggingAll } = require('./abc/lapsedTaggingJob');
 const { runNpsAll } = require('./nps/npsJob');
+const { runMemberGeocode } = require('./geo/memberGeocode');
 
 function startScheduler() {
   const intervalMinutes = process.env.SYNC_INTERVAL_MINUTES || 10;
@@ -343,6 +344,32 @@ function startScheduler() {
       }
     });
     console.log(`[Scheduler] NPS scheduled daily at ${npsHour}:00 PST (${npsHourUTC}:00 UTC), dryRun=${npsDryRun}`);
+  }
+
+  // Member Map geocoding: hourly, dark-launched behind MEMBER_GEOCODE_ENABLED
+  // (default off). Looks up active-member home addresses that have no
+  // address_geocodes row yet via the US Census batch geocoder. The first runs
+  // backfill (~21k addresses, MEMBER_GEOCODE_MAX per run); after that it only
+  // sees new members and movers. See ghl-sync/src/geo/memberGeocode.js.
+  if (process.env.MEMBER_GEOCODE_ENABLED === 'true') {
+    const geocodeMax = Number(process.env.MEMBER_GEOCODE_MAX || 5000);
+    let geocodeRunning = false;
+    cron.schedule('40 * * * *', async () => {
+      if (geocodeRunning) {
+        console.warn('[Scheduler] Previous member geocode run still running — skipping');
+        return;
+      }
+      geocodeRunning = true;
+      try {
+        const summary = await runMemberGeocode({ maxAddresses: geocodeMax });
+        if (summary.looked_up) console.log('[Scheduler] Member geocode results:', JSON.stringify(summary));
+      } catch (err) {
+        console.error('[Scheduler] Member geocode failed:', err.message);
+      } finally {
+        geocodeRunning = false;
+      }
+    });
+    console.log(`[Scheduler] Member geocode hourly at :40, max ${geocodeMax} addresses per run`);
   }
 
   console.log(`[Scheduler] Check-in months refresh daily at ${checkinMonthsHour}:15 PST (${checkinMonthsHourUTC}:15 UTC)`);
