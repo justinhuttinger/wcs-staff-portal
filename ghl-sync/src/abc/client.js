@@ -104,6 +104,13 @@ function transformABCMember(raw, clubNumber) {
     join_status: p.joinStatus || null,
     member_status_date: p.memberStatusDate || null,
     home_club: p.homeClub || null,
+    // Home address, for the owner-only Member Map. address_key (the geocode
+    // join) is a generated column in Postgres, derived from these.
+    address_line1: p.addressLine1 || null,
+    address_line2: p.addressLine2 || null,
+    city: p.city || null,
+    state: p.state || null,
+    postal_code: p.postalCode || null,
     total_check_in_count: p.totalCheckInCount ? parseInt(p.totalCheckInCount) : 0,
     first_check_in_timestamp: p.firstCheckInTimestamp || null,
     last_check_in_timestamp: p.lastCheckInTimestamp || null,
