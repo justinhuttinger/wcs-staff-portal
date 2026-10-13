@@ -145,8 +145,8 @@ function tourPacificDay(completedAt) {
 }
 
 /**
- * Days from a tour to that person's membership starting, or null if they never
- * did within the window.
+ * The member a tour turned into and the days from the tour to their membership
+ * starting ({ member, days }), or null if they never did within the window.
  *
  * 0 means they signed the same day. The tour is matched on email, phone or
  * name rather than on abc_member_id, because that id is only stamped when the
@@ -158,7 +158,7 @@ function tourPacificDay(completedAt) {
  * bounded below by the tour date. That is what keeps somebody who was already a
  * member from being counted as a fresh conversion.
  */
-function daysToSign(tour, joinerIndex) {
+function tourSignup(tour, joinerIndex) {
   const tourDay = tourPacificDay(tour.completed_at)
   if (!tourDay) return null
   const member = matchMember(joinerIndex, null, {
@@ -175,7 +175,62 @@ function daysToSign(tour, joinerIndex) {
   if (!Number.isFinite(diff)) return null
   // A join BEFORE the tour is not a conversion; they were already a member.
   if (diff < 0 || diff > TOUR_ATTRIBUTION_DAYS) return null
-  return diff
+  return { member, days: diff }
+}
+
+function daysToSign(tour, joinerIndex) {
+  const signup = tourSignup(tour, joinerIndex)
+  return signup ? signup.days : null
+}
+
+/**
+ * THE Same Day Sales rule: the ABC member ids, out of `members`, who did the
+ * check-in kiosk at their club on the same Pacific day their membership
+ * started. Credited to whoever SOLD the membership (sales_person_name).
+ *
+ * Any kiosk row counts, closed out as a tour or not. Staff close a tour out on
+ * the queue afterwards, and at Salem, Springfield and Clackamas most never are
+ * (status 'abandoned'), so requiring it lost two sales in three there. The
+ * kiosk is the person walking in; the ABC join is them buying. Same day, same
+ * club, same person is a same-day sale.
+ *
+ * Counted over the report's OWN members, so the figure is always a subset of
+ * the memberships beside it and every report agrees with the leaderboard.
+ *
+ * @param members  abc_members rows: id, club_number, since_date, email,
+ *                 mobile_phone/primary_phone, first_name, last_name
+ * @param visits   kiosk rows: club_number, received_at, contact_email,
+ *                 contact_phone, contact_name
+ */
+function kioskSameDayIds(members, visits) {
+  const byClubDay = new Map()
+  for (const v of visits || []) {
+    const day = tourPacificDay(v.received_at)
+    if (!day || !v.club_number) continue
+    const key = `${v.club_number}|${day}`
+    let slot = byClubDay.get(key)
+    if (!slot) byClubDay.set(key, slot = { emails: new Set(), phones: new Set(), names: new Set() })
+    const em = (v.contact_email || '').trim().toLowerCase()
+    if (em) slot.emails.add(em)
+    const ph = digits10(v.contact_phone)
+    if (ph) slot.phones.add(ph)
+    const nm = personKey(v.contact_name || '')
+    if (nm) slot.names.add(nm)
+  }
+  const out = new Set()
+  if (byClubDay.size === 0) return out
+  for (const m of members || []) {
+    if (!m.id || !m.since_date) continue
+    const slot = byClubDay.get(`${m.club_number}|${String(m.since_date).slice(0, 10)}`)
+    if (!slot) continue
+    const em = (m.email || '').trim().toLowerCase()
+    const phones = [digits10(m.mobile_phone), digits10(m.primary_phone)].filter(Boolean)
+    const nm = personKey(`${m.first_name || ''} ${m.last_name || ''}`)
+    if ((em && slot.emails.has(em)) || phones.some(p => slot.phones.has(p)) || (nm && slot.names.has(nm))) {
+      out.add(m.id)
+    }
+  }
+  return out
 }
 
 function anyIn(row, configuredClubs) {
@@ -273,6 +328,8 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
   })
 
   const index = buildMemberIndex(kept)
+  // Same Day Sales over the kept members, credited to whoever sold them.
+  const sameDayIds = kioskSameDayIds(kept, extras.tours?.kioskVisits)
 
   // --- rows ---------------------------------------------------------------
   // The grouping key decides what a row means. In every mode the key is built
@@ -305,6 +362,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
         vipCount: 0,
         toursGiven: 0,
         toursConverted: 0,
+        sameDayCount: 0,
         daysToSign: [],
         clubNumbers: new Set(),
         memberIds: [],
@@ -321,6 +379,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     // VIPs are configured everywhere they worked.
     row.clubNumbers.add(m.club_number)
     row.newMemberUnits += 1
+    if (sameDayIds.has(m.id)) row.sameDayCount += 1
     row.totalNewDues += Number(m.next_due_amount) || 0
     row.totalDownPayment += Number(m.down_payment) || 0
     row.memberIds.push(m.id)
@@ -436,10 +495,13 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     // its own thing and is credited to whoever gave it, whatever name went on
     // the agreement.
     tourConversionRate: anyIn(row, tourClubs) ? pct(row.toursConverted, row.toursGiven) : null,
-    // The COUNT behind that rate. It has always been the same-day close; it was
-    // simply never exposed as a number, so every report that wanted "same day
-    // sales" had nothing to read. Same source, so the two can never disagree.
-    sameDaySales: anyIn(row, tourClubs) ? row.toursConverted : null,
+    // Tours this row GAVE that closed the same day. Not exposed on its own:
+    // carried so the club total can sum counts instead of rounded rates.
+    toursConverted: anyIn(row, tourClubs) ? row.toursConverted : null,
+    // Memberships this row SOLD to somebody who did the kiosk that same day
+    // (kioskSameDayIds). A different question from the tour conversion above,
+    // credited to a different person, which is why it is its own count.
+    sameDaySales: anyIn(row, tourClubs) ? row.sameDayCount : null,
     // Averaged over the tours that DID lead to a signup, not over all tours —
     // dividing by tours that never converted would drag this toward zero and
     // make a slow month look fast.
@@ -478,7 +540,8 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     acc.toursGiven += r.toursGiven || 0
     // The row's own count, not rebuilt from its rounded percentage: 1 of 3 is
     // 33.3%, which multiplies back to 0.999 and can drift the total.
-    acc.toursConverted += r.sameDaySales || 0
+    acc.toursConverted += r.toursConverted || 0
+    acc.sameDaySales += r.sameDaySales || 0
     // Days are pooled as a SUM and a COUNT, never as an average of averages —
     // that would weight a person with one tour the same as one with fifty.
     if (r.avgDaysToConversion !== null) {
@@ -487,7 +550,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     }
     return acc
   }, { newMemberUnits: 0, totalNewDuesDraft: 0, dayOneBookCount: 0, bookOnJoinDateCount: 0,
-       achUnits: 0, achKnownUnits: 0, vipCount: 0, toursGiven: 0, toursConverted: 0,
+       achUnits: 0, achKnownUnits: 0, vipCount: 0, toursGiven: 0, toursConverted: 0, sameDaySales: 0,
        daysSum: 0, daysCount: 0 })
 
   const anyVip = out.some(r => r.vipCount !== null)
@@ -502,7 +565,7 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
       : null,
     toursGiven: anyTour ? totals.toursGiven : null,
     tourConversionRate: anyTour ? pct(totals.toursConverted, totals.toursGiven) : null,
-    sameDaySales: anyTour ? totals.toursConverted : null,
+    sameDaySales: anyTour ? totals.sameDaySales : null,
     avgDaysToConversion: totals.daysCount
       ? Math.round((totals.daysSum / totals.daysCount) * 10) / 10
       : null,
@@ -549,5 +612,5 @@ module.exports = {
   CLUBS, CLUB_BY_NUMBER, CLUB_BY_SLUG, AGE_GROUPS,
   buildReport, buildFilterOptions, buildMemberIndex, matchMember,
   isExcludedType, personKey, displayName, digits10, ageOn, ageGroupKey, pct,
-  ACH_PAYMENT_METHOD, VIEW_BY, isNewSale, clubName, daysToSign, tourPacificDay,
+  ACH_PAYMENT_METHOD, VIEW_BY, isNewSale, clubName, daysToSign, tourPacificDay, tourSignup, kioskSameDayIds,
 }

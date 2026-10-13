@@ -181,6 +181,8 @@ const countVipsByTeamMember = (opts) => _countVipsByTeamMember(supabaseAdmin, op
 // ---------------------------------------------------------------------------
 // Club number → location slug mapping
 const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
+// Lazy, as countToursGiven's requires are: the Same Day Sales rule.
+const kioskSameDayIds = (...args) => require('../lib/salespersonPerformance').kioskSameDayIds(...args)
 const CLUB_SLUG_MAP = Object.fromEntries(Object.entries(SLUG_CLUB_MAP).map(([k, v]) => [v, k]))
 
 // ---------------------------------------------------------------------------
@@ -189,7 +191,7 @@ const CLUB_SLUG_MAP = Object.fromEntries(Object.entries(SLUG_CLUB_MAP).map(([k, 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // GET /reports/membership  (combined membership + salesperson stats)
-// Uses ABC data for sales counts, GHL for day_one/VIP/same_day enrichment
+// Uses ABC data for sales counts, GHL for VIP enrichment, tours for Same Day
 // ---------------------------------------------------------------------------
 router.get('/membership', async (req, res) => {
   const { start_date, end_date } = req.query
@@ -212,7 +214,7 @@ router.get('/membership', async (req, res) => {
     // fewer sales than Club Health for the same month.
     let abcQuery = supabaseAdmin
       .from('abc_members')
-      .select('member_id, first_name, last_name, email, membership_type, since_date, sign_date, sales_person_name, club_number, is_active')
+      .select('id, member_id, first_name, last_name, email, mobile_phone, primary_phone, membership_type, since_date, sign_date, sales_person_name, club_number, is_active')
       .not('since_date', 'is', null)
     if (start_date) abcQuery = abcQuery.gte('since_date', start_date)
     if (end_date) abcQuery = abcQuery.lte('since_date', end_date)
@@ -249,9 +251,11 @@ router.get('/membership', async (req, res) => {
       && !isCategoryExcluded(m, categoryFilter.categoryMap, categoryFilter.excluded)
     )
 
-    // --- 2. GHL enrichment: contact id + same_day_sale by email ---
+    // --- 2. GHL enrichment: contact id by email ---
     // day_one_booked no longer comes from here: whether a member had a Day
-    // One is answered by day_one_appointments, keyed on the contact id.
+    // One is answered by day_one_appointments, keyed on the contact id. Nor
+    // does Same Day Sale: that was a GHL field staff set by hand, and is now
+    // kioskSameDayIds, the rule every other report uses.
     const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]
     const ghlByEmail = {}
 
@@ -260,7 +264,7 @@ router.get('/membership', async (req, res) => {
       const chunk = emails.slice(i, i + 50)
       const { data: ghlRows } = await supabaseAdmin
         .from('ghl_contacts_report')
-        .select('id, email, same_day_sale')
+        .select('id, email')
         .in('email', chunk)
 
       for (const g of (ghlRows || [])) {
@@ -319,6 +323,13 @@ router.get('/membership', async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch trial data', detail: e.message })
     }
 
+    // Tours given and Same Day Sales, from lib/salespersonData — the same rows
+    // Salesperson Performance and Club Snapshot count, rather than a second
+    // query that could disagree.
+    const tours = await countToursGiven(locationFilter, start_date, end_date)
+    // Same Day Sales: did the kiosk on the day they joined. See kioskSameDayIds.
+    const sameDayIds = kioskSameDayIds(filteredMembers, tours.kioskVisits)
+
     // --- 6. Aggregate by salesperson + by date ---
     const byDate = {}
     const bySalesperson = {}
@@ -334,7 +345,8 @@ router.get('/membership', async (req, res) => {
       // GHL enrichment for this member
       const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
       const isDayOneBooked = ghl?.id ? dayOneContactIds.has(ghl.id) : false
-      const isSameDaySale = ghl?.same_day_sale === 'Sale'
+      // Did the kiosk the day they joined; credited to whoever sold it.
+      const isSameDaySale = sameDayIds.has(m.id)
 
       // by_salesperson
       const sp = m.sales_person_name || 'Unassigned'
@@ -413,15 +425,11 @@ router.get('/membership', async (req, res) => {
         member_sign_date: m.since_date,
         sale_team_member: m.sales_person_name,
         day_one_booked: (ghl?.id && dayOneContactIds.has(ghl.id)) ? 'Yes' : null,
-        same_day_sale: ghl?.same_day_sale || null,
+        same_day_sale: sameDayIds.has(m.id) ? 'Sale' : null,
         location_slug: CLUB_SLUG_MAP[m.club_number] || null,
       }
     })
 
-
-    // Tours given, from lib/salespersonData — the same rows Salesperson
-    // Performance counts, rather than a second query that could disagree.
-    const tours = await countToursGiven(locationFilter, start_date, end_date)
 
     // Tours onto the salesperson rows. A name that gave tours but sold nothing
     // still gets a row: leaving them out would make the column look like it
@@ -471,7 +479,8 @@ router.get('/salesperson-stats', (req, res) => {
 // Query params: start_date, end_date, location_id, location_slug
 // ---------------------------------------------------------------------------
 // Completed tours in a window for the clubs this request is scoped to, plus
-// whether the clubs asked about record tours AT ALL.
+// whether the clubs asked about record tours AT ALL, plus every kiosk check-in
+// (closed out or not) for Same Day Sales.
 //
 // The second half is the point: tours were not stored before the check-in
 // module started keeping them, so an empty window at a club with no history is
@@ -479,23 +488,16 @@ router.get('/salesperson-stats', (req, res) => {
 // unavailable so the report can withhold the figure instead of printing a zero
 // that reads as nobody working.
 async function countToursGiven(locationFilter, startDate, endDate) {
-  if (!startDate || !endDate) return { total: null, sameDay: null, unavailable: true, byPerson: {} }
+  if (!startDate || !endDate) return { total: null, unavailable: true, byPerson: {}, kioskVisits: [] }
   try {
     const { loadTourCompletions } = require('../lib/salespersonData')
-    const { displayName, buildMemberIndex, daysToSign } = require('../lib/salespersonPerformance')
+    const { displayName } = require('../lib/salespersonPerformance')
     const slugs = dayOneSlugsFor(locationFilter)
     const clubNumbers = slugs && slugs.length
       ? slugs.map(sl => SLUG_CLUB_MAP[sl]).filter(Boolean)
       : Object.values(SLUG_CLUB_MAP)
-    const { tours, joiners, configuredClubs } = await loadTourCompletions(clubNumbers, startDate, endDate)
+    const { tours, kioskVisits, configuredClubs } = await loadTourCompletions(clubNumbers, startDate, endDate)
     const anyConfigured = clubNumbers.some(n => configuredClubs.has(n))
-
-    // Same Day Sales: kiosk tours whose person joined in ABC ON THE TOUR DAY.
-    // The exact rule Club Snapshot's Same Day Sales uses (buildReport's
-    // toursConverted), so the two reports cannot disagree. Replaces the GHL
-    // "Same Day Sale" contact field, which staff set by hand.
-    const joinerIndex = buildMemberIndex(joiners || [])
-    const sameDay = tours.filter(t => daysToSign(t, joinerIndex) === 0).length
 
     // Credited to whoever GAVE the tour, normalised through displayName so
     // "Katie  Castlio" and "Katie Castlio" are one person — the same key the
@@ -509,13 +511,16 @@ async function countToursGiven(locationFilter, startDate, endDate) {
 
     return {
       total: anyConfigured ? tours.length : null,
-      sameDay: anyConfigured ? sameDay : null,
       unavailable: !anyConfigured,
       byPerson: anyConfigured ? byPerson : {},
+      // Every kiosk check-in in the window, for Same Day Sales. Each report
+      // runs kioskSameDayIds over its OWN members, so the count is always a
+      // subset of the memberships it sits beside.
+      kioskVisits: kioskVisits || [],
     }
   } catch (err) {
     console.warn('[reports] tours given unavailable:', err.message)
-    return { total: null, sameDay: null, unavailable: true, byPerson: {} }
+    return { total: null, unavailable: true, byPerson: {}, kioskVisits: [] }
   }
 }
 
@@ -764,7 +769,7 @@ router.get('/club-health', async (req, res) => {
     // re-signed or already cancelled, and the two reports disagreed.
     let abcQuery = supabaseAdmin
       .from('abc_members')
-      .select('sales_person_name, email, membership_type, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method')
+      .select('id, club_number, first_name, last_name, mobile_phone, primary_phone, sales_person_name, email, membership_type, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method')
       .not('since_date', 'is', null)
     if (start_date) abcQuery = abcQuery.gte('since_date', start_date)
     if (end_date) abcQuery = abcQuery.lte('since_date', end_date)
@@ -787,14 +792,14 @@ router.get('/club-health', async (req, res) => {
       && !excludeCat(m)
     )
 
-    // GHL enrichment for same_day_sale
+    // GHL contact ids by email, for the Day One flag below
     const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]
     const ghlByEmail = {}
     for (let i = 0; i < emails.length; i += 50) {
       const chunk = emails.slice(i, i + 50)
       const { data: ghlRows } = await supabaseAdmin
         .from('ghl_contacts_report')
-        .select('id, email, same_day_sale')
+        .select('id, email')
         .in('email', chunk)
       for (const g of (ghlRows || [])) {
         if (g.email) ghlByEmail[g.email.toLowerCase()] = g
@@ -857,6 +862,11 @@ router.get('/club-health', async (req, res) => {
     // Count unique agreements
     const uniqueAgreements = new Set(filteredMembers.map(m => m.agreement_number).filter(Boolean)).size
 
+    // Tours and Same Day Sales, loaded here because the Top 3 score needs the
+    // per-person same-day count as well as the card.
+    const clubTours = await countToursGiven(locationFilter, start_date, end_date)
+    const sameDayIds = kioskSameDayIds(filteredMembers, clubTours.kioskVisits)
+
     // Top 3 salespeople by leaderboard score (matches POINTS in leaderboard.js)
     const POINTS = { DAY_ONE_BOOKED: 10, MEMBERSHIP: 5, SAME_DAY_SALE: 5, VIP: 2 }
     const normalizeName = (raw) => (raw || '')
@@ -873,8 +883,7 @@ router.get('/club-health', async (req, res) => {
       if (!name || name === 'Unassigned') continue
       ensurePerson(name)
       personStats[name].memberships++
-      const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
-      if (ghl?.same_day_sale === 'Sale') personStats[name].same_day++
+      if (sameDayIds.has(m.id)) personStats[name].same_day++
     }
 
     for (const c of dayOnes) {
@@ -1035,10 +1044,7 @@ router.get('/club-health', async (req, res) => {
     }
     newDues = Math.round(newDues * 100) / 100
 
-    const [clubTours, clubPending] = await Promise.all([
-      countToursGiven(locationFilter, start_date, end_date),
-      countPendingOutcomes(locationFilter, start_date, end_date),
-    ])
+    const clubPending = await countPendingOutcomes(locationFilter, start_date, end_date)
 
     // Members as Analytics counts them, at the end of the window. Falls back to
     // the roster scan if the RPC is unavailable rather than showing nothing:
@@ -1123,7 +1129,7 @@ router.get('/club-health', async (req, res) => {
       total_vips: totalVips || 0,
       // Kiosk tours closed the same day — see countToursGiven. Null where no
       // club in view records tours, like total_tours.
-      total_same_day_sales: clubTours.sameDay,
+      total_same_day_sales: clubTours.unavailable ? null : sameDayIds.size,
       total_day_ones_booked: totalDayOnesBooked,
       day_one_booked: dayOneBookedCounts,
       day_one_status: dayOneStatusCounts,

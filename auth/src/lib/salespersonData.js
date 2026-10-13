@@ -10,6 +10,7 @@ const { fetchAll } = require('./supabaseFetchAll')
 const { loadOutcomeRulesOrNone, onlyTours } = require('./tourOutcomeRules')
 const { tourPacificDay } = require('./salespersonPerformance')
 const { shiftDay } = require('./habits')
+const { CLUBS } = require('../config/clubs')
 
 // Kept in step with TOUR_ATTRIBUTION_DAYS in salespersonPerformance: this
 // decides how far past the window joiners are loaded, that one decides how far
@@ -125,7 +126,7 @@ async function loadTourCompletions(clubNumbers, start, end) {
   const joinerEnd = new Date(Date.parse(end + 'T00:00:00Z') + TOUR_ATTRIBUTION_DAYS * 86400000)
     .toISOString().slice(0, 10)
 
-  const [tours, everRows, joiners, rules] = await Promise.all([
+  const [tours, everRows, joiners, rules, kioskRows, locations] = await Promise.all([
     fetchAll(
       supabaseAdmin
         .from('tour_intakes')
@@ -153,8 +154,38 @@ async function loadTourCompletions(clubNumbers, start, end) {
         .order('id', { ascending: true })
     ),
     loadOutcomeRulesOrNone('salesperson/tours'),
+    // EVERY kiosk check-in, whatever happened to it on the tour queue after.
+    // The Same Day Sales rule (kioskSameDayIds) only needs the visit.
+    fetchAll(
+      supabaseAdmin
+        .from('tour_intakes')
+        .select('id, club_number, location_id, received_at, contact_email, contact_phone, contact_name')
+        .gte('received_at', shiftDay(start, -1) + 'T00:00:00Z')
+        .lte('received_at', shiftDay(end, 1) + 'T23:59:59.999Z')
+        .order('id', { ascending: true })
+    ),
+    supabaseAdmin.from('locations').select('id, name').then(r => r.data || []),
   ])
+
+  // Rows nobody closed out on the queue have no club_number; only the
+  // completion stamps it. Their location does say which club they walked into.
+  const clubByLocation = new Map()
+  for (const l of locations) {
+    const n = String(l.name || '').trim().toLowerCase()
+    const club = CLUBS.find(c => String(c.name || '').toLowerCase() === n || c.slug === n)
+    if (club) clubByLocation.set(l.id, club.clubNumber)
+  }
+  const wanted = new Set(clubNumbers)
+  const kioskVisits = kioskRows
+    .map(v => ({ ...v, club_number: v.club_number || clubByLocation.get(v.location_id) || null }))
+    .filter(v => {
+      if (!v.club_number || !wanted.has(v.club_number)) return false
+      const day = tourPacificDay(v.received_at)
+      return day && day >= start && day <= end
+    })
+
   return {
+    kioskVisits,
     tours: onlyTours(tours, rules).filter(t => {
       const day = tourPacificDay(t.completed_at)
       return day && day >= start && day <= end

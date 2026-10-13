@@ -236,7 +236,7 @@ const DRILLS = {
   agreements:       { set: 'club-health-sales', title: 'Memberships sold' },
   members:          { set: 'club-health-sales', title: 'Memberships sold' },
   vips:             { set: 'club-health-vips', title: 'VIP referrals' },
-  sameDay:          { set: 'tours', filter: 'same-day', title: 'Tours closed same day' },
+  sameDay:          { set: 'club-health-sales', filter: 'same-day', title: 'Same day sales' },
   newDues:          { set: 'club-health-sales', title: 'Memberships sold' },
   ach:              { set: 'club-health-sales', filter: 'ach', title: 'Sold on ACH' },
   tours:            { set: 'tours', title: 'Tours given' },
