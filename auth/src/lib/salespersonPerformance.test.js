@@ -6,7 +6,7 @@ const assert = require('node:assert')
 const {
   clubName,
   buildReport, displayName, personKey, isExcludedType, ageOn, ageGroupKey, digits10, isNewSale,
-  tourPacificDay, sameDaySales,
+  tourPacificDay, kioskSameDayIds,
 } = require('../lib/salespersonPerformance')
 
 const MILWAUKIE = '31601'
@@ -708,43 +708,69 @@ test('neither filter set leaves the report exactly as it was', () => {
 // joined on the tour date, credited to whoever GAVE the tour.
 // ---------------------------------------------------------------------------
 
-test('a same-day signup is a same day sale', () => {
-  const sameDay = member({
-    club_number: SALEM, id: 'm-sds', since_date: '2026-08-10',
-    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
-  })
-  const out = build([], { tours: toursFor([tour()], [SALEM], [sameDay]) })
-  const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
+// Same Day Sales = the member did the check-in kiosk at their club on the day
+// their membership started, credited to whoever SOLD it. Any kiosk row counts,
+// closed out as a tour or not.
+const visit = (over = {}) => ({
+  club_number: SALEM,
+  received_at: '2026-08-10T18:00:00.000Z',
+  contact_email: 'walkin@example.com',
+  contact_phone: null,
+  contact_name: 'Walk In',
+  ...over,
+})
+const sold = (over = {}) => member({
+  club_number: SALEM, id: 'm-sold', since_date: '2026-08-10', sign_date: '2026-08-10',
+  sales_person_name: 'Bob Seller', email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
+  ...over,
+})
+const withKiosk = (visits, clubs = [SALEM]) => ({ tours: { ...toursFor([], clubs, []), kioskVisits: visits } })
+
+test('a kiosk visit on the join day is a same day sale, credited to the seller', () => {
+  const out = build([sold()], withKiosk([visit()]))
+  const row = out.rows.find(r => r.salesperson === 'Bob Seller')
   assert.equal(row.sameDaySales, 1)
   assert.equal(out.summary.sameDaySales, 1)
-  // The count and the rate are the same fact; they must never disagree.
-  assert.equal(row.tourConversionRate, 100)
 })
 
-test('a signup two days later is not a same day sale', () => {
-  const later = member({
-    club_number: SALEM, id: 'm-late2', since_date: '2026-08-12',
-    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
-  })
-  const out = build([], { tours: toursFor([tour()], [SALEM], [later]) })
-  const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
-  assert.equal(row.sameDaySales, 0)
+test('a check-in nobody closed out as a tour still counts', () => {
+  // No outcome, no given_by: an abandoned queue card is still the visit.
+  const out = build([sold()], withKiosk([visit({ status: 'abandoned' })]))
+  assert.equal(out.summary.sameDaySales, 1)
+})
+
+// An evening visit is a UTC "tomorrow": 6pm Pacific on 10 August is 01:00Z on
+// the 11th, and must still land on the 10th.
+test('an evening kiosk visit counts for that day', () => {
+  const out = build([sold()], withKiosk([visit({ received_at: '2026-08-11T01:00:00.000Z' })]))
+  assert.equal(out.summary.sameDaySales, 1)
+})
+
+test('a kiosk visit the day before joining is not a same day sale', () => {
+  const out = build([sold()], withKiosk([visit({ received_at: '2026-08-09T18:00:00.000Z' })]))
   assert.equal(out.summary.sameDaySales, 0)
 })
 
-// An evening tour is a UTC "tomorrow": 6pm Pacific on 10 August is 01:00Z on
-// the 11th. Read off the UTC string, the signup that evening looked like it
-// came the day BEFORE the tour and was dropped as an existing member.
-test('an evening tour that signs the same night is a same day sale', () => {
-  const sameNight = member({
-    club_number: SALEM, id: 'm-eve', since_date: '2026-08-10',
-    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
-  })
-  const evening = tour({ completed_at: '2026-08-11T01:00:00.000Z' })
-  const out = build([], { tours: toursFor([evening], [SALEM], [sameNight]) })
-  const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
-  assert.equal(row.sameDaySales, 1)
-  assert.equal(out.summary.sameDaySales, 1)
+test('a kiosk visit at a different club is not a same day sale', () => {
+  const out = build([sold()], withKiosk([visit({ club_number: MILWAUKIE })], [SALEM, MILWAUKIE]))
+  assert.equal(out.summary.sameDaySales, 0)
+})
+
+test('kioskSameDayIds matches on phone or name when the email differs', () => {
+  const byPhone = sold({ id: 'p', email: 'other@example.com', mobile_phone: '(503) 555-0101', first_name: 'X', last_name: 'Y' })
+  const byName = sold({ id: 'n', email: null })
+  const nobody = sold({ id: 'z', email: 'z@example.com', first_name: 'Zed', last_name: 'Zee' })
+  const ids = kioskSameDayIds([byPhone, byName, nobody],
+    [visit({ contact_email: null, contact_phone: '5035550101', contact_name: 'Nope' }), visit({ contact_email: null })])
+  assert.deepEqual([...ids].sort(), ['n', 'p'])
+})
+
+test('summary same day sales is the sum of the row counts', () => {
+  const a = sold({ id: 'a', sales_person_name: 'Bob Seller' })
+  const b = sold({ id: 'b', sales_person_name: 'Ann Other', email: 'b@example.com', first_name: 'B', last_name: 'B' })
+  const out = build([a, b], withKiosk([visit(), visit({ contact_email: 'b@example.com', contact_name: 'B B' })]))
+  assert.equal(out.summary.sameDaySales, 2)
+  assert.equal(out.rows.reduce((n, r) => n + (r.sameDaySales || 0), 0), 2)
 })
 
 test('tourPacificDay reads the club day across DST', () => {
@@ -754,42 +780,17 @@ test('tourPacificDay reads the club day across DST', () => {
   assert.equal(tourPacificDay(null), null)
 })
 
-// The summary is summed from row counts, not rebuilt from rounded rates.
-test('summary same day sales is the sum of the row counts', () => {
-  const tours = [
-    tour({ id: 't1', contact_email: 'a@example.com', contact_phone: null, contact_name: 'A A' }),
-    tour({ id: 't2', contact_email: 'b@example.com', contact_phone: null, contact_name: 'B B' }),
-    tour({ id: 't3', contact_email: 'c@example.com', contact_phone: null, contact_name: 'C C' }),
-  ]
-  const joined = member({
-    club_number: SALEM, id: 'm-a', since_date: '2026-08-10',
-    email: 'a@example.com', first_name: 'A', last_name: 'A',
-  })
-  const out = build([], { tours: toursFor(tours, [SALEM], [joined]) })
-  assert.equal(out.summary.sameDaySales, 1)
-})
-
-// sameDaySales is the list every other report counts (leaderboard, Salesperson
-// Stats, Club Health). It must agree with buildReport's count.
-test('sameDaySales pairs each same-day tour with its member', () => {
-  const joined = member({
-    club_number: SALEM, id: 'm-sd', since_date: '2026-08-10',
+// Tour conversion is still the tour-giver's same-day close, and an evening tour
+// that signs that night is one.
+test('an evening tour that signs the same night converts', () => {
+  const sameNight = member({
+    club_number: SALEM, id: 'm-eve', since_date: '2026-08-10',
     email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
   })
-  const later = member({
-    club_number: SALEM, id: 'm-later', since_date: '2026-08-14',
-    email: 'later@example.com', first_name: 'Lay', last_name: 'Ter',
-  })
-  const tours = [
-    tour(),
-    tour({ id: 't-later', contact_email: 'later@example.com', contact_phone: null, contact_name: 'Lay Ter' }),
-  ]
-  const out = sameDaySales(tours, [joined, later])
-  assert.equal(out.length, 1)
-  assert.equal(out[0].member.id, 'm-sd')
-  assert.equal(out[0].tour.given_by_name, 'Katie Castlio')
-  const report = build([], { tours: toursFor(tours, [SALEM], [joined, later]) })
-  assert.equal(report.summary.sameDaySales, out.length)
+  const evening = tour({ completed_at: '2026-08-11T01:00:00.000Z' })
+  const out = build([], { tours: toursFor([evening], [SALEM], [sameNight]) })
+  const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
+  assert.equal(row.tourConversionRate, 100)
 })
 
 // The distinction that keeps the stat honest. A club that has never recorded a

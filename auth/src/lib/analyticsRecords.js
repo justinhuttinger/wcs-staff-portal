@@ -1,6 +1,6 @@
 const {
   CLUBS, CLUB_BY_SLUG, personKey, displayName, ACH_PAYMENT_METHOD, isExcludedType,
-  buildMemberIndex, daysToSign, tourPacificDay, sameDaySales,
+  buildMemberIndex, daysToSign, tourPacificDay, kioskSameDayIds,
 } = require('./salespersonPerformance')
 const { isChaseable } = require('./pastDueReport')
 const { isInsuranceType, tenureMonths } = require('./attritionAnalysis')
@@ -656,7 +656,7 @@ const SETS = {
     async load({ start, end, clubNumbers, person, filter, exclude }) {
       const q = lazySupabase()
         .from('abc_members')
-        .select('id, first_name, last_name, membership_type, agreement_term, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method, sales_person_name, email, club_number')
+        .select('id, first_name, last_name, membership_type, agreement_term, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method, sales_person_name, email, mobile_phone, primary_phone, club_number')
         .not('since_date', 'is', null)
         .gte('since_date', start)
         .lte('since_date', end)
@@ -667,11 +667,11 @@ const SETS = {
         .filter(r => !isExcludedType(r.membership_type, skip))
         .filter(r => matchesPerson(r.sales_person_name, person))
 
-      // Same Day: joined in ABC on the day of a tour, the rule the Same Day
-      // Sales card counts (not the GHL field staff used to set by hand).
-      // Skipped entirely when there is nothing to flag.
+      // Same Day: did the check-in kiosk on the day they joined, the rule the
+      // Same Day Sales card counts (not the GHL field staff used to set by
+      // hand). Skipped entirely when there is nothing to flag.
       const sameDayIds = kept.length
-        ? await sameDayMemberIds(clubNumbers || CLUBS.map(c => c.clubNumber), start, end)
+        ? await sameDayMemberIds(kept, clubNumbers || CLUBS.map(c => c.clubNumber), start, end)
         : new Set()
       const isSameDay = r => sameDayIds.has(r.id)
 
@@ -856,8 +856,8 @@ const SETS = {
     // same numbers Tours Given counts.
     //
     // filter 'same-day': only tours whose person joined in ABC on the tour
-    // day — the rows behind Same Day Sales on Club Snapshot and Club Health,
-    // matched exactly as buildReport and countToursGiven match them.
+    // day (the tour-giver's conversion). NOT Same Day Sales, which is credited
+    // to the seller and lives on 'club-health-sales' filter 'same-day'.
     async load({ start, end, clubNumbers, person, filter }) {
       const q = lazySupabase()
         .from('tour_intakes')
@@ -1024,13 +1024,13 @@ async function contactNames(ids) {
 }
 
 /**
- * ABC member ids that joined on the day of a tour, from the loader the Same
- * Day Sales card uses, so the flag and the count are one rule.
+ * Which of `members` are Same Day Sales, off the kiosk visits the Same Day
+ * Sales card loads, so the flag and the count are one rule.
  */
-async function sameDayMemberIds(clubNumbers, start, end) {
+async function sameDayMemberIds(members, clubNumbers, start, end) {
   const { loadTourCompletions } = require('./salespersonData')
-  const { tours, joiners } = await loadTourCompletions(clubNumbers, start, end)
-  return new Set(sameDaySales(tours, joiners).map(s => s.member?.id).filter(Boolean))
+  const { kioskVisits } = await loadTourCompletions(clubNumbers, start, end)
+  return kioskSameDayIds(members, kioskVisits)
 }
 
 /**

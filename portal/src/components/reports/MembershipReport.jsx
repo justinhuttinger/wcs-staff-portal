@@ -161,8 +161,7 @@ const COLUMN_DRILLS = {
   tours:          { set: 'tours', title: 'Tours given' },
   vips:           { set: 'club-health-vips', title: 'VIP referrals' },
   day_one_booked: { set: 'day-ones', window: 'booked', personField: 'bookedBy', title: 'Day Ones booked' },
-  // Credited to the tour-giver, like the count, so it opens their tours.
-  same_day_sale:  { set: 'tours', filter: 'same-day', title: 'Tours closed same day' },
+  same_day_sale:  { set: 'club-health-sales', filter: 'same-day', title: 'Same day sales' },
 }
 
 export default function MembershipReport({ startDate, endDate, locationSlug, canDrill = false, excludedCategories = [] }) {

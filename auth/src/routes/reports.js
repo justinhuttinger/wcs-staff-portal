@@ -181,6 +181,8 @@ const countVipsByTeamMember = (opts) => _countVipsByTeamMember(supabaseAdmin, op
 // ---------------------------------------------------------------------------
 // Club number → location slug mapping
 const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
+// Lazy, as countToursGiven's requires are: the Same Day Sales rule.
+const kioskSameDayIds = (...args) => require('../lib/salespersonPerformance').kioskSameDayIds(...args)
 const CLUB_SLUG_MAP = Object.fromEntries(Object.entries(SLUG_CLUB_MAP).map(([k, v]) => [v, k]))
 
 // ---------------------------------------------------------------------------
@@ -212,7 +214,7 @@ router.get('/membership', async (req, res) => {
     // fewer sales than Club Health for the same month.
     let abcQuery = supabaseAdmin
       .from('abc_members')
-      .select('id, member_id, first_name, last_name, email, membership_type, since_date, sign_date, sales_person_name, club_number, is_active')
+      .select('id, member_id, first_name, last_name, email, mobile_phone, primary_phone, membership_type, since_date, sign_date, sales_person_name, club_number, is_active')
       .not('since_date', 'is', null)
     if (start_date) abcQuery = abcQuery.gte('since_date', start_date)
     if (end_date) abcQuery = abcQuery.lte('since_date', end_date)
@@ -253,7 +255,7 @@ router.get('/membership', async (req, res) => {
     // day_one_booked no longer comes from here: whether a member had a Day
     // One is answered by day_one_appointments, keyed on the contact id. Nor
     // does Same Day Sale: that was a GHL field staff set by hand, and is now
-    // the tour-based stat every other report uses (see countToursGiven).
+    // kioskSameDayIds, the rule every other report uses.
     const emails = [...new Set(filteredMembers.map(m => m.email).filter(Boolean))]
     const ghlByEmail = {}
 
@@ -325,6 +327,8 @@ router.get('/membership', async (req, res) => {
     // Salesperson Performance and Club Snapshot count, rather than a second
     // query that could disagree.
     const tours = await countToursGiven(locationFilter, start_date, end_date)
+    // Same Day Sales: did the kiosk on the day they joined. See kioskSameDayIds.
+    const sameDayIds = kioskSameDayIds(filteredMembers, tours.kioskVisits)
 
     // --- 6. Aggregate by salesperson + by date ---
     const byDate = {}
@@ -341,10 +345,8 @@ router.get('/membership', async (req, res) => {
       // GHL enrichment for this member
       const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
       const isDayOneBooked = ghl?.id ? dayOneContactIds.has(ghl.id) : false
-      // Joined on the day of a tour. The COUNT is credited to whoever gave the
-      // tour (below), as Salesperson Performance credits it; this flag only
-      // marks the member in the drill-down.
-      const isSameDaySale = tours.sameDayMemberIds.has(m.id)
+      // Did the kiosk the day they joined; credited to whoever sold it.
+      const isSameDaySale = sameDayIds.has(m.id)
 
       // by_salesperson
       const sp = m.sales_person_name || 'Unassigned'
@@ -352,6 +354,7 @@ router.get('/membership', async (req, res) => {
         bySalesperson[sp] = { total_sales: 0, vips: 0, day_one_booked: 0, same_day_sale: 0, members: [] }
       }
       bySalesperson[sp].total_sales++
+      if (isSameDaySale) bySalesperson[sp].same_day_sale++
 
       // Per-member detail for drill-down
       bySalesperson[sp].members.push({
@@ -422,7 +425,7 @@ router.get('/membership', async (req, res) => {
         member_sign_date: m.since_date,
         sale_team_member: m.sales_person_name,
         day_one_booked: (ghl?.id && dayOneContactIds.has(ghl.id)) ? 'Yes' : null,
-        same_day_sale: tours.sameDayMemberIds.has(m.id) ? 'Sale' : null,
+        same_day_sale: sameDayIds.has(m.id) ? 'Sale' : null,
         location_slug: CLUB_SLUG_MAP[m.club_number] || null,
       }
     })
@@ -435,11 +438,6 @@ router.get('/membership', async (req, res) => {
     for (const [who, count] of Object.entries(tours.byPerson || {})) {
       const key = resolveSpKey(who)
       bySalesperson[key].tours = (bySalesperson[key].tours || 0) + count
-    }
-    // Same Day Sales onto the same rows, credited to the tour-giver.
-    for (const [who, count] of Object.entries(tours.sameDayByPerson || {})) {
-      const key = resolveSpKey(who)
-      bySalesperson[key].same_day_sale += count
     }
 
     res.json({
@@ -481,7 +479,8 @@ router.get('/salesperson-stats', (req, res) => {
 // Query params: start_date, end_date, location_id, location_slug
 // ---------------------------------------------------------------------------
 // Completed tours in a window for the clubs this request is scoped to, plus
-// whether the clubs asked about record tours AT ALL.
+// whether the clubs asked about record tours AT ALL, plus every kiosk check-in
+// (closed out or not) for Same Day Sales.
 //
 // The second half is the point: tours were not stored before the check-in
 // module started keeping them, so an empty window at a club with no history is
@@ -489,33 +488,16 @@ router.get('/salesperson-stats', (req, res) => {
 // unavailable so the report can withhold the figure instead of printing a zero
 // that reads as nobody working.
 async function countToursGiven(locationFilter, startDate, endDate) {
-  if (!startDate || !endDate) return { total: null, sameDay: null, unavailable: true, byPerson: {}, sameDayByPerson: {}, sameDayMemberIds: new Set() }
+  if (!startDate || !endDate) return { total: null, unavailable: true, byPerson: {}, kioskVisits: [] }
   try {
     const { loadTourCompletions } = require('../lib/salespersonData')
-    const { displayName, sameDaySales } = require('../lib/salespersonPerformance')
+    const { displayName } = require('../lib/salespersonPerformance')
     const slugs = dayOneSlugsFor(locationFilter)
     const clubNumbers = slugs && slugs.length
       ? slugs.map(sl => SLUG_CLUB_MAP[sl]).filter(Boolean)
       : Object.values(SLUG_CLUB_MAP)
-    const { tours, joiners, configuredClubs } = await loadTourCompletions(clubNumbers, startDate, endDate)
+    const { tours, kioskVisits, configuredClubs } = await loadTourCompletions(clubNumbers, startDate, endDate)
     const anyConfigured = clubNumbers.some(n => configuredClubs.has(n))
-
-    // Same Day Sales: kiosk tours whose person joined in ABC ON THE TOUR DAY.
-    // The exact rule Club Snapshot's Same Day Sales uses (buildReport's
-    // toursConverted), so the two reports cannot disagree. Replaces the GHL
-    // "Same Day Sale" contact field, which staff set by hand.
-    const sales = sameDaySales(tours, joiners)
-    const sameDay = sales.length
-
-    // Per tour-giver, and the ABC member ids behind them, for the reports that
-    // break Same Day Sales out by person or flag it per member.
-    const sameDayByPerson = {}
-    const sameDayMemberIds = new Set()
-    for (const { tour, member } of sales) {
-      if (member?.id) sameDayMemberIds.add(member.id)
-      const who = tour.given_by_name ? displayName(tour.given_by_name) : null
-      if (who) sameDayByPerson[who] = (sameDayByPerson[who] || 0) + 1
-    }
 
     // Credited to whoever GAVE the tour, normalised through displayName so
     // "Katie  Castlio" and "Katie Castlio" are one person — the same key the
@@ -529,15 +511,16 @@ async function countToursGiven(locationFilter, startDate, endDate) {
 
     return {
       total: anyConfigured ? tours.length : null,
-      sameDay: anyConfigured ? sameDay : null,
       unavailable: !anyConfigured,
       byPerson: anyConfigured ? byPerson : {},
-      sameDayByPerson: anyConfigured ? sameDayByPerson : {},
-      sameDayMemberIds,
+      // Every kiosk check-in in the window, for Same Day Sales. Each report
+      // runs kioskSameDayIds over its OWN members, so the count is always a
+      // subset of the memberships it sits beside.
+      kioskVisits: kioskVisits || [],
     }
   } catch (err) {
     console.warn('[reports] tours given unavailable:', err.message)
-    return { total: null, sameDay: null, unavailable: true, byPerson: {}, sameDayByPerson: {}, sameDayMemberIds: new Set() }
+    return { total: null, unavailable: true, byPerson: {}, kioskVisits: [] }
   }
 }
 
@@ -786,7 +769,7 @@ router.get('/club-health', async (req, res) => {
     // re-signed or already cancelled, and the two reports disagreed.
     let abcQuery = supabaseAdmin
       .from('abc_members')
-      .select('sales_person_name, email, membership_type, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method')
+      .select('id, club_number, first_name, last_name, mobile_phone, primary_phone, sales_person_name, email, membership_type, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method')
       .not('since_date', 'is', null)
     if (start_date) abcQuery = abcQuery.gte('since_date', start_date)
     if (end_date) abcQuery = abcQuery.lte('since_date', end_date)
@@ -882,6 +865,7 @@ router.get('/club-health', async (req, res) => {
     // Tours and Same Day Sales, loaded here because the Top 3 score needs the
     // per-person same-day count as well as the card.
     const clubTours = await countToursGiven(locationFilter, start_date, end_date)
+    const sameDayIds = kioskSameDayIds(filteredMembers, clubTours.kioskVisits)
 
     // Top 3 salespeople by leaderboard score (matches POINTS in leaderboard.js)
     const POINTS = { DAY_ONE_BOOKED: 10, MEMBERSHIP: 5, SAME_DAY_SALE: 5, VIP: 2 }
@@ -899,14 +883,7 @@ router.get('/club-health', async (req, res) => {
       if (!name || name === 'Unassigned') continue
       ensurePerson(name)
       personStats[name].memberships++
-    }
-
-    // Same Day Sales, credited to whoever gave the tour (as the leaderboard).
-    for (const [rawName, count] of Object.entries(clubTours.sameDayByPerson || {})) {
-      const name = normalizeName(rawName)
-      if (!name || name === 'Unassigned') continue
-      ensurePerson(name)
-      personStats[name].same_day += count
+      if (sameDayIds.has(m.id)) personStats[name].same_day++
     }
 
     for (const c of dayOnes) {
@@ -1152,7 +1129,7 @@ router.get('/club-health', async (req, res) => {
       total_vips: totalVips || 0,
       // Kiosk tours closed the same day — see countToursGiven. Null where no
       // club in view records tours, like total_tours.
-      total_same_day_sales: clubTours.sameDay,
+      total_same_day_sales: clubTours.unavailable ? null : sameDayIds.size,
       total_day_ones_booked: totalDayOnesBooked,
       day_one_booked: dayOneBookedCounts,
       day_one_status: dayOneStatusCounts,

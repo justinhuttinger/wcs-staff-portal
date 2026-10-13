@@ -6,7 +6,7 @@ const { getSkipList } = require('../utils/membershipSkipList')
 const { countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { bookedByPerson } = require('../lib/dayOneReporting')
 const { loadTourCompletions } = require('../lib/salespersonData')
-const { sameDaySales } = require('../lib/salespersonPerformance')
+const { kioskSameDayIds } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
@@ -58,23 +58,18 @@ function monthBounds(monthStr) {
 // Slug → club number mapping
 const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
 // ---------------------------------------------------------------------------
-// Same Day Sales per tour-giver, for one club or all of them.
+// Kiosk check-ins for the month, for Same Day Sales (kioskSameDayIds).
 // ---------------------------------------------------------------------------
-async function sameDayByTourGiver(clubNumber, bounds) {
+async function loadKioskVisits(clubNumber, bounds) {
   const clubNumbers = clubNumber ? [clubNumber] : Object.values(SLUG_CLUB_MAP)
   try {
-    const { tours, joiners } = await loadTourCompletions(clubNumbers, bounds.startDate, bounds.endDate)
-    const out = {}
-    for (const { tour } of sameDaySales(tours, joiners)) {
-      if (!tour.given_by_name) continue
-      out[tour.given_by_name] = (out[tour.given_by_name] || 0) + 1
-    }
-    return out
+    const { kioskVisits } = await loadTourCompletions(clubNumbers, bounds.startDate, bounds.endDate)
+    return kioskVisits || []
   } catch (err) {
-    // The rest of the board stands on its own; a tour outage zeroes this
+    // The rest of the board stands on its own; a kiosk outage zeroes this
     // column rather than the whole leaderboard.
     console.warn('[leaderboard] same day sales unavailable:', err.message)
-    return {}
+    return []
   }
 }
 
@@ -88,7 +83,7 @@ async function aggregateLocation(locationSlug, bounds) {
   const clubNumber = locationSlug ? SLUG_CLUB_MAP[locationSlug] : null
   let abcQuery = supabaseAdmin
     .from('abc_members')
-    .select('sales_person_name, email, membership_type, sign_date, since_date')
+    .select('id, club_number, first_name, last_name, mobile_phone, primary_phone, sales_person_name, email, membership_type, sign_date, since_date')
     .eq('is_active', true)
     .not('sign_date', 'is', null)
   if (bounds.startDate) abcQuery = abcQuery.gte('sign_date', bounds.startDate)
@@ -123,11 +118,11 @@ async function aggregateLocation(locationSlug, bounds) {
   // 219 from the custom fields, and nobody loses a booking they already had.
   const dayOnesByPerson = await bookedByPerson({ startISO, endISO, locationSlug })
 
-  // Same Day Sales: tours whose person joined in ABC on the tour day, credited
-  // to whoever GAVE the tour. The stat Club Snapshot, Club Health and
-  // Salesperson Performance show; this used to read the GHL "Same Day Sale"
+  // Same Day Sales: did the check-in kiosk on the day they joined, credited to
+  // whoever sold the membership. The rule Club Snapshot, Club Health and
+  // Salesperson Performance use; this used to read the GHL "Same Day Sale"
   // contact field, which staff set by hand and often did not.
-  const sameDayByPerson = await sameDayByTourGiver(clubNumber, bounds)
+  const sameDayIds = kioskSameDayIds(members, await loadKioskVisits(clubNumber, bounds))
 
   // 3. VIPs: count by `contact.vip_team_member` custom field (per-location)
   const locationFilter = locationSlug ? { column: 'location_slug', value: locationSlug } : null
@@ -150,20 +145,13 @@ async function aggregateLocation(locationSlug, bounds) {
     }
   }
 
-  // Memberships (ABC sales)
+  // Memberships + same day sales (ABC sales, kiosk same-day)
   for (const m of members) {
     const name = normalizeName(m.sales_person_name)
     if (!name || name === 'Unassigned') continue
     ensurePerson(name)
     personStats[name].memberships++
-  }
-
-  // Same day sales, by tour-giver
-  for (const [rawName, count] of Object.entries(sameDayByPerson)) {
-    const name = normalizeName(rawName)
-    if (!name || name === 'Unassigned') continue
-    ensurePerson(name)
-    personStats[name].same_day += count
+    if (sameDayIds.has(m.id)) personStats[name].same_day++
   }
 
   // Day ones booked. Names arrive already normalised and Unassigned-filtered.
