@@ -305,21 +305,25 @@ export default function MembershipReport({ startDate, endDate, locationSlug, can
           </thead>
           <tbody>
             {rows.map(([name, stats]) => {
-              // Unassigned is the online-join bucket, not a person, so it has
-              // no per-person list to open.
-              const person = name === 'Unassigned' ? null : name
+              // Unassigned is the online-join bucket, not a person. Its sales
+              // open as the members with no salesperson on the ABC record; its
+              // other columns have no person to list by.
+              const online = name === 'Unassigned'
+              const person = online ? null : name
               const cell = (key, extraClass) => {
                 const d = COLUMN_DRILLS[key]
+                const onlineSales = online && key === 'total_sales'
                 return (
                   <DrillNumber
                     value={stats[key] || 0}
-                    enabled={canDrill && !!person}
+                    enabled={canDrill && (!!person || onlineSales)}
                     set={d.set}
                     title={`${displayName(name)} \u2014 ${d.title}`}
                     className={extraClass}
                     params={{
                       start: startDate, end: endDate, clubs: locationSlug || 'all',
-                      person, personField: d.personField, filter: d.filter, window: d.window,
+                      person, personField: d.personField,
+                      filter: onlineSales ? 'unassigned' : d.filter, window: d.window,
                       exclude_categories: excludedCategories.join(',') || undefined,
                     }}
                   />
