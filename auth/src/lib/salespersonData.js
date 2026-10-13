@@ -8,6 +8,8 @@
 const { supabaseAdmin } = require('../services/supabase')
 const { fetchAll } = require('./supabaseFetchAll')
 const { loadOutcomeRulesOrNone, onlyTours } = require('./tourOutcomeRules')
+const { tourPacificDay } = require('./salespersonPerformance')
+const { shiftDay } = require('./habits')
 
 // Kept in step with TOUR_ATTRIBUTION_DAYS in salespersonPerformance: this
 // decides how far past the window joiners are loaded, that one decides how far
@@ -130,8 +132,11 @@ async function loadTourCompletions(clubNumbers, start, end) {
         .select('id, club_number, given_by_name, outcome, completed_at, contact_email, contact_phone, contact_name')
         .eq('status', 'completed')
         .in('club_number', clubNumbers)
-        .gte('completed_at', start + 'T00:00:00Z')
-        .lte('completed_at', end + 'T23:59:59.999Z')
+        // Padded a day each side and trimmed to the Pacific day below. Cutting
+        // at UTC midnight dropped the last evening of the window and pulled in
+        // the evening before it.
+        .gte('completed_at', shiftDay(start, -1) + 'T00:00:00Z')
+        .lte('completed_at', shiftDay(end, 1) + 'T23:59:59.999Z')
         .order('id', { ascending: true })
     ),
     fetchAll(supabaseAdmin.from('tour_intakes').select('club_number').eq('status', 'completed')),
@@ -150,7 +155,10 @@ async function loadTourCompletions(clubNumbers, start, end) {
     loadOutcomeRulesOrNone('salesperson/tours'),
   ])
   return {
-    tours: onlyTours(tours, rules),
+    tours: onlyTours(tours, rules).filter(t => {
+      const day = tourPacificDay(t.completed_at)
+      return day && day >= start && day <= end
+    }),
     joiners,
     configuredClubs: new Set(everRows.map(r => r.club_number)),
   }
