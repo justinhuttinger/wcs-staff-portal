@@ -6,6 +6,7 @@ const assert = require('node:assert')
 const {
   clubName,
   buildReport, displayName, personKey, isExcludedType, ageOn, ageGroupKey, digits10, isNewSale,
+  tourPacificDay,
 } = require('../lib/salespersonPerformance')
 
 const MILWAUKIE = '31601'
@@ -729,6 +730,43 @@ test('a signup two days later is not a same day sale', () => {
   const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
   assert.equal(row.sameDaySales, 0)
   assert.equal(out.summary.sameDaySales, 0)
+})
+
+// An evening tour is a UTC "tomorrow": 6pm Pacific on 10 August is 01:00Z on
+// the 11th. Read off the UTC string, the signup that evening looked like it
+// came the day BEFORE the tour and was dropped as an existing member.
+test('an evening tour that signs the same night is a same day sale', () => {
+  const sameNight = member({
+    club_number: SALEM, id: 'm-eve', since_date: '2026-08-10',
+    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
+  })
+  const evening = tour({ completed_at: '2026-08-11T01:00:00.000Z' })
+  const out = build([], { tours: toursFor([evening], [SALEM], [sameNight]) })
+  const row = out.rows.find(r => r.salesperson === 'Katie Castlio')
+  assert.equal(row.sameDaySales, 1)
+  assert.equal(out.summary.sameDaySales, 1)
+})
+
+test('tourPacificDay reads the club day across DST', () => {
+  assert.equal(tourPacificDay('2026-08-11T01:00:00.000Z'), '2026-08-10') // PDT, 6pm
+  assert.equal(tourPacificDay('2026-12-11T02:00:00.000Z'), '2026-12-10') // PST, 6pm
+  assert.equal(tourPacificDay('2026-08-10T18:00:00.000Z'), '2026-08-10')
+  assert.equal(tourPacificDay(null), null)
+})
+
+// The summary is summed from row counts, not rebuilt from rounded rates.
+test('summary same day sales is the sum of the row counts', () => {
+  const tours = [
+    tour({ id: 't1', contact_email: 'a@example.com', contact_phone: null, contact_name: 'A A' }),
+    tour({ id: 't2', contact_email: 'b@example.com', contact_phone: null, contact_name: 'B B' }),
+    tour({ id: 't3', contact_email: 'c@example.com', contact_phone: null, contact_name: 'C C' }),
+  ]
+  const joined = member({
+    club_number: SALEM, id: 'm-a', since_date: '2026-08-10',
+    email: 'a@example.com', first_name: 'A', last_name: 'A',
+  })
+  const out = build([], { tours: toursFor(tours, [SALEM], [joined]) })
+  assert.equal(out.summary.sameDaySales, 1)
 })
 
 // The distinction that keeps the stat honest. A club that has never recorded a

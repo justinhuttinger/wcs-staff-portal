@@ -1,6 +1,6 @@
 const {
   CLUBS, CLUB_BY_SLUG, personKey, displayName, ACH_PAYMENT_METHOD, isExcludedType,
-  buildMemberIndex, daysToSign,
+  buildMemberIndex, daysToSign, tourPacificDay,
 } = require('./salespersonPerformance')
 const { isChaseable } = require('./pastDueReport')
 const { isInsuranceType, tenureMonths } = require('./attritionAnalysis')
@@ -8,6 +8,7 @@ const { classifyCalendarEvent, KIND, KIND_LABEL } = require('./calendarEventKind
 const { loadOutcomeRulesOrNone, onlyTours } = require('./tourOutcomeRules')
 const { cannotUseAch, loadCategoryMap, isCategoryExcluded } = require('./analyticsMemberFilters')
 const { planLabelFor, planLabelForKey } = require('./planType')
+const { shiftDay } = require('./habits')
 
 // ---------------------------------------------------------------------------
 // The rows behind the numbers.
@@ -862,11 +863,16 @@ const SETS = {
         .from('tour_intakes')
         .select('contact_name, completed_at, given_by_name, outcome, club_number, status')
         .eq('status', 'completed')
-        .gte('completed_at', `${start}T00:00:00Z`)
-        .lte('completed_at', `${end}T23:59:59.999Z`)
+        // Padded and trimmed to the Pacific day, as loadTourCompletions does,
+        // so this list and the Tours Given card cover the same tours.
+        .gte('completed_at', `${shiftDay(start, -1)}T00:00:00Z`)
+        .lte('completed_at', `${shiftDay(end, 1)}T23:59:59.999Z`)
       if (clubNumbers) q.in('club_number', clubNumbers)
       const [rows, rules] = await Promise.all([fetchAllRows(q), loadOutcomeRulesOrNone('records/tours')])
-      let kept = onlyTours(rows, rules)
+      let kept = onlyTours(rows, rules).filter(r => {
+        const day = tourPacificDay(r.completed_at)
+        return day && day >= start && day <= end
+      })
       if (filter === 'same-day') {
         // Straight from the loader the two cards use, so the list is their
         // rows and not a re-derivation of them.
@@ -880,7 +886,7 @@ const SETS = {
         .filter(r => matchesPerson(r.given_by_name, person))
         .map(r => ({
           member: r.contact_name || 'Unnamed prospect',
-          date: String(r.completed_at).slice(0, 10),
+          date: tourPacificDay(r.completed_at) || '',
           givenBy: r.given_by_name ? displayName(r.given_by_name) : '—',
           outcome: r.outcome || '—',
         }))

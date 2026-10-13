@@ -128,6 +128,23 @@ const VIEW_BY = ['club_salesperson', 'club', 'salesperson']
 const TOUR_ATTRIBUTION_DAYS = 30
 
 /**
+ * The club-local calendar day a tour happened on.
+ *
+ * completed_at is a UTC instant, and ABC's since_date is a club-local date.
+ * Slicing the UTC string put every tour from 5pm Pacific onward (4pm in
+ * winter) on TOMORROW, so somebody who toured at 6pm and signed at 6:30 read as
+ * having joined the day BEFORE their tour and was thrown out as an existing
+ * member. That was 183 of 600 tours since 1 September, and 22 real same-day
+ * sales with them.
+ */
+function tourPacificDay(completedAt) {
+  if (!completedAt) return null
+  const at = new Date(completedAt)
+  if (Number.isNaN(at.getTime())) return null
+  return at.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+}
+
+/**
  * Days from a tour to that person's membership starting, or null if they never
  * did within the window.
  *
@@ -142,7 +159,7 @@ const TOUR_ATTRIBUTION_DAYS = 30
  * member from being counted as a fresh conversion.
  */
 function daysToSign(tour, joinerIndex) {
-  const tourDay = String(tour.completed_at || '').slice(0, 10)
+  const tourDay = tourPacificDay(tour.completed_at)
   if (!tourDay) return null
   const member = matchMember(joinerIndex, null, {
     contact_email: tour.contact_email,
@@ -459,9 +476,9 @@ function buildReport(members, dayOnes, contactsById, filters, skipList = new Set
     // rather than dragging the club total toward zero.
     acc.vipCount += r.vipCount || 0
     acc.toursGiven += r.toursGiven || 0
-    acc.toursConverted += r.tourConversionRate === null
-      ? 0
-      : Math.round((r.tourConversionRate / 100) * (r.toursGiven || 0))
+    // The row's own count, not rebuilt from its rounded percentage: 1 of 3 is
+    // 33.3%, which multiplies back to 0.999 and can drift the total.
+    acc.toursConverted += r.sameDaySales || 0
     // Days are pooled as a SUM and a COUNT, never as an average of averages —
     // that would weight a person with one tour the same as one with fifty.
     if (r.avgDaysToConversion !== null) {
@@ -532,5 +549,5 @@ module.exports = {
   CLUBS, CLUB_BY_NUMBER, CLUB_BY_SLUG, AGE_GROUPS,
   buildReport, buildFilterOptions, buildMemberIndex, matchMember,
   isExcludedType, personKey, displayName, digits10, ageOn, ageGroupKey, pct,
-  ACH_PAYMENT_METHOD, VIEW_BY, isNewSale, clubName, daysToSign,
+  ACH_PAYMENT_METHOD, VIEW_BY, isNewSale, clubName, daysToSign, tourPacificDay,
 }
