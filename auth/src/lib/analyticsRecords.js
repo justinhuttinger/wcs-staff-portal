@@ -667,6 +667,11 @@ const SETS = {
         .filter(r => !isExcludedType(r.membership_type, skip))
         .filter(r => matchesPerson(r.sales_person_name, person))
 
+      // filter 'unassigned': no salesperson on the ABC record, the bucket the
+      // Membership report shows as "Online". There is no person to match on,
+      // so the blank name is the filter.
+      if (filter === 'unassigned') kept = kept.filter(r => !String(r.sales_person_name || '').trim())
+
       // Same Day: did the check-in kiosk on the day they joined, the rule the
       // Same Day Sales card counts (not the GHL field staff used to set by
       // hand). Skipped entirely when there is nothing to flag.
