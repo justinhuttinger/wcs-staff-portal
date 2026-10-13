@@ -1,6 +1,6 @@
 const {
   CLUBS, CLUB_BY_SLUG, personKey, displayName, ACH_PAYMENT_METHOD, isExcludedType,
-  buildMemberIndex, daysToSign, tourPacificDay,
+  buildMemberIndex, daysToSign, tourPacificDay, sameDaySales,
 } = require('./salespersonPerformance')
 const { isChaseable } = require('./pastDueReport')
 const { isInsuranceType, tenureMonths } = require('./attritionAnalysis')
@@ -656,7 +656,7 @@ const SETS = {
     async load({ start, end, clubNumbers, person, filter, exclude }) {
       const q = lazySupabase()
         .from('abc_members')
-        .select('first_name, last_name, membership_type, agreement_term, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method, sales_person_name, email, club_number')
+        .select('id, first_name, last_name, membership_type, agreement_term, agreement_number, sign_date, since_date, next_due_amount, agreement_payment_method, sales_person_name, email, club_number')
         .not('since_date', 'is', null)
         .gte('since_date', start)
         .lte('since_date', end)
@@ -667,13 +667,13 @@ const SETS = {
         .filter(r => !isExcludedType(r.membership_type, skip))
         .filter(r => matchesPerson(r.sales_person_name, person))
 
-      // Same Day Sale lives in GHL, not ABC, and the report joins the two on
-      // email. Skipped entirely when there is nothing to join, because it is
-      // one query per fifty addresses.
-      const sameDayByEmail = kept.length
-        ? await sameDaySaleByEmail(kept.map(r => r.email))
-        : new Map()
-      const isSameDay = r => sameDayByEmail.get(String(r.email || '').toLowerCase()) === 'Sale'
+      // Same Day: joined in ABC on the day of a tour, the rule the Same Day
+      // Sales card counts (not the GHL field staff used to set by hand).
+      // Skipped entirely when there is nothing to flag.
+      const sameDayIds = kept.length
+        ? await sameDayMemberIds(clubNumbers || CLUBS.map(c => c.clubNumber), start, end)
+        : new Set()
+      const isSameDay = r => sameDayIds.has(r.id)
 
       if (filter === 'same-day') kept = kept.filter(isSameDay)
 
@@ -1024,25 +1024,13 @@ async function contactNames(ids) {
 }
 
 /**
- * Same Day Sale, per email address, off the resolved-custom-field view.
- *
- * Chunked at fifty exactly as GET /reports/club-health chunks it, so the two
- * ask the same question of the same view.
+ * ABC member ids that joined on the day of a tour, from the loader the Same
+ * Day Sales card uses, so the flag and the count are one rule.
  */
-async function sameDaySaleByEmail(emails) {
-  const unique = [...new Set((emails || []).map(e => String(e || '').toLowerCase()).filter(Boolean))]
-  const out = new Map()
-  for (let i = 0; i < unique.length; i += 50) {
-    const { data, error } = await lazySupabase()
-      .from('ghl_contacts_report')
-      .select('email, same_day_sale')
-      .in('email', unique.slice(i, i + 50))
-    if (error) throw new Error(error.message)
-    for (const r of data || []) {
-      if (r.email) out.set(String(r.email).toLowerCase(), r.same_day_sale)
-    }
-  }
-  return out
+async function sameDayMemberIds(clubNumbers, start, end) {
+  const { loadTourCompletions } = require('./salespersonData')
+  const { tours, joiners } = await loadTourCompletions(clubNumbers, start, end)
+  return new Set(sameDaySales(tours, joiners).map(s => s.member?.id).filter(Boolean))
 }
 
 /**

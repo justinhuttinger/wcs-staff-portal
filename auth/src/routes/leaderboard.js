@@ -5,6 +5,8 @@ const { requireRole, ROLE_HIERARCHY, canSeeAllLocations } = require('../middlewa
 const { getSkipList } = require('../utils/membershipSkipList')
 const { countVipsByTeamMember } = require('../utils/vipsByTeamMember')
 const { bookedByPerson } = require('../lib/dayOneReporting')
+const { loadTourCompletions } = require('../lib/salespersonData')
+const { sameDaySales } = require('../lib/salespersonPerformance')
 
 const router = Router()
 router.use(authenticate)
@@ -56,6 +58,27 @@ function monthBounds(monthStr) {
 // Slug → club number mapping
 const { SLUG_CLUB_MAP } = require('../utils/locationSlug')
 // ---------------------------------------------------------------------------
+// Same Day Sales per tour-giver, for one club or all of them.
+// ---------------------------------------------------------------------------
+async function sameDayByTourGiver(clubNumber, bounds) {
+  const clubNumbers = clubNumber ? [clubNumber] : Object.values(SLUG_CLUB_MAP)
+  try {
+    const { tours, joiners } = await loadTourCompletions(clubNumbers, bounds.startDate, bounds.endDate)
+    const out = {}
+    for (const { tour } of sameDaySales(tours, joiners)) {
+      if (!tour.given_by_name) continue
+      out[tour.given_by_name] = (out[tour.given_by_name] || 0) + 1
+    }
+    return out
+  } catch (err) {
+    // The rest of the board stands on its own; a tour outage zeroes this
+    // column rather than the whole leaderboard.
+    console.warn('[leaderboard] same day sales unavailable:', err.message)
+    return {}
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helper: aggregate leaderboard data for a single location_slug
 // ---------------------------------------------------------------------------
 async function aggregateLocation(locationSlug, bounds) {
@@ -88,20 +111,6 @@ async function aggregateLocation(locationSlug, bounds) {
     && m.since_date && m.sign_date && m.since_date >= m.sign_date
   )
 
-  // Look up same_day_sale from GHL for these members
-  const memberEmails = [...new Set(members.map(m => m.email).filter(Boolean))]
-  const ghlByEmail = {}
-  for (let i = 0; i < memberEmails.length; i += 50) {
-    const chunk = memberEmails.slice(i, i + 50)
-    const { data: ghlRows } = await supabaseAdmin
-      .from('ghl_contacts_report')
-      .select('email, same_day_sale')
-      .in('email', chunk)
-    for (const g of (ghlRows || [])) {
-      if (g.email) ghlByEmail[g.email.toLowerCase()] = g
-    }
-  }
-
   // 2. Day Ones Booked, from day_one_appointments (see lib/dayOneReporting).
   //
   // This used to count ghl_contacts_report.day_one_booking_team_member, which
@@ -113,6 +122,12 @@ async function aggregateLocation(locationSlug, bounds) {
   // Measured over August across all clubs: 254 attributed bookings here versus
   // 219 from the custom fields, and nobody loses a booking they already had.
   const dayOnesByPerson = await bookedByPerson({ startISO, endISO, locationSlug })
+
+  // Same Day Sales: tours whose person joined in ABC on the tour day, credited
+  // to whoever GAVE the tour. The stat Club Snapshot, Club Health and
+  // Salesperson Performance show; this used to read the GHL "Same Day Sale"
+  // contact field, which staff set by hand and often did not.
+  const sameDayByPerson = await sameDayByTourGiver(clubNumber, bounds)
 
   // 3. VIPs: count by `contact.vip_team_member` custom field (per-location)
   const locationFilter = locationSlug ? { column: 'location_slug', value: locationSlug } : null
@@ -135,14 +150,20 @@ async function aggregateLocation(locationSlug, bounds) {
     }
   }
 
-  // Memberships + same day sales (ABC sales, GHL same_day enrichment)
+  // Memberships (ABC sales)
   for (const m of members) {
     const name = normalizeName(m.sales_person_name)
     if (!name || name === 'Unassigned') continue
     ensurePerson(name)
     personStats[name].memberships++
-    const ghl = m.email ? ghlByEmail[m.email.toLowerCase()] : null
-    if (ghl?.same_day_sale === 'Sale') personStats[name].same_day++
+  }
+
+  // Same day sales, by tour-giver
+  for (const [rawName, count] of Object.entries(sameDayByPerson)) {
+    const name = normalizeName(rawName)
+    if (!name || name === 'Unassigned') continue
+    ensurePerson(name)
+    personStats[name].same_day += count
   }
 
   // Day ones booked. Names arrive already normalised and Unassigned-filtered.

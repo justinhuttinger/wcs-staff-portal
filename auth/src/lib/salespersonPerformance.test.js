@@ -6,7 +6,7 @@ const assert = require('node:assert')
 const {
   clubName,
   buildReport, displayName, personKey, isExcludedType, ageOn, ageGroupKey, digits10, isNewSale,
-  tourPacificDay,
+  tourPacificDay, sameDaySales,
 } = require('../lib/salespersonPerformance')
 
 const MILWAUKIE = '31601'
@@ -767,6 +767,29 @@ test('summary same day sales is the sum of the row counts', () => {
   })
   const out = build([], { tours: toursFor(tours, [SALEM], [joined]) })
   assert.equal(out.summary.sameDaySales, 1)
+})
+
+// sameDaySales is the list every other report counts (leaderboard, Salesperson
+// Stats, Club Health). It must agree with buildReport's count.
+test('sameDaySales pairs each same-day tour with its member', () => {
+  const joined = member({
+    club_number: SALEM, id: 'm-sd', since_date: '2026-08-10',
+    email: 'walkin@example.com', first_name: 'Walk', last_name: 'In',
+  })
+  const later = member({
+    club_number: SALEM, id: 'm-later', since_date: '2026-08-14',
+    email: 'later@example.com', first_name: 'Lay', last_name: 'Ter',
+  })
+  const tours = [
+    tour(),
+    tour({ id: 't-later', contact_email: 'later@example.com', contact_phone: null, contact_name: 'Lay Ter' }),
+  ]
+  const out = sameDaySales(tours, [joined, later])
+  assert.equal(out.length, 1)
+  assert.equal(out[0].member.id, 'm-sd')
+  assert.equal(out[0].tour.given_by_name, 'Katie Castlio')
+  const report = build([], { tours: toursFor(tours, [SALEM], [joined, later]) })
+  assert.equal(report.summary.sameDaySales, out.length)
 })
 
 // The distinction that keeps the stat honest. A club that has never recorded a

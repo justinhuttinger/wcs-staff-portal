@@ -145,8 +145,8 @@ function tourPacificDay(completedAt) {
 }
 
 /**
- * Days from a tour to that person's membership starting, or null if they never
- * did within the window.
+ * The member a tour turned into and the days from the tour to their membership
+ * starting ({ member, days }), or null if they never did within the window.
  *
  * 0 means they signed the same day. The tour is matched on email, phone or
  * name rather than on abc_member_id, because that id is only stamped when the
@@ -158,7 +158,7 @@ function tourPacificDay(completedAt) {
  * bounded below by the tour date. That is what keeps somebody who was already a
  * member from being counted as a fresh conversion.
  */
-function daysToSign(tour, joinerIndex) {
+function tourSignup(tour, joinerIndex) {
   const tourDay = tourPacificDay(tour.completed_at)
   if (!tourDay) return null
   const member = matchMember(joinerIndex, null, {
@@ -175,7 +175,28 @@ function daysToSign(tour, joinerIndex) {
   if (!Number.isFinite(diff)) return null
   // A join BEFORE the tour is not a conversion; they were already a member.
   if (diff < 0 || diff > TOUR_ATTRIBUTION_DAYS) return null
-  return diff
+  return { member, days: diff }
+}
+
+function daysToSign(tour, joinerIndex) {
+  const signup = tourSignup(tour, joinerIndex)
+  return signup ? signup.days : null
+}
+
+/**
+ * THE Same Day Sales rule, as a list: every tour whose person joined in ABC on
+ * the tour day, paired with the member they became. Credited to whoever GAVE
+ * the tour. Every report that shows a same-day number counts this list, so the
+ * leaderboard, Salesperson Stats and Club Health cannot disagree.
+ */
+function sameDaySales(tours, joiners) {
+  const joinerIndex = buildMemberIndex(joiners || [])
+  const out = []
+  for (const t of tours || []) {
+    const signup = tourSignup(t, joinerIndex)
+    if (signup && signup.days === 0) out.push({ tour: t, member: signup.member })
+  }
+  return out
 }
 
 function anyIn(row, configuredClubs) {
@@ -549,5 +570,5 @@ module.exports = {
   CLUBS, CLUB_BY_NUMBER, CLUB_BY_SLUG, AGE_GROUPS,
   buildReport, buildFilterOptions, buildMemberIndex, matchMember,
   isExcludedType, personKey, displayName, digits10, ageOn, ageGroupKey, pct,
-  ACH_PAYMENT_METHOD, VIEW_BY, isNewSale, clubName, daysToSign, tourPacificDay,
+  ACH_PAYMENT_METHOD, VIEW_BY, isNewSale, clubName, daysToSign, tourPacificDay, tourSignup, sameDaySales,
 }
