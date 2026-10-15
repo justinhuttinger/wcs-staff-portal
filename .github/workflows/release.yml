@@ -22,6 +22,14 @@
 #   CSC_KEY_PASSWORD            - the password protecting that .p12
 #   CLOUDFLARE_API_TOKEN        - API token with "Workers R2 Storage: Edit"
 #   CLOUDFLARE_ACCOUNT_ID       - the Cloudflare account that owns the bucket
+#   AZURE_TENANT_ID             - Windows signing: Entra tenant of the app registration
+#   AZURE_CLIENT_ID             - Windows signing: app registration (client) ID
+#   AZURE_CLIENT_SECRET         - Windows signing: that app registration's client secret
+#
+# Repository variables (Settings -> Variables, not secrets) for Windows signing:
+#   AZURE_SIGN_ENDPOINT         - Trusted Signing endpoint for the account's region
+#   AZURE_SIGN_ACCOUNT          - Trusted Signing account name
+#   AZURE_SIGN_PROFILE          - certificate profile name
 #
 # Team ID (GVZRM9Z5SM) is baked into electron-builder.yml — it's a public
 # identifier, not a secret.
@@ -94,13 +102,22 @@ jobs:
         working-directory: launcher
         run: npm ci
 
-      # ---- Windows build ----
+      # ---- Windows build (signed via Azure Trusted Signing) ----
+      # build.js signs when the AZURE_* values below are all set, and builds
+      # unsigned with a warning when none are (fails if only some are).
+      # Unsigned builds are blocked by Windows Smart App Control.
       - name: Build Windows installer
         if: matrix.os == 'windows-latest'
         working-directory: launcher
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win --publish always
+          AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: node build.js --win --publish always
 
       # ---- macOS build (signed + notarized) ----
       # CSC_LINK + CSC_KEY_PASSWORD trigger code signing.
