@@ -7,7 +7,8 @@ const PAGE_SIZE = 24
 
 // Search the exercise library, preview one, tick several and add them all to
 // a section in one go. "Add your own" covers anything the library lacks.
-export default function ExercisePicker({ sectionLabel, onAdd, onClose }) {
+// `max`: how many more exercises the day has room for (the builder's limit).
+export default function ExercisePicker({ sectionLabel, onAdd, onClose, max = Infinity }) {
   const [q, setQ] = useState('')
   const [debounced, setDebounced] = useState('')
   const [muscle, setMuscle] = useState('')
@@ -60,9 +61,11 @@ export default function ExercisePicker({ sectionLabel, onAdd, onClose }) {
   }, [preview, adding, onClose])
 
   const isSelected = (id) => selected.some(s => s.id === id)
-  const toggle = (ex) => setSelected(list => (
-    list.some(s => s.id === ex.id) ? list.filter(s => s.id !== ex.id) : [...list, ex]
-  ))
+  const toggle = (ex) => setSelected(list => {
+    if (list.some(s => s.id === ex.id)) return list.filter(s => s.id !== ex.id)
+    return list.length >= max ? list : [...list, ex]
+  })
+  const atMax = selected.length >= max
 
   const field = 'px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm'
 
@@ -157,13 +160,14 @@ export default function ExercisePicker({ sectionLabel, onAdd, onClose }) {
         <div className="px-4 sm:px-5 py-3 border-t border-border flex items-center gap-3">
           <div className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto">
             {selected.length === 0
-              ? <span className="text-sm text-text-muted">No exercises selected yet.</span>
+              ? <span className="text-sm text-text-muted">No exercises selected yet.{Number.isFinite(max) ? ` This day has room for ${max} more.` : ''}</span>
               : selected.map((s, i) => (
                 <button key={s.id} onClick={() => toggle(s)} title="Remove"
                         className="shrink-0 px-2 py-1 rounded-full bg-bg border border-border text-xs font-medium hover:border-wcs-red">
                   {i + 1}. {s.name} ×
                 </button>
               ))}
+            {atMax && selected.length ? <span className="shrink-0 self-center text-xs text-text-muted">That fills the day.</span> : null}
           </div>
           <button onClick={onClose} className="px-3 py-2 text-sm text-text-muted hover:text-text-primary">Cancel</button>
           <button
@@ -192,7 +196,7 @@ export default function ExercisePicker({ sectionLabel, onAdd, onClose }) {
             onCreated={(ex) => {
               setAdding(false)
               setResults(list => [ex, ...list.filter(r => r.id !== ex.id)])
-              setSelected(list => [...list, ex])
+              setSelected(list => (list.length >= max ? list : [...list, ex]))
             }}
           />
         ) : null}

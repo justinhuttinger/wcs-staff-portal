@@ -2,6 +2,10 @@
 // relabel rows and recount volume on every keystroke without a round trip.
 // Keep the rules identical to the server's.
 
+// The server refuses a save past these (auth/src/lib/coachingPrograms.js).
+export const MAX_DAYS = 14
+export const MAX_ITEMS = 40
+
 export const SECTIONS = [
   { key: 'warmup', label: 'Warm up' },
   { key: 'workout', label: 'Workout' },

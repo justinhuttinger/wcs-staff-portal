@@ -3,7 +3,7 @@ import { coachingApi } from './coachingApi'
 import ExercisePicker from './ExercisePicker.jsx'
 import ExerciseThumb from './ExerciseThumb.jsx'
 import {
-  SECTIONS, itemLabels, volumeByMuscle, mergeVolume, volumeChips, titleCase, formatSets, formatRest, parseRest,
+  SECTIONS, MAX_DAYS, MAX_ITEMS, itemLabels, volumeByMuscle, mergeVolume, volumeChips, titleCase, formatSets, formatRest, parseRest,
 } from './volume'
 
 // The Kahunas-style program builder: title, tags, overview, day tabs, and per
@@ -207,11 +207,15 @@ export default function ProgramBuilder({ programId, create, clientName, onClose,
   }
 
   // ---- days ----------------------------------------------------------------
+  const daysFull = Boolean(draft && draft.days.length >= MAX_DAYS)
+  const daysFullHint = `A program can have up to ${MAX_DAYS} days`
   const addDay = () => {
+    if (daysFull) return
     change(d => ({ ...d, days: [...d.days, blankDay(d.days.length + 1)] }))
     setActive(draft.days.length)
   }
   const duplicateDay = (i) => {
+    if (daysFull) return
     const src = draft.days[i]
     const copy = {
       key: uid(), name: `${src.name} (copy)`.slice(0, 80), instructions: src.instructions,
@@ -242,7 +246,7 @@ export default function ProgramBuilder({ programId, create, clientName, onClose,
     const isWork = section === 'workout'
     setItems(active, items => [
       ...items,
-      ...exercises.map(ex => ({
+      ...exercises.slice(0, Math.max(0, MAX_ITEMS - items.length)).map(ex => ({
         key: uid(), section, exercise_id: ex.id, exercise: ex,
         sets: isWork ? 3 : 1, reps: isWork ? '8-12' : '', weight: '', rir: '',
         rest_seconds: isWork ? 90 : null, notes: '', superset_group: null,
@@ -406,9 +410,13 @@ export default function ProgramBuilder({ programId, create, clientName, onClose,
             <span className={`ml-1.5 text-xs font-normal ${i === active ? 'text-white/80' : 'text-text-muted'}`}>{d.items.length}</span>
           </button>
         ))}
-        <button onClick={addDay} className="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold text-wcs-red hover:bg-wcs-red/10">
+        <button
+          onClick={addDay} disabled={daysFull} title={daysFull ? daysFullHint : undefined}
+          className="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold text-wcs-red hover:bg-wcs-red/10 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+        >
           + Add day
         </button>
+        {daysFull ? <span className="shrink-0 px-2 text-xs text-text-muted">{daysFullHint}</span> : null}
       </div>
 
       {day ? (
@@ -426,7 +434,7 @@ export default function ProgramBuilder({ programId, create, clientName, onClose,
               <div className="flex gap-1">
                 <IconButton label="Move day left" disabled={active === 0} onClick={() => moveDay(active, -1)} d="M15 19l-7-7 7-7" />
                 <IconButton label="Move day right" disabled={active === draft.days.length - 1} onClick={() => moveDay(active, 1)} d="M9 5l7 7-7 7" />
-                <button onClick={() => duplicateDay(active)} className="px-3 py-2 rounded-lg border border-border text-sm font-medium hover:border-text-muted">Duplicate</button>
+                <button onClick={() => duplicateDay(active)} disabled={daysFull} title={daysFull ? daysFullHint : undefined} className="px-3 py-2 rounded-lg border border-border text-sm font-medium hover:border-text-muted disabled:opacity-40 disabled:cursor-not-allowed">Duplicate</button>
                 <button onClick={() => deleteDay(active)} className="px-3 py-2 rounded-lg border border-border text-sm font-medium text-text-muted hover:text-wcs-red hover:border-wcs-red">Delete</button>
               </div>
             </div>
@@ -449,7 +457,8 @@ export default function ProgramBuilder({ programId, create, clientName, onClose,
               key={s.key} section={s}
               items={day.items.filter(it => it.section === s.key)}
               labelFor={labelFor}
-              onAdd={() => setPicker(s.key)}
+              full={day.items.length >= MAX_ITEMS}
+              onAdd={() => { if (day.items.length < MAX_ITEMS) setPicker(s.key) }}
               onPatch={patchItem}
               onRemove={removeItem}
               onMove={moveItem}
@@ -480,6 +489,7 @@ export default function ProgramBuilder({ programId, create, clientName, onClose,
       {picker ? (
         <ExercisePicker
           sectionLabel={SECTIONS.find(s => s.key === picker)?.label}
+          max={Math.max(0, MAX_ITEMS - (day?.items.length || 0))}
           onClose={() => setPicker(null)}
           onAdd={(list) => addExercises(picker, list)}
         />
@@ -544,7 +554,9 @@ function TagInput({ tags, onChange }) {
 
 const ROW_GRID = 'lg:grid lg:grid-cols-[20px_34px_40px_minmax(150px,1.4fr)_60px_76px_76px_56px_68px_minmax(110px,1fr)_auto] lg:items-center'
 
-function SectionCard({ section, items, labelFor, onAdd, onPatch, onRemove, onMove, onNudge, onSuperset }) {
+const DAY_FULL_HINT = `A day can have up to ${MAX_ITEMS} exercises`
+
+function SectionCard({ section, items, labelFor, full, onAdd, onPatch, onRemove, onMove, onNudge, onSuperset }) {
   const [armed, setArmed] = useState(null)
   const [dragging, setDragging] = useState(null)
   const [hint, setHint] = useState(null) // index within this section
@@ -585,7 +597,9 @@ function SectionCard({ section, items, labelFor, onAdd, onPatch, onRemove, onMov
           {section.label}
           <span className="ml-2 text-xs font-normal text-text-muted">{items.length ? `${items.length} exercise${items.length === 1 ? '' : 's'}` : ''}</span>
         </h4>
-        <button onClick={onAdd} className="text-sm font-semibold text-wcs-red hover:underline">+ Add an exercise</button>
+        {full
+          ? <span className="text-xs text-text-muted">{DAY_FULL_HINT}</span>
+          : <button onClick={onAdd} className="text-sm font-semibold text-wcs-red hover:underline">+ Add an exercise</button>}
       </div>
 
       {items.length ? (
@@ -597,10 +611,10 @@ function SectionCard({ section, items, labelFor, onAdd, onPatch, onRemove, onMov
       <div className="px-2 sm:px-3 py-2">
         {items.length === 0 ? (
           <button
-            onClick={onAdd}
-            className={`w-full py-5 rounded-lg border-2 border-dashed text-sm transition-colors ${hint != null ? 'border-wcs-red text-wcs-red bg-wcs-red/5' : 'border-border text-text-muted hover:border-text-muted'}`}
+            onClick={onAdd} disabled={full}
+            className={`w-full py-5 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg border-2 border-dashed text-sm transition-colors ${hint != null ? 'border-wcs-red text-wcs-red bg-wcs-red/5' : 'border-border text-text-muted hover:border-text-muted'}`}
           >
-            {hint != null ? 'Drop here' : `Nothing in ${section.label.toLowerCase()} yet. Add an exercise`}
+            {hint != null ? 'Drop here' : full ? DAY_FULL_HINT : `Nothing in ${section.label.toLowerCase()} yet. Add an exercise`}
           </button>
         ) : items.map((it, idx) => {
           const next = items[idx + 1]

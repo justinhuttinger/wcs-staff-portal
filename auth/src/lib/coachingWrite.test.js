@@ -52,13 +52,13 @@ test('applyTreePlan inserts days before items, deletes last, and resolves new da
   const ops = db.calls.map(c => `${c.op}:${c.table}`)
   assert.deepEqual(ops, [
     'insert:memberapp_program_days',
-    'upsert:memberapp_program_days',
     'insert:memberapp_program_items',
+    'upsert:memberapp_program_days',
     'upsert:memberapp_program_items',
     'delete:memberapp_program_items',
     'delete:memberapp_program_days',
   ])
-  const [dayInsert, , itemInsert, itemUpsert, itemDelete, dayDelete] = db.calls
+  const [dayInsert, itemInsert, , itemUpsert, itemDelete, dayDelete] = db.calls
   assert.equal(dayInsert.rows[0].program_id, 'prog-1')
   assert.deepEqual(itemInsert.rows.map(r => r.day_id), ['new-day-1'])
   const moved = itemUpsert.rows.find(r => r.id === 'i3')
@@ -71,6 +71,58 @@ test('applyTreePlan inserts days before items, deletes last, and resolves new da
 test('applyTreePlan skips empty steps and stops at the first error', async () => {
   const { tree } = normaliseTree({ name: 'P', days: [{ name: 'A', items: [item()] }] })
   const db = fakeDb({ failOn: c => c.table === 'memberapp_program_items' })
-  await assert.rejects(applyTreePlan(db, 'p', planTreeDiff({ days: [] }, tree)), /boom/)
+  await assert.rejects(applyTreePlan(db, 'p', planTreeDiff({ days: [] }, tree)), (err) => {
+    assert.match(err.message, /boom/)
+    assert.equal(err.partial, true) // the days went in before the items failed
+    return true
+  })
   assert.deepEqual(db.calls.map(c => c.op), ['insert', 'insert'])
+})
+
+test('applyTreePlan: a failure on the first write is not a partial save', async () => {
+  const { tree } = normaliseTree({ name: 'P', days: [{ name: 'A', items: [item()] }] })
+  const db = fakeDb({ failOn: c => c.table === 'memberapp_program_days' })
+  await assert.rejects(applyTreePlan(db, 'p', planTreeDiff({ days: [] }, tree)), (err) => err.partial === false)
+})
+
+test('applyTreePlan places items on new days by insert order, not by position', async () => {
+  // Two new days that (as in an old copy) share a position: matching by
+  // position would put both days' items on one of them.
+  const plan = {
+    days: {
+      insert: [
+        { day_index: 0, row: { position: 0, name: 'A' } },
+        { day_index: 1, row: { position: 0, name: 'B' } },
+      ],
+      update: [],
+      delete: [],
+    },
+    items: {
+      insert: [
+        { day_index: 0, row: { position: 0, exercise_id: EX } },
+        { day_index: 1, row: { position: 0, exercise_id: EX } },
+      ],
+      update: [],
+      delete: [],
+    },
+  }
+  const db = fakeDb()
+  await applyTreePlan(db, 'p', plan)
+  assert.deepEqual(db.calls[1].rows.map(r => r.day_id), ['new-day-1', 'new-day-2'])
+})
+
+test('applyTreePlan refuses to guess when the day insert returns the wrong number of rows', async () => {
+  const plan = {
+    days: { insert: [{ day_index: 0, row: { position: 0, name: 'A' } }], update: [], delete: [] },
+    items: { insert: [], update: [], delete: [] },
+  }
+  const db = fakeDb()
+  const real = db.from.bind(db)
+  db.from = (table) => {
+    const chain = real(table)
+    const then = chain.then
+    chain.then = (resolve) => then((r) => resolve({ ...r, data: [] }))
+    return chain
+  }
+  await assert.rejects(applyTreePlan(db, 'p', plan), /new days/)
 })
