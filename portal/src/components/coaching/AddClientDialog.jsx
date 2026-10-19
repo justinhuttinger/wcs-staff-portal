@@ -64,7 +64,8 @@ export default function AddClientDialog({ me, onClose, onAdded }) {
     }
   }
 
-  const takenByOther = picked?.is_client && picked.status === 'active' && picked.coach && picked.coach.id !== me.id
+  // Someone else's member, active or archived: only a manager can take them on.
+  const takenByOther = Boolean(picked?.coach && picked.coach.id !== me.id)
 
   return (
     <div className="fixed inset-0 z-[70] flex items-start sm:items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto" onClick={onClose}>
@@ -118,7 +119,7 @@ export default function AddClientDialog({ me, onClose, onAdded }) {
               <button type="button" onClick={() => setPicked(null)} className="text-xs font-semibold text-wcs-red hover:underline">Change</button>
             </div>
             {takenByOther && !me.isManager ? (
-              <p className="text-sm text-amber-600">{picked.name} is already coached by {picked.coach.name}. A manager can reassign them to you.</p>
+              <p className="text-sm text-amber-600">{picked.name} {picked.status === 'archived' ? 'was coached by' : 'is already coached by'} {picked.coach.name || 'another trainer'}. A manager can reassign them to you.</p>
             ) : null}
 
             {me.isManager ? (

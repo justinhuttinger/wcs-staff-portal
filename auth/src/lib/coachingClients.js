@@ -178,6 +178,25 @@ function loggedExercises(rows) {
     .sort((a, b) => b.days - a.days || String(a.name).localeCompare(String(b.name)))
 }
 
+/**
+ * A member search term safe inside a PostgREST or() filter: commas and
+ * parentheses split or group conditions, double quotes and backslashes quote
+ * and escape values, and * / % are wildcards. Each becomes a space; runs of
+ * spaces collapse.
+ */
+function searchTerm(q) {
+  return String(q == null ? '' : q).replace(/[,()*%"\\]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Below manager, a member someone else already coaches (any status, archived
+ * included) cannot be taken on; a manager has to reassign them.
+ */
+function coachConflict(existing, callerId, isManager) {
+  if (isManager || !existing || !existing.coach_staff_id) return false
+  return String(existing.coach_staff_id) !== String(callerId || '')
+}
+
 function latestAt(values) {
   const list = (values || []).filter(Boolean).map(String)
   if (!list.length) return null
@@ -185,6 +204,6 @@ function latestAt(values) {
 }
 
 module.exports = {
-  pairKey, weekStart, programPhase, currentProgram, scheduledPrograms, clientCounts, summarizeClient,
-  buildActivity, epley, progressFor, loggedExercises, latestAt,
+  pairKey, weekStart, programPhase, currentProgram, scheduledPrograms, clientCounts, summarizeClient, lastWorkoutBy,
+  buildActivity, epley, progressFor, loggedExercises, latestAt, searchTerm, coachConflict,
 }

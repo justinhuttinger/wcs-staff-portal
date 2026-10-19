@@ -122,3 +122,41 @@ test('latestAt and pairKey', () => {
   assert.equal(latestAt([]), null)
   assert.equal(pairKey({ member_id: 'a', club_number: 30935 }), 'a|30935')
 })
+
+test('lastWorkoutBy keeps each client\'s latest completed day', () => {
+  const { lastWorkoutBy } = require('./coachingClients')
+  const map = lastWorkoutBy([
+    { member_id: '1', club_number: '10', performed_on: '2026-01-02', completed_at: 'x' },
+    { member_id: '1', club_number: '10', performed_on: '2026-03-04', completed_at: 'x' },
+    { member_id: '1', club_number: '20', performed_on: '2026-02-01', completed_at: 'x' },
+    { member_id: '2', club_number: '10', performed_on: '2026-05-01', completed_at: null },
+  ])
+  assert.strictEqual(map.get('1|10'), '2026-03-04')
+  assert.strictEqual(map.get('1|20'), '2026-02-01')
+  assert.strictEqual(map.has('2|10'), false)
+})
+
+test('searchTerm strips characters that break a PostgREST or() filter', () => {
+  const { searchTerm } = require('./coachingClients')
+  assert.strictEqual(searchTerm('Smith'), 'Smith')
+  assert.strictEqual(searchTerm('a,b(c)d*e%f'), 'a b c d e f')
+  assert.strictEqual(searchTerm('jo"hn\\'), 'jo hn')
+  assert.strictEqual(searchTerm('a\\"b'), 'a b')
+  assert.strictEqual(searchTerm('  "x"  '), 'x')
+  assert.strictEqual(searchTerm(null), '')
+  assert.strictEqual(searchTerm('o\'brien@x.com'), 'o\'brien@x.com')
+})
+
+test('coachConflict: below manager, a member coached by someone else is blocked whatever the status', () => {
+  const { coachConflict } = require('./coachingClients')
+  const me = 'aaaaaaaa-0000-0000-0000-000000000001'
+  const other = 'aaaaaaaa-0000-0000-0000-000000000002'
+  assert.strictEqual(coachConflict({ coach_staff_id: other, status: 'active', tier: 'training' }, me, false), true)
+  assert.strictEqual(coachConflict({ coach_staff_id: other, status: 'archived', tier: 'basic' }, me, false), true)
+  assert.strictEqual(coachConflict({ coach_staff_id: other, status: 'active', tier: 'basic' }, me, false), true)
+  assert.strictEqual(coachConflict({ coach_staff_id: me, status: 'archived' }, me, false), false)
+  assert.strictEqual(coachConflict({ coach_staff_id: null, status: 'active' }, me, false), false)
+  assert.strictEqual(coachConflict(null, me, false), false)
+  // Managers may take over or reassign.
+  assert.strictEqual(coachConflict({ coach_staff_id: other, status: 'archived' }, me, true), false)
+})

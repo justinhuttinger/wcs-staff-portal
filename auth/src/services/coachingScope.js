@@ -60,18 +60,23 @@ async function assertClientAccess(req, memberId, clubNumber) {
 }
 
 /**
- * Express middleware for /member-app's per-member routes. Managers and up keep
- * the Admin -> Member App behavior they had. Below manager, the caller needs
- * the Coaching tile and the member must be their client. `locate(req)` returns
+ * Express middleware for /member-app's per-member routes. Everyone goes
+ * through assertClientAccess: a manager reaches members at their clubs
+ * (corporate/director/admin every club), no tile needed for Admin -> Member
+ * App. Below manager, the caller also needs the Coaching tile and the member
+ * must be their client. `locate(req)` returns
  * { member_id, club_number } (may be async, e.g. from a habit row).
  */
 function requireClientAccess(locate) {
   return async (req, res, next) => {
     try {
       if (!req.staff) return res.status(401).json({ error: 'Authentication required' })
-      if (roleLevel(req.staff.role) >= roleLevel('manager')) return next()
-      const tiles = await getVisibleTools(req.staff)
-      if (!tiles.includes('coaching')) return res.status(403).json({ error: 'Tile access required: coaching' })
+      // Managers keep Admin -> Member App without the tile, but still only for
+      // members at their clubs; corporate/director/admin see all locations.
+      if (roleLevel(req.staff.role) < roleLevel('manager')) {
+        const tiles = await getVisibleTools(req.staff)
+        if (!tiles.includes('coaching')) return res.status(403).json({ error: 'Tile access required: coaching' })
+      }
       const pair = await locate(req)
       if (!pair) return res.status(404).json({ error: 'Not found' })
       await assertClientAccess(req, pair.member_id, pair.club_number)

@@ -64,7 +64,7 @@ export default function ClientsList({ me, onOpen, onAdd }) {
             <p>
               {debounced ? 'Nobody matches that search.'
                 : status === 'archived' ? 'No archived clients.'
-                : 'No active clients yet. Add a member to start coaching them.'}
+                : 'No active clients yet. Tap + Add client, search for the member by name or email, and pick them to start coaching.'}
             </p>
             {!debounced && status === 'active' ? <button className={primaryBtn} onClick={onAdd}>+ Add client</button> : null}
           </div>

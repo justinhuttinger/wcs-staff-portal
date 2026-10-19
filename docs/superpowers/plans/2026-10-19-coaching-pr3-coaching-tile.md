@@ -11,7 +11,7 @@
 - Portal UI: match existing tile/screen patterns (look at how other full-screen tools open from `ToolGrid.jsx` / `App.jsx`, e.g. `trainerAvail`), dark-backdrop rule (every block in a card), works on desktop and phone (portal has mobile views — follow how other tiles handle mobile, e.g. `portal/src/config/portalTiles.js` and mobile nav). Omit empty rows in lists. Copy buttons show "Copied!".
 
 ## Migration 240
-- Tile catalog, following `auth/migrations/086_catalog_trainer_avail.sql`: `permission_catalog ('coaching','Coaching','Tools','team_member')`; `role_tool_visibility` true for `personal_trainer, team_member, lead, manager, corporate, director, admin` (not front_desk, not marketing). Idempotent.
+- Tile catalog, following `auth/migrations/086_catalog_trainer_avail.sql`: `permission_catalog ('coaching','Coaching','Tools','team_member')`; `role_tool_visibility` true ONLY for `manager, director, corporate, admin` with `on conflict do nothing` (front desk staff are `team_member` since migration 010, so seeding team_member/lead would hand the tile to all front desk). Trainers are granted 'coaching' per person in Admin -> Roles & Permissions (staff_permission_overrides). Idempotent. (Revised after review of #1172.)
 - `memberapp_members`: add `status text not null default 'active' check (status in ('active','archived'))`, `archived_at timestamptz`, `upgraded_at timestamptz`, `upgraded_by text`.
 - `memberapp_client_notes`: `member_id, club_number` (pk together), `body text`, `updated_by text`, `updated_at` — trainer-only notes (Kahunas "Client Notes").
 - RLS enabled on new table.

@@ -24,6 +24,7 @@ const {
 } = require('../lib/coachingPrograms')
 const {
   canSeeProgram, canEditProgram, copyFields, treeFromRows, programsToReplace, pacificDate,
+  coachForClientProgram,
 } = require('../lib/coachingAccess')
 const { applyTreePlan } = require('../lib/coachingWrite')
 
@@ -243,7 +244,10 @@ router.post('/programs', handle(async (req, res) => {
   if (kind === 'client') {
     if (!body.member_id || !body.club_number) return fail(res, 400, 'member_id and club_number are required')
     const { client } = await assertClientAccess(req, body.member_id, body.club_number)
-    const coach = body.coach_staff_id || client?.coach_staff_id || me.staffId || null
+    // Only manager+ may name the coach; a trainer's body value is ignored.
+    const coach = coachForClientProgram({
+      requested: body.coach_staff_id, clientCoach: client?.coach_staff_id, staffId: me.staffId, isManager: me.isManager,
+    })
     if (coach && !UUID_RE.test(String(coach))) return fail(res, 400, 'coach_staff_id is not a staff id')
     Object.assign(fields, {
       member_id: String(body.member_id),
@@ -312,7 +316,11 @@ async function copyProgram(req, source, body) {
   if (error) throw new HttpError(400, error)
   if (fields.kind === 'client') {
     const { client } = await assertClientAccess(req, fields.member_id, fields.club_number)
-    if (!fields.coach_staff_id) fields.coach_staff_id = client?.coach_staff_id || caller(req).staffId || null
+    // copyFields validated any body coach_staff_id; only manager+ may use it.
+    const me = caller(req)
+    fields.coach_staff_id = coachForClientProgram({
+      requested: fields.coach_staff_id, clientCoach: client?.coach_staff_id, staffId: me.staffId, isManager: me.isManager,
+    })
   }
 
   const { days, items } = await loadRows(source.id, false)

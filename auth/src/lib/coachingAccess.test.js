@@ -146,3 +146,15 @@ test('programsToReplace ends the member\'s other programs that are live today', 
     { id: 'startedToday', patch: { is_active: false } },
   ])
 })
+
+test('coachForClientProgram: only managers may name the coach on a client program', () => {
+  const { coachForClientProgram } = require('./coachingAccess')
+  const COACH = '33333333-3333-4333-8333-333333333333'
+  // A trainer's body coach_staff_id is ignored: the client's coach, else them.
+  assert.equal(coachForClientProgram({ requested: OTHER, clientCoach: COACH, staffId: ME, isManager: false }), COACH)
+  assert.equal(coachForClientProgram({ requested: OTHER, clientCoach: null, staffId: ME, isManager: false }), ME)
+  // A manager may pick one.
+  assert.equal(coachForClientProgram({ requested: OTHER, clientCoach: COACH, staffId: ME, isManager: true }), OTHER)
+  assert.equal(coachForClientProgram({ requested: '', clientCoach: COACH, staffId: ME, isManager: true }), COACH)
+  assert.equal(coachForClientProgram({ requested: null, clientCoach: null, staffId: null, isManager: true }), null)
+})

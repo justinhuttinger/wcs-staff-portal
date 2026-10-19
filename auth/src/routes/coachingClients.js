@@ -16,8 +16,9 @@ const { canAddAtClub, filterClients, isCoachScope } = require('../lib/coachingSc
 const { pacificDate, shiftDate } = require('../lib/coachingAccess')
 const {
   pairKey, clientCounts, summarizeClient, buildActivity, progressFor, loggedExercises, latestAt,
-  currentProgram, scheduledPrograms,
+  currentProgram, scheduledPrograms, lastWorkoutBy, searchTerm, coachConflict,
 } = require('../lib/coachingClients')
+const { selectInPaged, selectAllPages } = require('../lib/pagedSelect')
 const { roleBaseKeys, applyOverrides } = require('../services/permissions')
 const { clubByNumber, clubBySlug } = require('../config/clubs')
 const { slugify } = require('../services/locationScope')
@@ -26,7 +27,12 @@ const MEMBERS = 'memberapp_members'
 const PROGRAMS = 'memberapp_programs'
 const SESSIONS = 'memberapp_workout_sessions'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const CHUNK = 150
+// memberapp_members has no id; its key orders pages stably.
+const MEMBER_ORDER = ['member_id', 'club_number']
+// The client list's tiles and "this week" read this many days of sessions.
+const STATS_WINDOW_DAYS = 90
+// Bound on the older-sessions read for last-workout dates (per id chunk).
+const OLDER_SESSIONS_CAP = 20000
 
 const actor = (req) => req.staff?.email || req.staff?.id || 'unknown'
 const isManager = (req) => roleLevel(req.staff?.role) >= roleLevel('manager')
@@ -41,16 +47,23 @@ const isClient = (row) => row && (row.status === 'archived' || row.tier === 'tra
 module.exports = function coachingClients({ handle, fail, HttpError, loadProgramForStaff, copyProgram, pushMember }) {
   const router = Router()
 
-  // `.in()` over many ids, in chunks so the URL stays short.
-  async function selectIn(table, cols, column, values, extend = (q) => q) {
-    const out = []
-    const list = [...new Set(values)].filter(v => v != null && v !== '')
-    for (let i = 0; i < list.length; i += CHUNK) {
-      const { data, error } = await extend(supabaseAdmin.from(table).select(cols).in(column, list.slice(i, i + CHUNK)))
-      if (error) throw new HttpError(502, error.message)
-      out.push(...(data || []))
+  // `.in()` over many ids: chunked so the URL stays short, and paged past the
+  // PostgREST 1,000-row cap (lib/pagedSelect.js). `order` must make the order
+  // stable across pages; every table here has an `id` except memberapp_members.
+  async function selectIn(table, cols, column, values, { extend, order = ['id'], maxRows } = {}) {
+    try {
+      return await selectInPaged(supabaseAdmin, table, cols, column, values, { extend, order, maxRows })
+    } catch (err) {
+      throw new HttpError(502, err.message)
     }
-    return out
+  }
+
+  async function selectAll(build, opts) {
+    try {
+      return await selectAllPages(build, opts)
+    } catch (err) {
+      throw new HttpError(502, err.message)
+    }
   }
 
   // Rows keyed (member_id, club_number) narrowed to the exact pairs in `keys`.
@@ -59,17 +72,16 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
   /** Every client in the caller's scope (both statuses). */
   async function scopedClients(req) {
     const scope = await resolveCoachScope(req)
-    let query = supabaseAdmin.from(MEMBERS).select(MEMBER_COLS)
-    if (isCoachScope(scope)) {
-      if (!UUID_RE.test(scope.coachStaffId || '')) return { scope, clients: [] }
-      query = query.eq('coach_staff_id', scope.coachStaffId)
-    } else if (!scope.all) {
-      if (!scope.clubNumbers.length) return { scope, clients: [] }
-      query = query.in('club_number', scope.clubNumbers)
+    if (isCoachScope(scope) && !UUID_RE.test(scope.coachStaffId || '')) return { scope, clients: [] }
+    if (!isCoachScope(scope) && !scope.all && !scope.clubNumbers.length) return { scope, clients: [] }
+    const build = () => {
+      let query = supabaseAdmin.from(MEMBERS).select(MEMBER_COLS)
+      if (isCoachScope(scope)) query = query.eq('coach_staff_id', scope.coachStaffId)
+      else if (!scope.all) query = query.in('club_number', scope.clubNumbers)
+      return query
     }
-    const { data, error } = await query.limit(5000)
-    if (error) throw new HttpError(502, error.message)
-    return { scope, clients: filterClients(scope, (data || []).filter(isClient)) }
+    const data = await selectAll(build, { order: MEMBER_ORDER })
+    return { scope, clients: filterClients(scope, data.filter(isClient)) }
   }
 
   async function namesFor(rows) {
@@ -85,14 +97,30 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
   async function sessionsFor(clients, extend) {
     const keys = new Set(clients.map(pairKey))
     const rows = await selectIn(SESSIONS, 'id, member_id, club_number, performed_on, started_at, completed_at, notes, day_id, program_id',
-      'member_id', clients.map(c => c.member_id), extend)
+      'member_id', clients.map(c => c.member_id), { extend })
     return onlyPairs(rows, keys)
+  }
+
+  /**
+   * Last completed workout day for clients with none inside the stats window
+   * (`before`). Newest first, so the first row per client is their latest;
+   * only three narrow columns, and capped.
+   */
+  async function lastWorkoutBefore(clients, before) {
+    if (!clients.length) return new Map()
+    const keys = new Set(clients.map(pairKey))
+    const rows = await selectIn(SESSIONS, 'id, member_id, club_number, performed_on, completed_at', 'member_id',
+      clients.map(c => c.member_id), {
+        extend: (q) => q.not('completed_at', 'is', null).lt('performed_on', before).order('performed_on', { ascending: false }),
+        maxRows: OLDER_SESSIONS_CAP,
+      })
+    return lastWorkoutBy(onlyPairs(rows, keys))
   }
 
   async function programsFor(clients) {
     const keys = new Set(clients.map(pairKey))
     const rows = await selectIn(PROGRAMS, 'id, name, member_id, club_number, starts_on, ends_on, is_active, created_at, updated_at',
-      'member_id', clients.map(c => c.member_id), (q) => q.eq('kind', 'client'))
+      'member_id', clients.map(c => c.member_id), { extend: (q) => q.eq('kind', 'client') })
     return onlyPairs(rows, keys)
   }
 
@@ -152,8 +180,11 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
   router.get('/clients', handle(async (req, res) => {
     const today = pacificDate()
     const { clients } = await scopedClients(req)
+    // The tiles and "this week" only need recent sessions; anyone with none
+    // in the window gets their last workout day from a narrow older read.
+    const since = shiftDate(today, -STATS_WINDOW_DAYS)
     const [sessions, programs, names, coaches] = await Promise.all([
-      sessionsFor(clients, (q) => q.not('completed_at', 'is', null)),
+      sessionsFor(clients, (q) => q.not('completed_at', 'is', null).gte('performed_on', since)),
       programsFor(clients),
       namesFor(clients),
       staffById(clients.map(c => c.coach_staff_id).filter(Boolean)),
@@ -162,11 +193,16 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
     const status = req.query.status === 'archived' ? 'archived' : 'active'
     const needle = String(req.query.q || '').trim().toLowerCase()
 
-    const rows = clients
-      .filter(c => (c.status || 'active') === status)
+    const listed = clients.filter(c => (c.status || 'active') === status)
+    const recent = lastWorkoutBy(sessions)
+    const older = await lastWorkoutBefore(listed.filter(c => !recent.has(pairKey(c))), since)
+
+    const rows = listed
       .map(c => {
         const m = names.get(pairKey(c))
         const coach = coaches.get(c.coach_staff_id)
+        // total_workouts would only count the window here; the profile has the real total.
+        const { total_workouts: _windowOnly, ...stats } = summarizeClient(c, { sessions, programs }, today)
         return {
           member_id: c.member_id,
           club_number: c.club_number,
@@ -180,7 +216,8 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
           tier: c.tier,
           upgraded_at: c.upgraded_at,
           archived_at: c.archived_at,
-          ...summarizeClient(c, { sessions, programs }, today),
+          ...stats,
+          last_workout_on: stats.last_workout_on || older.get(pairKey(c)) || null,
         }
       })
       .filter(r => !needle || [r.name, r.email, r.club_name, r.coach?.name, r.current_program?.name]
@@ -208,7 +245,7 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
     // Latest completed workouts, with set counts and day names.
     const latest = [...sessions].sort((a, b) => String(b.completed_at).localeCompare(String(a.completed_at))).slice(0, 10)
     const [setRows, dayRows] = await Promise.all([
-      selectIn('memberapp_set_logs', 'session_id', 'session_id', latest.map(s => s.id)),
+      selectIn('memberapp_set_logs', 'id, session_id', 'session_id', latest.map(s => s.id)),
       selectIn('memberapp_program_days', 'id, name', 'id', latest.map(s => s.day_id).filter(Boolean)),
     ])
     const setCount = new Map()
@@ -225,7 +262,10 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
     if (isCoachScope(scope)) {
       const keys = new Set(clients.map(pairKey))
       msgs = clients.length ? onlyPairs(await selectIn('memberapp_messages', 'member_id, club_number, body, created_at', 'member_id',
-        clients.map(c => c.member_id), (q) => q.eq('sender', 'member').is('read_at_coach', null).order('created_at', { ascending: false })), keys) : []
+        clients.map(c => c.member_id), {
+          extend: (q) => q.eq('sender', 'member').is('read_at_coach', null).order('created_at', { ascending: false }),
+          maxRows: 300,
+        }), keys) : []
     } else if (scope.all || scope.clubNumbers.length) {
       if (!scope.all) msgQuery = msgQuery.in('club_number', scope.clubNumbers)
       const { data, error } = await msgQuery
@@ -275,8 +315,9 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
     if (!scope.all && !scope.clubNumbers.length) return res.json({ members: [], no_clubs: true })
     if (q.length < 2) return res.json({ members: [] })
 
-    // Commas and parentheses would break the PostgREST or() filter.
-    const like = `%${q.replace(/[,()*%]/g, ' ').trim()}%`
+    const term = searchTerm(q)
+    if (term.length < 2) return res.json({ members: [] })
+    const like = `%${term}%`
     let query = supabaseAdmin.from('abc_members')
       .select('member_id, club_number, first_name, last_name, email, membership_type, since_date')
       .or(`first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like}`)
@@ -286,7 +327,7 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
     if (error) throw new HttpError(502, error.message)
 
     const members = data || []
-    const rows = await selectIn(MEMBERS, MEMBER_COLS, 'member_id', members.map(m => m.member_id))
+    const rows = await selectIn(MEMBERS, MEMBER_COLS, 'member_id', members.map(m => m.member_id), { order: MEMBER_ORDER })
     const rowBy = new Map(rows.map(r => [pairKey(r), r]))
     const coaches = await staffById(rows.map(r => r.coach_staff_id).filter(Boolean))
     res.json({
@@ -325,6 +366,13 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
     if (memberErr) return fail(res, 502, memberErr.message)
     if (!member || !member.is_active) return fail(res, 404, 'That member is not active at this club')
 
+    // Below manager, someone else's client (active, archived or a stale row)
+    // is never taken over here, whatever the body says.
+    if (coachConflict(existing, req.staff?.id, isManager(req))) {
+      const other = await staffById([existing.coach_staff_id])
+      return fail(res, 409, `${fullName(member)} is already coached by ${staffName(other.get(existing.coach_staff_id)) || 'another trainer'}. Ask a manager to reassign them.`)
+    }
+
     const activeClient = existing && isClient(existing) && existing.status !== 'archived'
     // A manager re-adding someone keeps their current coach unless they pick one.
     let coach = isManager(req) && activeClient && existing.coach_staff_id ? existing.coach_staff_id : (req.staff?.id || null)
@@ -332,10 +380,6 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
       if (!isManager(req)) return fail(res, 403, 'Only managers can pick another coach.')
       if (!(await validCoach(req, scope, body.coach_staff_id, clubNumber))) return fail(res, 400, 'Pick a coach who works at this club.')
       coach = body.coach_staff_id
-    }
-    if (activeClient && existing.coach_staff_id && existing.coach_staff_id !== coach && !isManager(req)) {
-      const other = await staffById([existing.coach_staff_id])
-      return fail(res, 409, `${fullName(member)} is already coached by ${staffName(other.get(existing.coach_staff_id)) || 'another trainer'}. Ask a manager to reassign them.`)
     }
 
     let template = null
@@ -446,7 +490,9 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
     const pair = (q) => q.eq('member_id', String(memberId)).eq('club_number', club)
     const today = pacificDate()
 
-    const [member, programsR, sessionsR, messagesR, noteR, loginR, pushR, mealR] = await Promise.all([
+    // Sessions are read newest-first and capped for the timeline; the total
+    // is a separate count so it is right past the cap.
+    const [member, programsR, sessionsR, messagesR, noteR, loginR, pushR, mealR, totalR] = await Promise.all([
       pair(supabaseAdmin.from('abc_members')
         .select('member_id, club_number, first_name, last_name, email, primary_phone, since_date, membership_type, is_active')).maybeSingle(),
       pair(supabaseAdmin.from(PROGRAMS).select('id, name, starts_on, ends_on, is_active, created_at, updated_at, member_id, club_number').eq('kind', 'client')),
@@ -461,8 +507,9 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
         .order('last_seen_at', { ascending: false }).limit(1),
       pair(supabaseAdmin.from('memberapp_meals').select('logged_at')).is('created_by', null)
         .order('logged_at', { ascending: false }).limit(1),
+      pair(supabaseAdmin.from(SESSIONS).select('id', { count: 'exact', head: true })).not('completed_at', 'is', null),
     ])
-    for (const r of [member, programsR, sessionsR, messagesR]) if (r.error) throw new HttpError(502, r.error.message)
+    for (const r of [member, programsR, sessionsR, messagesR, totalR]) if (r.error) throw new HttpError(502, r.error.message)
 
     const programs = programsR.data || []
     const sessions = sessionsR.data || []
@@ -471,7 +518,7 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
 
     const recent = done.slice(0, 30)
     const [setRows, dayRows, coachMap] = await Promise.all([
-      selectIn('memberapp_set_logs', 'session_id', 'session_id', recent.map(s => s.id)),
+      selectIn('memberapp_set_logs', 'id, session_id', 'session_id', recent.map(s => s.id)),
       selectIn('memberapp_program_days', 'id, name', 'id', recent.map(s => s.day_id).filter(Boolean)),
       staffById([client?.coach_staff_id].filter(Boolean)),
     ])
@@ -510,7 +557,7 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
         current_program: cur ? { id: cur.id, name: cur.name, starts_on: cur.starts_on } : null,
         scheduled_programs: scheduledPrograms(programs, today).map(p => ({ id: p.id, name: p.name, starts_on: p.starts_on })),
         workouts_this_week: summary.workouts_this_week,
-        total_workouts: done.length,
+        total_workouts: totalR.count ?? done.length,
         last_workout_on: summary.last_workout_on,
       },
       activity: buildActivity({
@@ -550,7 +597,8 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
       .order('performed_on', { ascending: false }).limit(400)
     if (error) return fail(res, 502, error.message)
     const dayOf = new Map((sessions || []).map(s => [s.id, s.performed_on]))
-    const sets = await selectIn('memberapp_set_logs', 'session_id, exercise_id, exercise_name, reps, weight', 'session_id', [...dayOf.keys()])
+    // 400 sessions can hold far more than 1,000 sets; selectIn pages them.
+    const sets = await selectIn('memberapp_set_logs', 'id, session_id, exercise_id, exercise_name, reps, weight', 'session_id', [...dayOf.keys()])
     const rows = sets.map(s => ({ ...s, performed_on: dayOf.get(s.session_id) }))
     const exercises = loggedExercises(rows)
     const asked = String(req.query.exercise_id || '')

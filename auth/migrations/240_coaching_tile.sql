@@ -3,7 +3,16 @@
 -- 1. A catalog permission 'coaching' so the tile shows in the Roles grid and
 --    the per-person overrides editor, and the API can gate on it
 --    (requireTile('coaching') in routes/coaching.js and routes/exercises.js).
---    Seeded for trainers and up. Front desk and marketing are left out.
+--    Seeded ON only for manager, director, corporate and admin. Front desk
+--    staff and trainers share the team_member / lead roles (migration 010
+--    merged front_desk and personal_trainer into team_member), so seeding
+--    those roles would hand the tile to all front desk. Trainers get it per
+--    person instead: Admin -> Roles & Permissions -> the per-person overrides
+--    editor (staff_permission_overrides), which lists 'coaching' under Tools
+--    via the catalog row below. A team_member/lead granted it that way is
+--    scoped to their own clients (lib/coachingScope.js).
+--    `do nothing` on conflict so a later admin toggle in the Roles grid is
+--    never overwritten by a re-run.
 -- 2. Client lifecycle on memberapp_members: active / archived, when someone
 --    was upgraded to a client and by whom.
 -- 3. Trainer-only client notes (Kahunas "Client Notes"). One note per client.
@@ -16,9 +25,8 @@ on conflict (perm_key) do nothing;
 
 insert into role_tool_visibility (role, tool_key, visible)
 select r.role, 'coaching', true
-from (values ('personal_trainer'), ('team_member'), ('lead'), ('manager'),
-             ('corporate'), ('director'), ('admin')) as r(role)
-on conflict (role, tool_key) do update set visible = true;
+from (values ('manager'), ('director'), ('corporate'), ('admin')) as r(role)
+on conflict (role, tool_key) do nothing;
 
 -- Archiving keeps programs and logs; the member drops back to tier 'basic',
 -- which hides the Training tab in the member app.

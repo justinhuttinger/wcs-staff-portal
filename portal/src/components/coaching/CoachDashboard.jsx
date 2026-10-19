@@ -42,7 +42,7 @@ export default function CoachDashboard({ me, onOpen, onAdd, onNewProgram, onClie
           <p className="text-sm text-text-muted max-w-md mx-auto">
             {me.isManager
               ? 'Nobody at your clubs is set up for coaching yet. Add a member to get them started in the member app.'
-              : 'Add a member you train. They get a Training tab in the member app, and you build their program here.'}
+              : 'To add one, tap + Add a client below, search for the member by name or email, and pick them. You can start them on a template right away or build their program later. They get a Training tab in the member app.'}
           </p>
           <div className="flex flex-wrap justify-center gap-2">
             <button className={primaryBtn} onClick={onAdd}>+ Add a client</button>
