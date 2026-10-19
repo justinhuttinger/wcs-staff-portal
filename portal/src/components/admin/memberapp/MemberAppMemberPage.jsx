@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../../lib/api'
-import MemberAppPrograms from './MemberAppPrograms.jsx'
+import ClientPrograms from '../../coaching/ClientPrograms.jsx'
 import MemberAppHabits from './MemberAppHabits.jsx'
 import MemberAppNutrition from './MemberAppNutrition.jsx'
 import MemberAppCalendar from './MemberAppCalendar.jsx'
@@ -123,7 +123,7 @@ export default function MemberAppMemberPage({ member, onChange, onBack }) {
         ))}
       </div>
 
-      {tab === 'programs' && <MemberAppPrograms member={member} />}
+      {tab === 'programs' && <ClientPrograms member={member} />}
       {tab === 'habits' && <MemberAppHabits member={member} />}
       {tab === 'nutrition' && <MemberAppNutrition member={member} />}
       {tab === 'calendar' && <MemberAppCalendar member={member} />}
