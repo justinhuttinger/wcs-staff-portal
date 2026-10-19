@@ -25,6 +25,22 @@ export const coachingApi = {
   listSessions: (member, limit = 30) => api(`/coaching/sessions?${query({
     member_id: member.member_id, club_number: member.club_number, limit,
   })}`),
+
+  // The Coaching tile: dashboard, clients, profile.
+  dashboard: () => api('/coaching/dashboard'),
+  listClients: (params) => api(`/coaching/clients?${query(params)}`),
+  searchMembers: (q) => api(`/coaching/members/search?${query({ q })}`),
+  addClient: (body) => api('/coaching/clients', json('POST', body)),
+  patchClient: (member, body) => api(`/coaching/clients/${encodeURIComponent(member.member_id)}`,
+    json('PATCH', { club_number: member.club_number, ...body })),
+  reassignAll: (body) => api('/coaching/clients/reassign', json('POST', body)),
+  getClient: (member) => api(`/coaching/clients/${encodeURIComponent(member.member_id)}?${query({ club_number: member.club_number })}`),
+  saveNotes: (member, body) => api(`/coaching/clients/${encodeURIComponent(member.member_id)}/notes`,
+    json('PUT', { club_number: member.club_number, body })),
+  progress: (member, exerciseId) => api(`/coaching/clients/${encodeURIComponent(member.member_id)}/progress?${query({
+    club_number: member.club_number, exercise_id: exerciseId,
+  })}`),
+  coaches: () => api('/coaching/coaches'),
 }
 
 // /exercises: the library behind the picker.
@@ -35,4 +51,5 @@ export const exercisesApi = {
   // 503 = no playable video yet (free images, or YMove key not set).
   video: (id) => api(`/exercises/${id}/video`),
   create: (body) => api('/exercises', json('POST', body)),
+  update: (id, body) => api(`/exercises/${id}`, json('PUT', body)),
 }

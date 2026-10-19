@@ -174,7 +174,7 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     { label: 'Inventory', icon: <BoxIcon />, route: 'inventory', desc: 'Scan & track stock' },
     { label: 'Tickets', icon: <TicketIcon />, route: 'ticketing', desc: 'Submit & track tickets' },
     { label: 'HR', icon: <HRIcon />, route: 'hr', desc: 'Resources & docs' },
-    { label: 'Coaching', icon: <ChatIcon />, route: 'coaching', desc: 'Message your members' },
+    { label: 'Coaching', icon: <ChatIcon />, route: 'coaching', desc: 'Clients & programs' },
     { label: 'Render', icon: <ServerIcon />, route: 'render-status', desc: 'Service health & usage' },
   ]
 
@@ -196,8 +196,8 @@ export default function HomeScreen({ user, navigate, onLogout }) {
     if (tile.label === 'Inventory' && !(visibleTools || []).includes('inventory')) return false
     // HR tile only for manager+
     if (tile.label === 'HR' && roleIdx < ROLE_LEVELS.manager) return false
-    // Coaching mirrors the desktop Member App gate: manager+.
-    if (tile.label === 'Coaching' && roleIdx < ROLE_LEVELS.manager) return false
+    // Coaching — role/override-driven via 'coaching', same as desktop.
+    if (tile.label === 'Coaching' && !(visibleTools || []).includes('coaching')) return false
     // Analytics is manager+, matching the desktop tile. Deliberately outside
     // the Roles grid, so it can never be granted below that tier.
     if (tile.label === 'Analytics' && roleIdx < ROLE_LEVELS.manager) return false

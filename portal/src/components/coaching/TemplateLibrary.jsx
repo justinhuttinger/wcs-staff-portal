@@ -7,7 +7,7 @@ import { pacificToday } from './volume'
 // The template library: WCS templates everyone shares plus my own. Browse,
 // preview, build, duplicate, publish, delete — and, when `assignTo` is set,
 // pick one and copy it onto that client.
-export default function TemplateLibrary({ assignTo, onAssigned, onCancel, isManager = true }) {
+export default function TemplateLibrary({ assignTo, onAssigned, onCancel, isManager = true, startNew = false }) {
   const [q, setQ] = useState('')
   const [debounced, setDebounced] = useState('')
   const [templates, setTemplates] = useState(null)
@@ -18,7 +18,7 @@ export default function TemplateLibrary({ assignTo, onAssigned, onCancel, isMana
   const [goal, setGoal] = useState('')
   const [level, setLevel] = useState('')
   const [days, setDays] = useState('')
-  const [view, setView] = useState({ name: 'list' })
+  const [view, setView] = useState(startNew ? { name: 'new' } : { name: 'list' })
   const [assigning, setAssigning] = useState(null) // program being assigned
 
   useEffect(() => {
