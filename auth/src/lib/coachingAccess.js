@@ -3,9 +3,9 @@
 // Pure; routes/coaching.js loads the rows and passes the caller in as
 // { staffId, isManager }.
 //
-// Coaching PR 3 opens /coaching to personal trainers. Client scoping (trainer
-// sees only clients they coach, manager their club) belongs in canSeeProgram /
-// canEditProgram's client branch, which is the one place every route asks.
+// Client programs return true here: whether the member is the caller's client
+// (trainer = coach, manager = club) is checked by routes/coaching.js
+// loadProgramForStaff through services/coachingScope.js assertClientAccess.
 
 const { UUID_RE, isoDate } = require('./coachingPrograms')
 
