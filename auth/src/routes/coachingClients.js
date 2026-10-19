@@ -373,7 +373,9 @@ module.exports = function coachingClients({ handle, fail, HttpError, loadProgram
         warning = `They are your client now, but the template was not assigned: ${err.message}`
       }
     }
-    await pushMember(memberId, clubNumber, 'Training is on',
+    // Re-adding someone who is already an active client only pushes when it
+    // gave them a new program.
+    if (!activeClient || program) await pushMember(memberId, clubNumber, 'Training is on',
       program && !program.starts_on
         ? 'Your coach has set up your training program. Open the app to see it.'
         : 'Your coach has added you as a training client. Open the app to say hi.')
