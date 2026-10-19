@@ -14,6 +14,7 @@ import TrainerAvailabilityView from './components/TrainerAvailabilityView'
 import GroupXHub from './components/groupx/GroupXHub'
 import FacilityView from './components/facility/FacilityView'
 import TillCashView from './components/TillCashView'
+import CoachingApp from './components/coaching/CoachingApp.jsx'
 import DripCampaigns from './components/DripCampaigns'
 import LeaderboardView from './components/LeaderboardView'
 import CommunicationNotesView from './components/CommunicationNotesView'
@@ -96,6 +97,9 @@ export default function App() {
   const [showGroupX, setShowGroupX] = useState(false)
   const [showFacility, setShowFacility] = useState(false)
   const [showTill, setShowTill] = useState(false)
+  const [showCoaching, setShowCoaching] = useState(false)
+  // A member to open straight away (Admin -> Member App "Open in Coaching").
+  const [coachingClient, setCoachingClient] = useState(null)
   const [showGhlScripts, setShowGhlScripts] = useState(false)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [showCommunicationNotes, setShowCommunicationNotes] = useState(false)
@@ -211,6 +215,7 @@ export default function App() {
   useEffect(() => { if (showGroupX) logEvent('view.group_x') }, [showGroupX])
   useEffect(() => { if (showFacility) logEvent('view.facility') }, [showFacility])
   useEffect(() => { if (showTill) logEvent('view.till') }, [showTill])
+  useEffect(() => { if (showCoaching) logEvent('view.coaching') }, [showCoaching])
   useEffect(() => { if (showGhlScripts) logEvent('view.ghl_scripts') }, [showGhlScripts])
   useEffect(() => { if (showLeaderboard) logEvent('view.leaderboard') }, [showLeaderboard])
   useEffect(() => { if (showCommunicationNotes) logEvent('view.communication_notes') }, [showCommunicationNotes])
@@ -493,6 +498,18 @@ export default function App() {
     }
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Admin -> Member App "Open in Coaching" on a member.
+  useEffect(() => {
+    const open = (e) => {
+      if (!(user?.visible_tools || []).includes('coaching')) return
+      handleBackToPortal()
+      setCoachingClient(e.detail || null)
+      setShowCoaching(true)
+    }
+    window.addEventListener('wcs:open-coaching', open)
+    return () => window.removeEventListener('wcs:open-coaching', open)
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // "Send to portal" from GHL into a portal tab that is already open.
   useEffect(() => {
     if (!canWorkflowTransfer) return
@@ -534,7 +551,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showGroupX && !showFacility && !showTill && !showGhlScripts && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showEventCalendar && !showInventory && !showForms && !showQuizzes && !showNps && !showAdsManager && !showWorkflowTransfer && !showAnalytics && !showProfile
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showGroupX && !showFacility && !showTill && !showCoaching && !showGhlScripts && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showEventCalendar && !showInventory && !showForms && !showQuizzes && !showNps && !showAdsManager && !showWorkflowTransfer && !showAnalytics && !showProfile
 
   function exitImpersonation() {
     setImpersonateId(null)
@@ -548,6 +565,8 @@ export default function App() {
     setShowGroupX(false)
     setShowFacility(false)
     setShowTill(false)
+    setShowCoaching(false)
+    setCoachingClient(null)
     setShowGhlScripts(false)
     setShowReporting(false)
     setShowMarketingTracker(false)
@@ -623,6 +642,7 @@ export default function App() {
     { key: 'tool:groupX', label: 'Group X', desc: 'Classes', show: (user?.visible_tools || []).includes('groupX'), open: () => setShowGroupX(true) },
     { key: 'tool:facility', label: 'Courts & Pool', desc: 'Schedules', show: (user?.visible_tools || []).includes('facility'), open: () => setShowFacility(true) },
     { key: 'tool:till', label: 'Till', desc: 'Cash in / out', show: (user?.visible_tools || []).includes('till'), open: () => setShowTill(true) },
+    { key: 'tool:coaching', label: 'Coaching', desc: 'Clients & programs', show: (user?.visible_tools || []).includes('coaching'), open: () => setShowCoaching(true) },
     { key: 'tool:ghlScripts', label: 'Workflows & Scripts (GHL)', desc: 'SMS & call scripts', show: (user?.visible_tools || []).includes('ghlScripts'), open: () => setShowGhlScripts(true) },
     { key: 'tool:eventCalendar', label: 'Event Calendar', desc: 'Club events', show: (user?.visible_tools || []).includes('eventCalendar'), open: () => setShowEventCalendar(true) },
     { key: 'tool:inventory', label: 'Inventory', desc: 'Stock', show: (user?.visible_tools || []).includes('inventory'), open: () => setShowInventory(true) },
@@ -670,6 +690,7 @@ export default function App() {
     : showGroupX ? 'tool:groupX'
     : showFacility ? 'tool:facility'
     : showTill ? 'tool:till'
+    : showCoaching ? 'tool:coaching'
     : showGhlScripts ? 'tool:ghlScripts'
     : showCommunicationNotes ? 'tool:commNotes'
     : showInventory ? 'tool:inventory'
@@ -832,6 +853,8 @@ export default function App() {
         </div>
       ) : showTill ? (
         <TillCashView user={user} onBack={() => setShowTill(false)} location={location} />
+      ) : showCoaching ? (
+        <CoachingApp key={coachingClient ? `${coachingClient.member_id}|${coachingClient.club_number}` : 'home'} user={user} initialClient={coachingClient} onBack={() => { setShowCoaching(false); setCoachingClient(null) }} />
       ) : showGhlScripts ? (
         <div className="w-full max-w-[1400px] mx-auto px-8 pb-12">
           <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border px-4 py-2.5 mb-3 flex items-center gap-3">
@@ -901,7 +924,7 @@ export default function App() {
         <WorkflowTransferView onBack={() => setShowWorkflowTransfer(false)} />
       ) : (
         <main className={`flex-1 flex items-start pt-1 pb-12${press ? ' press-single' : ''}`}>
-          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingSection={openMarketing} onEventCalendar={() => setShowEventCalendar(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onQuizzes={() => setShowQuizzes(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onGhlScripts={() => setShowGhlScripts(true)} onAdsManager={() => setShowAdsManager(true)} onWorkflowTransfer={canWorkflowTransfer ? () => setShowWorkflowTransfer(true) : undefined} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} marketingCaps={mAccess} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingSection={openMarketing} onEventCalendar={() => setShowEventCalendar(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onQuizzes={() => setShowQuizzes(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onCoaching={() => setShowCoaching(true)} onGhlScripts={() => setShowGhlScripts(true)} onAdsManager={() => setShowAdsManager(true)} onWorkflowTransfer={canWorkflowTransfer ? () => setShowWorkflowTransfer(true) : undefined} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} marketingCaps={mAccess} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>

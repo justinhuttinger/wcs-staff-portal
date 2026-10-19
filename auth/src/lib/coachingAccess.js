@@ -3,9 +3,9 @@
 // Pure; routes/coaching.js loads the rows and passes the caller in as
 // { staffId, isManager }.
 //
-// Coaching PR 3 opens /coaching to personal trainers. Client scoping (trainer
-// sees only clients they coach, manager their club) belongs in canSeeProgram /
-// canEditProgram's client branch, which is the one place every route asks.
+// Client programs return true here: whether the member is the caller's client
+// (trainer = coach, manager = club) is checked by routes/coaching.js
+// loadProgramForStaff through services/coachingScope.js assertClientAccess.
 
 const { UUID_RE, isoDate } = require('./coachingPrograms')
 
@@ -39,6 +39,16 @@ const PROGRAM_FIELDS = ['name', 'overview', 'tags', 'goal', 'level', 'equipment'
  *   template -> template  duplicate (mine, private)
  *   client   -> client    duplicate a block (keeps its source template)
  */
+/**
+ * The coach on a client program (create or copy). Only a manager+ may name
+ * one in the body; anyone else gets the client's coach, else themselves.
+ */
+function coachForClientProgram({ requested, clientCoach, staffId, isManager }) {
+  const blank = (v) => v == null || v === ''
+  if (isManager && !blank(requested)) return String(requested)
+  return clientCoach || staffId || null
+}
+
 function copyFields(source, body, staffId) {
   const b = body || {}
   const kind = b.kind
@@ -156,4 +166,5 @@ function programsToReplace(programs, today, keepId) {
 
 module.exports = {
   canSeeProgram, canEditProgram, copyFields, treeFromRows, programsToReplace, pacificDate, shiftDate,
+  coachForClientProgram,
 }

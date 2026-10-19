@@ -205,7 +205,9 @@ export default function ExercisePicker({ sectionLabel, onAdd, onClose, max = Inf
   )
 }
 
-function ExercisePreview({ exercise, selected, onToggle, onClose }) {
+// Also used by the Coaching exercise library (ExerciseLibrary.jsx), which
+// passes `fixed` (no picker modal around it), no onToggle and its own footer.
+export function ExercisePreview({ exercise, selected, onToggle, onClose, fixed = false, footer = null }) {
   const [detail, setDetail] = useState(null)
   const [video, setVideo] = useState(null) // { url } | 'none' | 'loading'
 
@@ -230,7 +232,7 @@ function ExercisePreview({ exercise, selected, onToggle, onClose }) {
 
   const ex = detail || exercise
   return (
-    <div className="absolute inset-0 z-10 bg-black/40 flex items-center justify-center p-3" onClick={onClose}>
+    <div className={`${fixed ? 'fixed z-[70]' : 'absolute z-10'} inset-0 bg-black/40 flex items-center justify-center p-3`} onClick={onClose}>
       <div className="bg-surface rounded-xl border border-border shadow-2xl w-full max-w-2xl max-h-full overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="grid sm:grid-cols-2 gap-4 p-4 sm:p-5">
           <div className="space-y-2">
@@ -272,12 +274,15 @@ function ExercisePreview({ exercise, selected, onToggle, onClose }) {
                 <ol className="text-sm list-decimal pl-5 space-y-1">{ex.instructions.map((c, i) => <li key={i}>{c}</li>)}</ol>
               </div>
             ) : !detail ? <p className="text-sm text-text-muted">Loading…</p> : null}
-            <button
-              onClick={() => { onToggle(); onClose() }}
-              className={`w-full px-4 py-2 rounded-lg text-sm font-semibold ${selected ? 'border border-border' : 'bg-wcs-red text-white hover:bg-wcs-red-hover'}`}
-            >
-              {selected ? 'Remove from selection' : 'Select this exercise'}
-            </button>
+            {onToggle ? (
+              <button
+                onClick={() => { onToggle(); onClose() }}
+                className={`w-full px-4 py-2 rounded-lg text-sm font-semibold ${selected ? 'border border-border' : 'bg-wcs-red text-white hover:bg-wcs-red-hover'}`}
+              >
+                {selected ? 'Remove from selection' : 'Select this exercise'}
+              </button>
+            ) : null}
+            {footer ? footer(ex) : null}
           </div>
         </div>
       </div>
@@ -285,12 +290,14 @@ function ExercisePreview({ exercise, selected, onToggle, onClose }) {
   )
 }
 
-function CustomExerciseForm({ initialName, muscles, equipment, onCancel, onCreated }) {
-  const [name, setName] = useState(initialName || '')
-  const [primary, setPrimary] = useState('')
-  const [secondary, setSecondary] = useState([])
-  const [equip, setEquip] = useState('')
-  const [notes, setNotes] = useState('')
+// `existing` edits a custom exercise (PUT) instead of adding one; `fixed`
+// when it opens outside the picker modal.
+export function CustomExerciseForm({ initialName, muscles, equipment, onCancel, onCreated, existing = null, fixed = false, submitLabel }) {
+  const [name, setName] = useState(existing?.name || initialName || '')
+  const [primary, setPrimary] = useState(existing?.primary_muscle || '')
+  const [secondary, setSecondary] = useState(existing?.secondary_muscles || [])
+  const [equip, setEquip] = useState(existing?.equipment || '')
+  const [notes, setNotes] = useState((existing?.instructions || []).join('\n'))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -298,10 +305,11 @@ function CustomExerciseForm({ initialName, muscles, equipment, onCancel, onCreat
     e.preventDefault()
     setBusy(true); setError(null)
     try {
-      const r = await exercisesApi.create({
+      const body = {
         name, primary_muscle: primary, secondary_muscles: secondary, equipment: equip,
         instructions: notes.trim() ? notes.split('\n').map(s => s.trim()).filter(Boolean) : [],
-      })
+      }
+      const r = existing ? await exercisesApi.update(existing.id, body) : await exercisesApi.create(body)
       onCreated(r.exercise)
     } catch (err) {
       setError(err.message)
@@ -311,11 +319,11 @@ function CustomExerciseForm({ initialName, muscles, equipment, onCancel, onCreat
 
   const field = 'w-full px-3 py-2 rounded-lg border border-border bg-surface text-text-primary text-sm'
   return (
-    <div className="absolute inset-0 z-10 bg-black/40 flex items-center justify-center p-3" onClick={onCancel}>
+    <div className={`${fixed ? 'fixed z-[70]' : 'absolute z-10'} inset-0 bg-black/40 flex items-center justify-center p-3`} onClick={onCancel}>
       <form onSubmit={save} onClick={e => e.stopPropagation()}
             className="bg-surface rounded-xl border border-border shadow-2xl w-full max-w-md p-5 space-y-3">
         <div>
-          <h4 className="text-base font-bold text-text-primary">Add your own exercise</h4>
+          <h4 className="text-base font-bold text-text-primary">{existing ? 'Edit your exercise' : 'Add your own exercise'}</h4>
           <p className="text-xs text-text-muted">Every WCS trainer will be able to use it.</p>
         </div>
         <label className="block text-sm">
@@ -359,7 +367,7 @@ function CustomExerciseForm({ initialName, muscles, equipment, onCancel, onCreat
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onCancel} className="px-3 py-2 text-sm text-text-muted">Cancel</button>
           <button disabled={busy} className="px-4 py-2 rounded-lg bg-wcs-red text-white text-sm font-semibold disabled:opacity-50">
-            {busy ? 'Adding…' : 'Add and select'}
+            {busy ? 'Saving…' : (submitLabel || (existing ? 'Save' : 'Add and select'))}
           </button>
         </div>
       </form>

@@ -23,6 +23,7 @@ const TILE_ICONS = {
   marketing: 'M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6',
   tickets: 'M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z',
   availability: 'M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+  coaching: 'M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z',
   marketingNeeds: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z',
   marketingResearch: 'm21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z',
   workflowMaps: 'M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z',
@@ -131,7 +132,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingSection, onEventCalendar, onInventory, onForms, onQuizzes, onNps, onAdsManager, onWorkflowTransfer, onGroupX, onFacility, onTill, onGhlScripts, userRole, userName, marketingAddon, marketingCaps, customReports }) {
+export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingSection, onEventCalendar, onInventory, onForms, onQuizzes, onNps, onAdsManager, onWorkflowTransfer, onGroupX, onFacility, onTill, onCoaching, onGhlScripts, userRole, userName, marketingAddon, marketingCaps, customReports }) {
   // DECLARED HERE, ABOVE EVERY READER. It used to sit ~200 lines further down,
   // next to the leaderboard score card that first needed it, which was fine
   // until marketingCells started reading it from further up: a `const` is in
@@ -478,6 +479,8 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           return onTicketsBoard && <SvgTileButton href="#open/ticketing" key={key} onClick={onTicketsBoard} iconPath={TILE_ICONS.tickets} label="Tickets" desc="Submit & Track" />
         case 'trainerAvail':
           return onTrainerAvail && <SvgTileButton href="#open/trainerAvail" key={key} onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />
+        case 'coaching':
+          return onCoaching && <SvgTileButton href="#open/coaching" key={key} onClick={onCoaching} iconPath={TILE_ICONS.coaching} label="Coaching" desc="Clients & programs" />
         case 'reporting':
           return onReporting && <SvgTileButton key={key} href="#reporting" onClick={() => { window.location.hash = '#reporting'; onReporting() }} iconPath={TILE_ICONS.reporting} label="Reporting" desc="Reports" />
         case 'forms':
@@ -795,6 +798,10 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           {/* (Day One Tracking merged into Calendar) */}
           {/* 6. Trainer Availability — role/override-driven (seeded manager+ in migration 086) */}
           {onTrainerAvail && (visibleTools || []).includes('trainerAvail') && <SvgTileButton href="#open/trainerAvail" onClick={onTrainerAvail} iconPath={TILE_ICONS.availability} label="D1 Availability" desc="Trainers" />}
+          {/* 6.1. Coaching — trainers' clients and programs. Role/override-driven
+              via 'coaching' (seeded trainer+ in migration 240); the API gates
+              on the same key and scopes every client to the caller. */}
+          {onCoaching && (visibleTools || []).includes('coaching') && <SvgTileButton href="#open/coaching" onClick={onCoaching} iconPath={TILE_ICONS.coaching} label="Coaching" desc="Clients & programs" />}
           {/* 6.2. Workflows & Scripts (GHL) moved INSIDE the Marketing folder. */}
           {/* 6.4. Group X — role/override-driven via 'groupX' (seeded for every
               built-in role in migration 174). What the tile can DO inside is
