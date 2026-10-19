@@ -12,7 +12,7 @@
 // pass):
 //   minRole : tier floor — 'lead' | 'manager' | 'corporate' | 'admin'
 //   tool    : must have this tool visible — 'inventory' | 'forms' | 'quizzes' | 'admin' |
-//             'trainerAvail' | 'groupX' | 'facility' | 'ghlScripts' | 'marketing:workflows'
+//             'trainerAvail' | 'coaching' | 'groupX' | 'facility' | 'ghlScripts' | 'marketing:workflows'
 //   report  : must be able to see this report key — e.g. 'till', 'pos-sales'
 
 // Role ladder (mirrors ToolGrid.jsx ROLE_LEVELS). Higher = more access.
@@ -45,6 +45,7 @@ function canSeeTool(tool, { role, visibleTools }) {
     case 'forms': return idx >= ROLE_LEVELS.admin || (visibleTools || []).includes('forms')
     case 'quizzes': return idx >= ROLE_LEVELS.admin || (visibleTools || []).includes('quizzes')
     case 'trainerAvail': return (visibleTools || []).includes('trainerAvail')
+    case 'coaching': return (visibleTools || []).includes('coaching')
     case 'till': return (visibleTools || []).includes('till')
     case 'groupX': return (visibleTools || []).includes('groupX')
     case 'facility': return (visibleTools || []).includes('facility')
@@ -73,6 +74,12 @@ export function visibleChangelog(ctx) {
 }
 
 export const CHANGELOG = [
+  {
+    id: 24, date: '2026-10-19',
+    title: 'Coaching: build programs and coach clients in the member app',
+    body: 'New Coaching tile. Add a member as your client and they get a Training tab in the WCS member app. Start them on a template or build a program from scratch, then follow along: the dashboard shows who trained this week, who has gone quiet for 7+ days, the workouts they just finished and who is waiting on a reply. Each client has a profile with their program, every logged set (compared with last time), progress charts, messages, habits, nutrition and your private notes. Trainers see their own clients, managers see their clubs.',
+    audience: { tool: 'coaching' },
+  },
   {
     id: 23, date: '2026-10-07',
     title: 'Marketing tools each have their own tile',

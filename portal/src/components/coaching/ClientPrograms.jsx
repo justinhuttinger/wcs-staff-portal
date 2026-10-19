@@ -8,10 +8,12 @@ import { pacificToday, programStatus } from './volume'
 // One client's programs: what they are on now, what is queued next, and what
 // they have finished. Start from a template (the usual way) or from scratch,
 // then edit the client's own copy in the builder.
-export default function ClientPrograms({ member }) {
+// `initialView`: 'templates' or 'new' opens straight onto assigning or building
+// (the Coaching profile's header buttons). `onChange` runs after any change.
+export default function ClientPrograms({ member, initialView = null, onChange }) {
   const [programs, setPrograms] = useState(null)
   const [sessions, setSessions] = useState(null)
-  const [view, setView] = useState({ name: 'list' })
+  const [view, setView] = useState(initialView ? { name: initialView } : { name: 'list' })
   const [scheduling, setScheduling] = useState(null)
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
@@ -27,10 +29,13 @@ export default function ClientPrograms({ member }) {
       ])
       setPrograms(p.programs || [])
       setSessions(s.sessions || [])
+      onChange?.()
     } catch (err) {
       setError(err.message)
     }
-  }, [member])
+    // Keyed on the ids, not the object: onChange reloads the parent, which
+    // hands down a fresh object and would otherwise loop.
+  }, [member.member_id, member.club_number]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load() }, [load])
 
   const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(null), 3500) }

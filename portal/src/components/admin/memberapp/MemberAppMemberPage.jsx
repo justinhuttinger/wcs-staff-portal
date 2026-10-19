@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../../lib/api'
-import ClientPrograms from '../../coaching/ClientPrograms.jsx'
 import MemberAppHabits from './MemberAppHabits.jsx'
 import MemberAppNutrition from './MemberAppNutrition.jsx'
 import MemberAppCalendar from './MemberAppCalendar.jsx'
 import MemberAppMessages from './MemberAppMessages.jsx'
 
+// Programs live in the Coaching tile ("Open in Coaching" below).
 const TABS = [
-  { key: 'programs', label: 'Programs' },
   // Habits are for every member, not just the coached ones.
   { key: 'habits', label: 'Habits' },
   { key: 'nutrition', label: 'Nutrition' },
@@ -16,7 +15,7 @@ const TABS = [
 ]
 
 export default function MemberAppMemberPage({ member, onChange, onBack }) {
-  const [tab, setTab] = useState('programs')
+  const [tab, setTab] = useState('habits')
   const [coaches, setCoaches] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -102,6 +101,15 @@ export default function MemberAppMemberPage({ member, onChange, onBack }) {
           </p>
         ) : null}
 
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('wcs:open-coaching', {
+            detail: { member_id: member.member_id, club_number: member.club_number, first_name: member.first_name, last_name: member.last_name },
+          }))}
+          className="px-3 py-2 rounded-lg border border-border text-sm font-semibold hover:border-text-muted"
+        >
+          Open in Coaching
+        </button>
+
         {error ? <p className="text-sm text-wcs-red">{error}</p> : null}
         {notice ? <p className="text-sm text-green-700">{notice}</p> : null}
       </div>
@@ -123,7 +131,6 @@ export default function MemberAppMemberPage({ member, onChange, onBack }) {
         ))}
       </div>
 
-      {tab === 'programs' && <ClientPrograms member={member} />}
       {tab === 'habits' && <MemberAppHabits member={member} />}
       {tab === 'nutrition' && <MemberAppNutrition member={member} />}
       {tab === 'calendar' && <MemberAppCalendar member={member} />}

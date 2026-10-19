@@ -28,6 +28,9 @@ export const PORTAL_TILE_CATALOG = [
   { key: 'ordering',        label: 'Ordering',         desc: 'Vendors',       group: 'tools' },
   { key: 'ticketing',       label: 'Tickets',          desc: 'Submit & Track', group: 'tools' },
   { key: 'trainerAvail',    label: 'D1 Availability',  desc: 'Trainers',      group: 'tools' },
+  // Coaching: a trainer's own clients and programs. The API gates on this key
+  // (requireTile('coaching')) and scopes clients to the caller.
+  { key: 'coaching',        label: 'Coaching',         desc: 'Clients & programs', group: 'tools' },
   { key: 'reporting',       label: 'Reporting',        desc: 'Reports',       group: 'tools' },
   { key: 'forms',           label: 'Forms',            desc: 'Signups',       group: 'tools' },
   { key: 'quizzes',         label: 'Quiz Funnels',     desc: 'Lead quizzes',  group: 'tools' },
