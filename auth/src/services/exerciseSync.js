@@ -17,7 +17,7 @@ const defaultDb = () => require('./supabase').supabaseAdmin
 async function loadExisting(db) {
   const rows = []
   for (let from = 0; ; from += READ_PAGE) {
-    const { data, error } = await db.from(TABLE).select('id, source, source_id, name_key').range(from, from + READ_PAGE - 1)
+    const { data, error } = await db.from(TABLE).select('id, source, source_id, name_key, thumbnail_url').range(from, from + READ_PAGE - 1)
     if (error) throw new Error(error.message)
     rows.push(...(data || []))
     if (!data || data.length < READ_PAGE) break

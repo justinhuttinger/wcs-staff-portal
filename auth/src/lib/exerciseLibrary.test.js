@@ -121,3 +121,28 @@ test('a free row with a name nobody has is inserted', () => {
   assert.equal(plan.inserts.length, 1)
   assert.equal(plan.skipped, 0)
 })
+
+test('a source id repeated in one run is planned once (last copy wins)', () => {
+  // Offset paging can hand back the same item twice if the catalogue shifts
+  // mid-fetch; two inserts of one (source, source_id) would violate the index.
+  const first = fromYmove({ ...YM_BENCH, title: 'Old title' })
+  const second = fromYmove(YM_BENCH)
+  const plan = planUpsert([], [first, second])
+  assert.equal(plan.inserts.length, 1)
+  assert.equal(plan.inserts[0].name, 'DB Bench Press')
+})
+
+test('a repeated id that links onto a free row is not also inserted', () => {
+  const existing = [{ id: 'free-1', source: 'free', source_id: 'Dumbbell_Bench_Press', name_key: nameKey('Dumbbell Bench Press') }]
+  const plan = planUpsert(existing, [fromYmove(YM_BENCH), fromYmove(YM_BENCH)])
+  assert.equal(plan.updates.length, 1)
+  assert.equal(plan.inserts.length, 0)
+})
+
+test('linking keeps the free image when YMove sends no thumbnail', () => {
+  const existing = [{ id: 'free-1', source: 'free', source_id: 'X', name_key: nameKey('Dumbbell Bench Press'), thumbnail_url: 'https://cdn/free.jpg' }]
+  const plan = planUpsert(existing, [fromYmove({ ...YM_BENCH, thumbnailUrl: undefined })])
+  assert.equal(plan.updates[0].row.thumbnail_url, 'https://cdn/free.jpg')
+  const withThumb = planUpsert(existing, [fromYmove(YM_BENCH)])
+  assert.equal(withThumb.updates[0].row.thumbnail_url, 'https://cdn.example/t.jpg')
+})

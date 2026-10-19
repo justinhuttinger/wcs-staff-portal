@@ -38,8 +38,12 @@ function validateCustom(body = {}) {
   }
 }
 
-/** Library rows from a vendor are read-only; trainers edit only their own. */
-const canEdit = (row) => row?.source === 'custom'
+/**
+ * Library rows from a vendor are read-only. A custom exercise can be edited by
+ * whoever made it, or by a manager+ (it may sit in other trainers' programs).
+ */
+const canEdit = (row, { actor, isManager }) =>
+  row?.source === 'custom' && (isManager || (!!actor && row.created_by === actor))
 
 /**
  * Resolves a playable video for a library row, or null when there is none

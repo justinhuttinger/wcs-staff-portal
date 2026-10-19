@@ -27,9 +27,10 @@ test('a custom exercise needs a name and a known primary muscle', () => {
 })
 
 test('only custom rows are editable through the API', () => {
-  assert.equal(canEdit({ source: 'custom' }), true)
-  assert.equal(canEdit({ source: 'free' }), false)
-  assert.equal(canEdit({ source: 'ymove' }), false)
+  const gm = { actor: 'gm@wcstrength.com', isManager: true }
+  assert.equal(canEdit({ source: 'custom' }, gm), true)
+  assert.equal(canEdit({ source: 'free' }, gm), false)
+  assert.equal(canEdit({ source: 'ymove' }, gm), false)
 })
 
 test('video: 503 shape without a key for ymove rows', async () => {
@@ -57,4 +58,12 @@ test('video cache reuses a fresh URL within 24h and refetches after', async () =
   assert.equal((await resolve(row)).videoUrl, 'u2')
   assert.equal(calls, 2)
   assert.ok(VIDEO_CACHE_MS <= 24 * 60 * 60 * 1000)
+})
+
+test('trainers edit only their own custom exercises; managers edit any custom one', () => {
+  const mine = { source: 'custom', created_by: 'pt@wcstrength.com' }
+  assert.equal(canEdit(mine, { actor: 'pt@wcstrength.com', isManager: false }), true)
+  assert.equal(canEdit(mine, { actor: 'other@wcstrength.com', isManager: false }), false)
+  assert.equal(canEdit(mine, { actor: 'gm@wcstrength.com', isManager: true }), true)
+  assert.equal(canEdit({ source: 'ymove' }, { actor: 'gm@wcstrength.com', isManager: true }), false)
 })

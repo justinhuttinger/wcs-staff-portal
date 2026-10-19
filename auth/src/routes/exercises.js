@@ -7,7 +7,7 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { requireRole, roleLevel } = require('../middleware/role')
 const ymoveClient = require('../services/ymoveClient')
 const { syncYmove } = require('../services/exerciseSync')
 const { MUSCLES } = require('../lib/exerciseLibrary')
@@ -53,6 +53,8 @@ router.get('/', async (req, res) => {
 
   const from = (page - 1) * pageSize
   const { data, count, error } = await query.order('name').range(from, from + pageSize - 1)
+  // Paging past the end is an empty page, not an error (PostgREST says 416).
+  if (error && error.code === 'PGRST103') return res.json({ exercises: [], total: count || 0, page, pageSize })
   if (error) return fail(res, 502, error.message)
   res.json({ exercises: data || [], total: count || 0, page, pageSize })
 })
@@ -115,7 +117,12 @@ router.put('/:id', async (req, res) => {
   try {
     const existing = await loadRow(req.params.id)
     if (!existing) return fail(res, 404, 'Exercise not found.')
-    if (!canEdit(existing)) return fail(res, 403, 'Library exercises can’t be edited. Add your own instead.')
+    const isManager = roleLevel(req.staff?.role) >= roleLevel('manager')
+    if (!canEdit(existing, { actor: actor(req), isManager })) {
+      return fail(res, 403, existing.source === 'custom'
+        ? 'Only the trainer who added this exercise (or a manager) can edit it.'
+        : 'Library exercises can’t be edited. Add your own instead.')
+    }
     const { row, error } = validateCustom(req.body)
     if (error) return fail(res, 400, error)
     const { data, error: dbError } = await supabaseAdmin

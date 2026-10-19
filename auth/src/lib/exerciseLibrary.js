@@ -82,6 +82,10 @@ function fromYmove(ex) {
   }
 }
 
+// A vendor that sends no thumbnail must not wipe the image a row already has.
+const keepImage = (row, stored) =>
+  (row.thumbnail_url || !stored.thumbnail_url ? row : { ...row, thumbnail_url: stored.thumbnail_url })
+
 /**
  * Decide what each incoming row does against what is stored.
  *
@@ -97,7 +101,13 @@ function fromYmove(ex) {
  * @param {object[]} incoming library rows from fromFreeDb / fromYmove
  * @returns {{ updates: {id, row}[], inserts: object[], skipped: number }}
  */
-function planUpsert(existing, incoming) {
+function planUpsert(existing, rawIncoming) {
+  // One plan per (source, source_id): paging can repeat an item, and two
+  // writes of one key would trip the unique index. The last copy wins.
+  const latest = new Map()
+  for (const row of rawIncoming) latest.set(`${row.source}:${row.source_id}`, row)
+  const incoming = [...latest.values()]
+
   const bySource = new Map()
   const freeByKey = new Map()
   const ymoveKeys = new Set()
@@ -115,14 +125,14 @@ function planUpsert(existing, incoming) {
   for (const row of incoming) {
     const same = bySource.get(`${row.source}:${row.source_id}`)
     if (same) {
-      updates.push({ id: same.id, row })
+      updates.push({ id: same.id, row: keepImage(row, same) })
       continue
     }
     if (row.source === 'ymove') {
       const free = freeByKey.get(row.name_key)
       if (free && !linked.has(free.id)) {
         linked.add(free.id)
-        updates.push({ id: free.id, row })
+        updates.push({ id: free.id, row: keepImage(row, free) })
         continue
       }
     }

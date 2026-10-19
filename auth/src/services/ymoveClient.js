@@ -34,11 +34,17 @@ const itemsOf = (body) => body.data || body.exercises || body.items || []
  */
 async function listAllExercises({ fetchImpl = fetch } = {}) {
   const all = []
-  for (let page = 1; ; page++) {
+  // Hard stop well past the ~1,400-exercise catalogue, in case a response
+  // never signals its last page.
+  for (let page = 1; page <= 200; page++) {
     const body = await call('/exercises', { excludeVideos: 1, pageSize: PAGE_SIZE, page }, fetchImpl)
-    all.push(...itemsOf(body))
-    const totalPages = body.pagination?.totalPages ?? 1
-    if (page >= totalPages) break
+    const items = itemsOf(body)
+    // An empty first page means we misread the response, not an empty
+    // catalogue; failing loudly beats a sync that "succeeds" with nothing.
+    if (page === 1 && !items.length) throw new Error('YMove returned no exercises (unexpected response shape?)')
+    all.push(...items)
+    const totalPages = body.pagination?.totalPages
+    if (totalPages != null ? page >= totalPages : items.length < PAGE_SIZE) break
   }
   return all
 }

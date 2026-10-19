@@ -88,3 +88,22 @@ test('listAllExercises surfaces the status on failure', async () => {
   await assert.rejects(listAllExercises({ fetchImpl }), /429/)
   delete process.env.YMOVE_API_KEY
 })
+
+test('listAllExercises keeps paging on full pages when totalPages is missing', async () => {
+  process.env.YMOVE_API_KEY = 'ym_test'
+  const full = Array.from({ length: 50 }, (_, i) => ymove(`a${i}`, `A ${i}`))
+  const fetchImpl = async (url) => {
+    const page = Number(new URL(url).searchParams.get('page'))
+    return { ok: true, status: 200, json: async () => ({ data: page === 1 ? full : [ymove('b1', 'B')] }) }
+  }
+  const all = await listAllExercises({ fetchImpl })
+  delete process.env.YMOVE_API_KEY
+  assert.equal(all.length, 51)
+})
+
+test('listAllExercises throws when the first page is empty (unknown response shape)', async () => {
+  process.env.YMOVE_API_KEY = 'ym_test'
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ results: [] }) })
+  await assert.rejects(listAllExercises({ fetchImpl }), /no exercises/i)
+  delete process.env.YMOVE_API_KEY
+})
