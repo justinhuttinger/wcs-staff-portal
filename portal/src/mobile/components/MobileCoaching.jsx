@@ -159,7 +159,7 @@ function MemberHub({ member, onBack }) {
         </button>
         <button className={item} onClick={() => setView('programs')}>
           <span className="block font-semibold">Programs</span>
-          <span className="block text-xs text-text-muted">Write, edit, or run a workout</span>
+          <span className="block text-xs text-text-muted">See what they are training</span>
         </button>
         <button className={item} onClick={() => setView('habits')}>
           <span className="block font-semibold">Habits</span>
