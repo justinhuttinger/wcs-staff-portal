@@ -2,8 +2,8 @@
 // The Coaching exercise library (memberapp_exercises): search for the program
 // builder's picker, trainer-made custom exercises, and playable video.
 //
-// Gate: manager+ for now, like /member-app. Coaching PR 3 opens this to
-// personal trainers through the coaching permission. Sync is admin-only.
+// Gate: the Coaching tile (requireTile('coaching')), so trainers can browse
+// and add exercises. Sync stays admin-only.
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
@@ -12,6 +12,7 @@ const ymoveClient = require('../services/ymoveClient')
 const { syncYmove } = require('../services/exerciseSync')
 const { MUSCLES } = require('../lib/exerciseLibrary')
 const { searchPattern, validateCustom, canEdit, createVideoResolver } = require('./exercisesHelpers')
+const { requireTile } = require('../middleware/tile')
 
 const router = Router()
 router.use(authenticate)
@@ -34,7 +35,7 @@ router.post('/sync', requireRole('admin'), async (req, res) => {
   }
 })
 
-router.use(requireRole('manager'))
+router.use(requireTile('coaching'))
 
 // GET /exercises?q=&muscle=&equipment=&source=&page=1&pageSize=24
 router.get('/', async (req, res) => {

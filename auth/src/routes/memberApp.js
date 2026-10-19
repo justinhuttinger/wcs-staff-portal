@@ -4,8 +4,11 @@
 // notifications. Programs, templates and workout logs moved to /coaching
 // (routes/coaching.js) with the Coaching rebuild.
 //
-// Gate: manager+ throughout. Setting someone's tier or messaging a member as
-// their coach is not a front-desk action, and a broadcast reaches every phone.
+// Gate: manager+ for the member list, tiers, threads and broadcasts (a
+// broadcast reaches every phone). The per-member routes (habits, nutrition,
+// calendar, messages) also open to a trainer with the Coaching tile for their
+// own clients (services/coachingScope.js requireClientAccess), which is how
+// the Coaching tile's client profile reuses them.
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
@@ -18,11 +21,24 @@ const {
   normaliseMeal, normaliseTarget, targetOn, totalsFor, remainingFor,
 } = require('../lib/nutrition')
 
+const { requireClientAccess } = require('../services/coachingScope')
+
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('manager'))
 
-const actor = (req) => req.user?.email || req.user?.id || 'unknown'
+const managerOnly = requireRole('manager')
+const pairFrom = (src) => (src && src.member_id && src.club_number
+  ? { member_id: String(src.member_id), club_number: String(src.club_number) }
+  : null)
+const fromQuery = requireClientAccess((req) => pairFrom(req.query))
+const fromBody = requireClientAccess((req) => pairFrom(req.body))
+const fromRow = (table) => requireClientAccess(async (req) => {
+  const { data } = await supabaseAdmin.from(table).select('member_id, club_number').eq('id', req.params.id).maybeSingle()
+  return pairFrom(data)
+})
+
+// auth sets req.staff; this used to read req.user and lost every created_by.
+const actor = (req) => req.staff?.email || req.staff?.id || 'unknown'
 const trim = (v, max = 2000) => (v == null ? null : String(v).trim().slice(0, max) || null)
 
 function fail(res, status, message) {
@@ -35,7 +51,7 @@ function fail(res, status, message) {
 
 // GET /member-app/members?q=jon
 // Searches active ABC members by name or email, and folds in the tier row.
-router.get('/members', async (req, res) => {
+router.get('/members', managerOnly, async (req, res) => {
   const q = String(req.query.q || '').trim()
   if (q.length < 2) return res.json({ members: [] })
 
@@ -73,7 +89,7 @@ router.get('/members', async (req, res) => {
 })
 
 // PUT /member-app/members/:memberId/tier   { club_number, tier, coach_staff_id }
-router.put('/members/:memberId/tier', async (req, res) => {
+router.put('/members/:memberId/tier', managerOnly, async (req, res) => {
   const { club_number: clubNumber, tier, coach_staff_id: coach } = req.body || {}
   if (!clubNumber) return fail(res, 400, 'club_number is required')
   if (!['basic', 'training'].includes(tier)) return fail(res, 400, 'tier must be basic or training')
@@ -92,7 +108,7 @@ router.put('/members/:memberId/tier', async (req, res) => {
 })
 
 // GET /member-app/coaches — staff who can be assigned as a coach
-router.get('/coaches', async (req, res) => {
+router.get('/coaches', managerOnly, async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from('staff')
     .select('id, display_name, first_name, last_name, email')
@@ -117,7 +133,7 @@ router.get('/coaches', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 // GET /member-app/habits?member_id=&club_number=
-router.get('/habits', async (req, res) => {
+router.get('/habits', fromQuery, async (req, res) => {
   const { member_id: memberId, club_number: clubNumber } = req.query
   if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
 
@@ -158,7 +174,7 @@ router.get('/habits', async (req, res) => {
   })
 })
 
-router.post('/habits', async (req, res) => {
+router.post('/habits', fromBody, async (req, res) => {
   const { member_id: memberId, club_number: clubNumber } = req.body || {}
   if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
 
@@ -195,7 +211,7 @@ router.post('/habits', async (req, res) => {
   res.status(201).json({ habit: data })
 })
 
-router.put('/habits/:id', async (req, res) => {
+router.put('/habits/:id', fromRow('memberapp_habits'), async (req, res) => {
   const { data: existing, error: readErr } = await supabaseAdmin
     .from('memberapp_habits')
     .select('id, kind, label, target, unit')
@@ -217,7 +233,7 @@ router.put('/habits/:id', async (req, res) => {
 
 // Soft delete so the logs survive: a member who kept a habit for two months
 // should not lose that record because the coach swapped it out.
-router.delete('/habits/:id', async (req, res) => {
+router.delete('/habits/:id', fromRow('memberapp_habits'), async (req, res) => {
   const { error } = await supabaseAdmin
     .from('memberapp_habits')
     .update({ is_active: false, updated_at: new Date().toISOString() })
@@ -249,7 +265,7 @@ async function loadTargets(memberId, clubNumber) {
 }
 
 // GET /member-app/nutrition?member_id=&club_number=
-router.get('/nutrition', async (req, res) => {
+router.get('/nutrition', fromQuery, async (req, res) => {
   const { member_id: memberId, club_number: clubNumber } = req.query
   if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
 
@@ -319,7 +335,7 @@ router.get('/nutrition', async (req, res) => {
 })
 
 // PUT /member-app/nutrition/enabled
-router.put('/nutrition/enabled', async (req, res) => {
+router.put('/nutrition/enabled', fromBody, async (req, res) => {
   const { member_id: memberId, club_number: clubNumber, enabled } = req.body || {}
   if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
 
@@ -337,7 +353,7 @@ router.put('/nutrition/enabled', async (req, res) => {
 })
 
 // POST /member-app/nutrition/targets - a new row, never an edit of the old one
-router.post('/nutrition/targets', async (req, res) => {
+router.post('/nutrition/targets', fromBody, async (req, res) => {
   const { member_id: memberId, club_number: clubNumber } = req.body || {}
   if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
 
@@ -360,7 +376,7 @@ router.post('/nutrition/targets', async (req, res) => {
 })
 
 // GET /member-app/nutrition/day?member_id=&club_number=&date=
-router.get('/nutrition/day', async (req, res) => {
+router.get('/nutrition/day', fromQuery, async (req, res) => {
   const { member_id: memberId, club_number: clubNumber, date } = req.query
   if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
   const day = date || pacificDay()
@@ -383,7 +399,7 @@ router.get('/nutrition/day', async (req, res) => {
 
 // Staff-logged meals are marked as such: a member should be able to tell which
 // numbers are theirs.
-router.post('/nutrition/meals', async (req, res) => {
+router.post('/nutrition/meals', fromBody, async (req, res) => {
   const { member_id: memberId, club_number: clubNumber } = req.body || {}
   if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
 
@@ -405,7 +421,7 @@ router.post('/nutrition/meals', async (req, res) => {
   res.status(201).json({ meal: data })
 })
 
-router.put('/nutrition/meals/:id', async (req, res) => {
+router.put('/nutrition/meals/:id', fromRow('memberapp_meals'), async (req, res) => {
   const { value, error: bad } = normaliseMeal(req.body || {})
   if (bad) return fail(res, 400, bad)
 
@@ -417,7 +433,7 @@ router.put('/nutrition/meals/:id', async (req, res) => {
   res.json({ ok: true })
 })
 
-router.delete('/nutrition/meals/:id', async (req, res) => {
+router.delete('/nutrition/meals/:id', fromRow('memberapp_meals'), async (req, res) => {
   const { error } = await supabaseAdmin
     .from('memberapp_meals').delete().eq('id', req.params.id)
   if (error) return fail(res, 502, error.message)
@@ -439,7 +455,7 @@ router.delete('/nutrition/meals/:id', async (req, res) => {
 const CALENDAR_MAX_DAYS = 120
 
 // GET /member-app/calendar?member_id=&club_number=&from=&to=
-router.get('/calendar', async (req, res) => {
+router.get('/calendar', fromQuery, async (req, res) => {
   const { member_id: memberId, club_number: clubNumber } = req.query
   if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
 
@@ -553,7 +569,7 @@ router.get('/calendar', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 // GET /member-app/threads — everyone with a conversation, newest first
-router.get('/threads', async (req, res) => {
+router.get('/threads', managerOnly, async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from('memberapp_messages')
     .select('member_id, club_number, sender, body, created_at, read_at_coach')
@@ -590,7 +606,7 @@ router.get('/threads', async (req, res) => {
 })
 
 // GET /member-app/messages?member_id=&club_number=  — marks the thread read
-router.get('/messages', async (req, res) => {
+router.get('/messages', fromQuery, async (req, res) => {
   const { member_id: memberId, club_number: clubNumber } = req.query
   if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
 
@@ -613,7 +629,7 @@ router.get('/messages', async (req, res) => {
 })
 
 // POST /member-app/messages — coach replies; pushes to the member's phone
-router.post('/messages', async (req, res) => {
+router.post('/messages', fromBody, async (req, res) => {
   const { member_id: memberId, club_number: clubNumber, body } = req.body || {}
   if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
   const text = trim(body, 2000)
@@ -623,7 +639,7 @@ router.post('/messages', async (req, res) => {
     .from('memberapp_messages')
     .insert({
       member_id: memberId, club_number: String(clubNumber),
-      sender: 'coach', staff_id: req.user?.id || null, body: text,
+      sender: 'coach', staff_id: req.staff?.id || null, body: text,
     })
     .select().single()
   if (error) return fail(res, 502, error.message)
@@ -649,7 +665,7 @@ router.post('/messages', async (req, res) => {
 // Broadcasts
 // ---------------------------------------------------------------------------
 
-router.get('/broadcasts', async (req, res) => {
+router.get('/broadcasts', managerOnly, async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from('memberapp_broadcasts')
     .select('*')
@@ -659,7 +675,7 @@ router.get('/broadcasts', async (req, res) => {
   res.json({ broadcasts: data || [] })
 })
 
-router.post('/broadcasts', async (req, res) => {
+router.post('/broadcasts', managerOnly, async (req, res) => {
   const {
     title, body, url, audience = 'all',
     club_number: clubNumber, tier, member_id: memberId, scheduled_for: scheduledFor,
@@ -696,7 +712,7 @@ router.post('/broadcasts', async (req, res) => {
 })
 
 // Only something still queued can be pulled back; a sent notification is gone.
-router.post('/broadcasts/:id/cancel', async (req, res) => {
+router.post('/broadcasts/:id/cancel', managerOnly, async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from('memberapp_broadcasts')
     .update({ status: 'canceled' })

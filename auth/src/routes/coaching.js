@@ -6,13 +6,19 @@
 // Saving is a diff (lib/coachingPrograms.js planTreeDiff), never delete and
 // re-insert, so editing a program keeps every logged set attached to its row.
 //
-// Gate: manager+ for now. Coaching PR 3 opens this to personal trainers with
-// per-client scope; every handler goes through loadProgramForStaff /
-// canEditProgram, so that scope check lives in one place.
+// Gate: the Coaching tile (requireTile('coaching'), seeded for trainers and up
+// in migration 240). Client scope (trainer = their own clients, manager =
+// their clubs, corporate/admin = all; services/coachingScope.js) is checked in
+// loadProgramForStaff for every client program and by assertClientAccess for
+// every member-keyed route. Client lifecycle, dashboard and profile routes
+// live in routes/coachingClients.js, mounted below.
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole, roleLevel } = require('../middleware/role')
+const { roleLevel } = require('../middleware/role')
+const { requireTile } = require('../middleware/tile')
+const { assertClientAccess } = require('../services/coachingScope')
+const { notifyMember } = require('../lib/memberAppPush')
 const {
   normaliseTree, planTreeDiff, itemLabels, volumeByMuscle, mergeVolume, copyTree, UUID_RE,
 } = require('../lib/coachingPrograms')
@@ -23,7 +29,7 @@ const { applyTreePlan } = require('../lib/coachingWrite')
 
 const router = Router()
 router.use(authenticate)
-router.use(requireRole('manager'))
+router.use(requireTile('coaching'))
 
 const PROGRAMS = 'memberapp_programs'
 const DAYS = 'memberapp_program_days'
@@ -43,13 +49,32 @@ class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status }
 }
 
-// The one place a program is fetched for a caller. PR 3 adds client scoping
-// (coach = me / my club) inside canSeeProgram.
+// Best effort: the program or message is already saved, so a phone that
+// cannot be reached never fails the request.
+async function pushMember(memberId, clubNumber, title, body) {
+  try {
+    await notifyMember({ memberId: String(memberId), clubNumber: String(clubNumber), title, body, url: '/' })
+  } catch (err) {
+    console.error('[coaching] member push failed:', err.message)
+  }
+}
+
+// The one place a program is fetched for a caller: templates by owner rules
+// (canSeeProgram), client programs by whether the member is the caller's
+// client (assertClientAccess).
 async function loadProgramForStaff(req, id) {
   if (!UUID_RE.test(String(id))) throw new HttpError(404, 'Program not found')
   const { data, error } = await supabaseAdmin.from(PROGRAMS).select(LIST_COLS).eq('id', id).maybeSingle()
   if (error) throw new HttpError(502, error.message)
   if (!canSeeProgram(data, caller(req))) throw new HttpError(404, 'Program not found')
+  if (data.kind === 'client') {
+    try {
+      await assertClientAccess(req, data.member_id, data.club_number)
+    } catch (err) {
+      if (err.status === 404) throw new HttpError(404, 'Program not found')
+      throw err
+    }
+  }
   return data
 }
 
@@ -157,6 +182,7 @@ router.get('/programs', handle(async (req, res) => {
   if (kind === 'client') {
     const { member_id: memberId, club_number: clubNumber } = req.query
     if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+    await assertClientAccess(req, memberId, clubNumber)
     query = query.eq('member_id', String(memberId)).eq('club_number', String(clubNumber))
       .order('created_at', { ascending: false })
   } else {
@@ -216,10 +242,13 @@ router.post('/programs', handle(async (req, res) => {
   const fields = { ...tree.program, kind, created_by: actor(req) }
   if (kind === 'client') {
     if (!body.member_id || !body.club_number) return fail(res, 400, 'member_id and club_number are required')
+    const { client } = await assertClientAccess(req, body.member_id, body.club_number)
+    const coach = body.coach_staff_id || client?.coach_staff_id || me.staffId || null
+    if (coach && !UUID_RE.test(String(coach))) return fail(res, 400, 'coach_staff_id is not a staff id')
     Object.assign(fields, {
       member_id: String(body.member_id),
       club_number: String(body.club_number),
-      coach_staff_id: body.coach_staff_id || null,
+      coach_staff_id: coach,
     })
   } else {
     if (body.publish && !me.isManager) return fail(res, 403, 'Only managers can add to the WCS library.')
@@ -272,8 +301,19 @@ router.put('/programs/:id', handle(async (req, res) => {
 // is empty or today) ends the member's other live programs yesterday.
 router.post('/programs/:id/copy', handle(async (req, res) => {
   const source = await loadProgramForStaff(req, req.params.id)
-  const { fields, error } = copyFields(source, req.body, caller(req).staffId)
-  if (error) return fail(res, 400, error)
+  res.status(201).json(await copyProgram(req, source, req.body || {}))
+}))
+
+// Deep-copy `source` per copyFields (assign / save as template / duplicate).
+// A client copy is scoped to the caller's clients, hands over from the
+// member's current program when it starts now, and pushes the member.
+async function copyProgram(req, source, body) {
+  const { fields, error } = copyFields(source, body, caller(req).staffId)
+  if (error) throw new HttpError(400, error)
+  if (fields.kind === 'client') {
+    const { client } = await assertClientAccess(req, fields.member_id, fields.club_number)
+    if (!fields.coach_staff_id) fields.coach_staff_id = client?.coach_staff_id || caller(req).staffId || null
+  }
 
   const { days, items } = await loadRows(source.id, false)
   const tree = copyTree(treeFromRows(source, days, items))
@@ -285,14 +325,16 @@ router.post('/programs/:id/copy', handle(async (req, res) => {
 
   let handover = {}
   const startsNow = !fields.starts_on || fields.starts_on <= pacificDate()
-  const body = req.body || {}
   const replace = 'replace_current' in body ? Boolean(body.replace_current) : startsNow
   // A future start already takes over on its date; ending today's program now
   // would leave the member with nothing in between.
   if (fields.kind === 'client' && replace && startsNow) handover = await replaceCurrent(program)
+  if (fields.kind === 'client' && startsNow && body.notify !== false) {
+    await pushMember(fields.member_id, fields.club_number, 'New training program', 'Your coach has set up your training program. Open the app to see it.')
+  }
 
-  res.status(201).json({ ...(await loadFull(program)), ...handover })
-}))
+  return { ...(await loadFull(program)), ...handover }
+}
 
 // POST /coaching/programs/:id/publish — a trainer's template joins the WCS library.
 router.post('/programs/:id/publish', handle(async (req, res) => {
@@ -334,6 +376,14 @@ router.patch('/programs/:id', handle(async (req, res) => {
   const { data, error } = await supabaseAdmin
     .from(PROGRAMS).update(patch).eq('id', program.id).select(LIST_COLS).single()
   if (error) return fail(res, 502, error.message)
+
+  // Moving a scheduled block to start now puts it in front of the member today.
+  const today = pacificDate()
+  const nowLive = data.kind === 'client' && data.is_active && (!data.starts_on || data.starts_on <= today)
+  const wasLater = program.starts_on && program.starts_on > today
+  if ('starts_on' in patch && nowLive && wasLater) {
+    await pushMember(data.member_id, data.club_number, 'Your next training block', `${data.name} starts today. Open the app to see it.`)
+  }
   res.json({ program: data })
 }))
 
@@ -352,6 +402,7 @@ router.delete('/programs/:id', handle(async (req, res) => {
 router.get('/sessions', handle(async (req, res) => {
   const { member_id: memberId, club_number: clubNumber } = req.query
   if (!memberId || !clubNumber) return fail(res, 400, 'member_id and club_number are required')
+  await assertClientAccess(req, memberId, clubNumber)
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 30))
 
   const { data: sessions, error } = await supabaseAdmin
@@ -388,5 +439,8 @@ router.get('/sessions', handle(async (req, res) => {
     })),
   })
 }))
+
+// Clients, dashboard, profile, notes, progress, coaches.
+router.use(require('./coachingClients')({ handle, fail, HttpError, loadProgramForStaff, copyProgram, pushMember }))
 
 module.exports = router
