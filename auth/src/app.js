@@ -484,10 +484,12 @@ app.listen(PORT, () => {
     // the first requests a deploy has to serve.
     setTimeout(runNotInterested, 60 * 1000).unref()
     setInterval(runNotInterested, 24 * 60 * 60 * 1000).unref()
-
-  // Member-app broadcasts: due rows are claimed and sent every minute.
-  require('./services/memberAppBroadcasts').startMemberAppBroadcastCron()
   }
+
+  // Member-app broadcasts: due rows are claimed and sent every minute. Must sit
+  // outside the not-interested flag above; nested inside it, scheduled
+  // broadcasts only went out when that unrelated sync was enabled.
+  require('./services/memberAppBroadcasts').startMemberAppBroadcastCron()
 
   // Coaching exercise library: nightly YMove metadata sync (no-op without
   // YMOVE_API_KEY).
