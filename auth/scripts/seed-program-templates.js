@@ -1,24 +1,124 @@
 #!/usr/bin/env node
 /**
- * Seed the member-app program template library.
+ * Seed the WCS template library for Coaching (migration 239).
  *
  *   node auth/scripts/seed-program-templates.js
  *
- * Idempotent by template name: an existing template is replaced (days and
- * exercises cascade), so editing this file and re-running is the way to update
- * the library. Templates a coach created by hand are untouched, because only
- * the names listed here are matched.
+ * Run AFTER the exercise library seed (scripts/seed-exercise-library.js):
+ * every exercise below is placed on a memberapp_exercises row, by name
+ * (exerciseLibrary nameKey), through ALIASES where free-exercise-db spells it
+ * differently, or as a WCS custom exercise from CUSTOMS. The script stops and
+ * lists any name it cannot place before writing any template.
+ *
+ * Idempotent by template name among WCS-library templates (kind = 'template',
+ * owner_staff_id null): an existing one keeps its id (so "clients using" and
+ * client copies stay linked) and has its days and exercises replaced. Trainer
+ * templates and anything not named here are untouched.
  *
  * Prescriptions are free text on purpose ("8-10", "AMRAP", "bodyweight");
- * rest_seconds is a number because the app counts it down.
+ * sets and rest_seconds are numbers because the app counts them.
  */
 require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') })
-const { supabaseAdmin } = require('../src/services/supabase')
+const { normaliseTree, planTreeDiff } = require('../src/lib/coachingPrograms')
+const { applyTreePlan } = require('../src/lib/coachingWrite')
+const { resolveExercises, templateTree } = require('../src/lib/templateSeed')
+
+// Template name -> free-exercise-db name (dist/exercises.json at the pinned
+// sha), for movements it spells differently.
+const ALIASES = {
+  'Chest press machine': 'Machine Bench Press',
+  'Seated row': 'Seated Cable Rows',
+  'Cable row': 'Seated Cable Rows',
+  'Lat pulldown': 'Wide-Grip Lat Pulldown',
+  'Dumbbell curl': 'Dumbbell Bicep Curl',
+  'Push-up': 'Pushups',
+  'Walking lunge': 'Bodyweight Walking Lunge',
+  'Farmer carry': "Farmer's Walk",
+  'Dumbbell farmer carry': "Farmer's Walk",
+  'Bench press': 'Barbell Bench Press - Medium Grip',
+  'Bent-over row': 'Bent Over Barbell Row',
+  'Barbell row': 'Bent Over Barbell Row',
+  'Overhead press': 'Standing Military Press',
+  'Back squat': 'Barbell Squat',
+  'Chest-supported row': 'Dumbbell Incline Row',
+  'Lateral raise': 'Side Lateral Raise',
+  'Dumbbell lateral raise': 'Side Lateral Raise',
+  'Cable curl': 'Standing Biceps Cable Curl',
+  'Deadlift': 'Barbell Deadlift',
+  'Front squat': 'Front Barbell Squat',
+  'Leg curl': 'Lying Leg Curls',
+  'Overhead triceps extension': 'Cable Rope Overhead Triceps Extension',
+  'Pull-up': 'Pullups',
+  'Rear delt fly': 'Reverse Flyes',
+  'Calf raise': 'Standing Calf Raises',
+  'Cable fly': 'Cable Crossover',
+  'Rope pushdown': 'Triceps Pushdown - Rope Attachment',
+  'Dumbbell row': 'One-Arm Dumbbell Row',
+  'Dumbbell press': 'Dumbbell Bench Press',
+  'Battle rope': 'Battling Ropes',
+  'Bicycle crunch': 'Air Bike',
+  'Dumbbell goblet squat': 'Goblet Squat',
+  'Dumbbell Romanian deadlift': 'Stiff-Legged Dumbbell Deadlift',
+  'Dumbbell pullover': 'Bent-Arm Dumbbell Pullover',
+  'Dumbbell split squat': 'Split Squat with Dumbbells',
+  'Air squat': 'Bodyweight Squat',
+  'Glute bridge': 'Butt Lift (Bridge)',
+  'Side plank': 'Side Bridge',
+  'Squat jump': 'Freehand Jump Squat',
+  'Box jump': 'Front Box Jump',
+  'Nordic curl': 'Natural Glute Ham Raise',
+  'Medicine ball chest throw': 'Medicine Ball Chest Pass',
+  'Weighted pull-up': 'Weighted Pull Ups',
+  'Hip thrust': 'Barbell Hip Thrust',
+  'Single-leg deadlift': 'Kettlebell One-Legged Deadlift',
+  'Dip': 'Dips - Triceps Version',
+  'Cable kickback': 'One-Legged Cable Kickback',
+  'Abduction machine': 'Thigh Abductor',
+  'Kettlebell row': 'One-Arm Kettlebell Row',
+  'Turkish get-up': 'Kettlebell Turkish Get-Up (Squat style)',
+  'Kettlebell snatch': 'One-Arm Kettlebell Snatch',
+  'Halo': 'Kettlebell Halo',
+  'Close-grip bench': 'Close-Grip Barbell Bench Press',
+  'Back extension': 'Hyperextensions (Back Extensions)',
+}
+
+// Movements free-exercise-db does not have (or only as a different
+// variation): added once as WCS custom exercises. primary must be one of
+// exerciseLibrary MUSCLES, because volume per muscle counts on it.
+const CUSTOMS = {
+  'Hanging knee raise': { primary: 'abdominals', equipment: 'body only' },
+  'Bulgarian split squat': { primary: 'quadriceps', secondary: ['glutes', 'hamstrings'], equipment: 'dumbbell' },
+  'Kettlebell swing': { primary: 'glutes', secondary: ['hamstrings', 'lower back'], equipment: 'kettlebells' },
+  'Reverse lunge': { primary: 'quadriceps', secondary: ['glutes'], equipment: 'body only' },
+  'Step-up': { primary: 'quadriceps', secondary: ['glutes'], equipment: 'body only' },
+  'Step-up (low box)': { primary: 'quadriceps', secondary: ['glutes'], equipment: 'body only' },
+  'Dumbbell hip thrust': { primary: 'glutes', secondary: ['hamstrings'], equipment: 'dumbbell' },
+  'Pike push-up': { primary: 'shoulders', secondary: ['triceps'], equipment: 'body only' },
+  'Hollow hold': { primary: 'abdominals', equipment: 'body only' },
+  'Landmine press': { primary: 'shoulders', secondary: ['chest', 'triceps'], equipment: 'barbell' },
+  'Single-leg RDL': { primary: 'hamstrings', secondary: ['glutes'], equipment: 'dumbbell' },
+  'Frog pump': { primary: 'glutes', equipment: 'body only' },
+  'Sit to stand': { primary: 'quadriceps', secondary: ['glutes'], equipment: 'body only' },
+  'Heel to toe walk': { primary: 'calves', equipment: 'body only' },
+  'Standing march': { primary: 'quadriceps', secondary: ['abdominals'], equipment: 'body only' },
+  'Wall push-up': { primary: 'chest', secondary: ['triceps'], equipment: 'body only' },
+  'Single leg stand': { primary: 'calves', secondary: ['glutes'], equipment: 'body only' },
+  'Wall sit': { primary: 'quadriceps', equipment: 'body only' },
+  'Goblet squat to box': { primary: 'quadriceps', secondary: ['glutes'], equipment: 'kettlebells' },
+  'Side-lying clamshell': { primary: 'abductors', secondary: ['glutes'], equipment: 'bands' },
+  'Bird dog': { primary: 'lower back', secondary: ['abdominals', 'glutes'], equipment: 'body only' },
+  'Kettlebell clean and press': { primary: 'shoulders', secondary: ['glutes', 'triceps'], equipment: 'kettlebells' },
+  'Kettlebell front squat': { primary: 'quadriceps', secondary: ['glutes'], equipment: 'kettlebells' },
+  'Suitcase carry': { primary: 'abdominals', secondary: ['forearms'], equipment: 'kettlebells' },
+  'Pause squat': { primary: 'quadriceps', secondary: ['glutes'], equipment: 'barbell' },
+}
 
 // Shorthand so the library below stays readable:
-//   e(name, sets, reps, weight, rest, note)
-const e = (name, sets, reps, weight, rest, note) =>
-  ({ name, sets, reps, weight, rest_seconds: rest, notes: note || null })
+//   e(name, sets, reps, weight, rest, note, section)
+// section defaults to 'workout'; templateTree puts warm-ups first and
+// cool-downs last whatever order they are listed in.
+const e = (name, sets, reps, weight, rest, note, section) =>
+  ({ name, sets, reps, weight, rest_seconds: rest, notes: note || null, section: section || 'workout' })
 
 const TEMPLATES = [
   {
@@ -335,7 +435,7 @@ const TEMPLATES = [
         e('Chest press machine', '3', '12', 'light', 60),
         e('Seated row', '3', '12', 'light', 60),
         e('Heel to toe walk', '3', '20 steps', 'bodyweight', 45),
-        e('Standing march', '2', '20', 'bodyweight', 45),
+        e('Standing march', '2', '20', 'bodyweight', 45, 'Easy pace to warm up', 'warmup'),
       ] },
       { name: 'Day 2', ex: [
         e('Leg press', '3', '12', 'light', 60),
@@ -432,43 +532,6 @@ const TEMPLATES = [
   },
 ]
 
-async function upsertTemplate(t) {
-  // Replace by name: editing this file and re-running is how the library is
-  // updated, and days/exercises cascade on delete.
-  const { data: existing } = await supabaseAdmin
-    .from('memberapp_program_templates')
-    .select('id').eq('name', t.name).maybeSingle()
-
-  if (existing) {
-    await supabaseAdmin.from('memberapp_program_templates').delete().eq('id', existing.id)
-  }
-
-  const { data: tpl, error } = await supabaseAdmin
-    .from('memberapp_program_templates')
-    .insert({
-      name: t.name, goal: t.goal, level: t.level,
-      days_per_week: t.days_per_week, equipment: t.equipment,
-      description: t.description, tags: t.tags, created_by: 'seed',
-    })
-    .select().single()
-  if (error) throw new Error(`${t.name}: ${error.message}`)
-
-  const dayRows = t.days.map((d, i) => ({ template_id: tpl.id, position: i, name: d.name }))
-  const { data: days, error: dayError } = await supabaseAdmin
-    .from('memberapp_template_days').insert(dayRows).select('id, position')
-  if (dayError) throw new Error(`${t.name} days: ${dayError.message}`)
-
-  const byPosition = new Map(days.map(d => [d.position, d.id]))
-  const exRows = []
-  t.days.forEach((d, i) => {
-    d.ex.forEach((ex, j) => exRows.push({ ...ex, day_id: byPosition.get(i), position: j }))
-  })
-  const { error: exError } = await supabaseAdmin.from('memberapp_template_exercises').insert(exRows)
-  if (exError) throw new Error(`${t.name} exercises: ${exError.message}`)
-
-  return { name: t.name, days: t.days.length, exercises: exRows.length }
-}
-
 // One block per session, always. A template with fewer blocks than sessions
 // leaves a member unable to tell whether they owe another round of one, which
 // is exactly the confusion this guard exists to prevent.
@@ -479,15 +542,88 @@ function assertOneBlockPerSession() {
   throw new Error(`Templates must have one block per session:\n${lines.join('\n')}`)
 }
 
+async function loadLibrary(db) {
+  const rows = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db
+      .from('memberapp_exercises').select('id, name, name_key, source')
+      .eq('is_active', true).order('id').range(from, from + 999)
+    if (error) throw new Error(`exercise library: ${error.message}`)
+    rows.push(...(data || []))
+    if (!data || data.length < 1000) return rows
+  }
+}
+
+async function resolveAll(db) {
+  const names = TEMPLATES.flatMap(t => t.days.flatMap(d => d.ex.map(x => x.name)))
+  const library = await loadLibrary(db)
+  const { byName, create, missing } = resolveExercises(names, library, { aliases: ALIASES, customs: CUSTOMS })
+  if (missing.length) throw new Error(`Cannot place these exercises:\n  ${missing.join('\n  ')}`)
+  if (create.length) {
+    const { data, error } = await db.from('memberapp_exercises').insert(create).select('id, name')
+    if (error) throw new Error(`custom exercises: ${error.message}`)
+    for (const row of data || []) byName.set(row.name, row.id)
+    console.log(`  added ${create.length} WCS custom exercises`)
+  }
+  return byName
+}
+
+async function upsertTemplate(db, t, idByName) {
+  const { tree, error } = normaliseTree(templateTree(t, idByName))
+  if (error) throw new Error(`${t.name}: ${error}`)
+  const exercises = tree.days.reduce((n, d) => n + d.items.length, 0)
+
+  const { data: existing, error: findErr } = await db
+    .from('memberapp_programs').select('id')
+    .eq('kind', 'template').is('owner_staff_id', null).eq('name', t.name)
+    .order('created_at').limit(1).maybeSingle()
+  if (findErr) throw new Error(`${t.name}: ${findErr.message}`)
+
+  const fields = { ...tree.program, starts_on: null, ends_on: null }
+  let programId
+  let stored = { days: [] }
+  if (existing) {
+    programId = existing.id
+    const { error: upErr } = await db
+      .from('memberapp_programs').update({ ...fields, updated_at: new Date().toISOString() }).eq('id', programId)
+    if (upErr) throw new Error(`${t.name}: ${upErr.message}`)
+    const { data: days } = await db.from('memberapp_program_days').select('id').eq('program_id', programId)
+    const dayIds = (days || []).map(d => d.id)
+    const { data: items } = dayIds.length
+      ? await db.from('memberapp_program_items').select('id, day_id').in('day_id', dayIds)
+      : { data: [] }
+    stored = { days: dayIds.map(id => ({ id, items: (items || []).filter(i => i.day_id === id) })) }
+  } else {
+    const { data, error: insErr } = await db
+      .from('memberapp_programs')
+      .insert({ ...fields, kind: 'template', owner_staff_id: null, created_by: 'seed' })
+      .select('id').single()
+    if (insErr) throw new Error(`${t.name}: ${insErr.message}`)
+    programId = data.id
+  }
+
+  // The seed carries no ids, so this replaces the days and items wholesale
+  // while the template row (and its client links) stays put.
+  await applyTreePlan(db, programId, planTreeDiff(stored, tree))
+  return { name: t.name, days: tree.days.length, exercises, updated: Boolean(existing) }
+}
+
 async function main() {
+  // Required here, not at the top, so tests can load TEMPLATES without env.
+  const { supabaseAdmin } = require('../src/services/supabase')
   assertOneBlockPerSession()
+  const idByName = await resolveAll(supabaseAdmin)
   let exercises = 0
   for (const t of TEMPLATES) {
-    const r = await upsertTemplate(t)
+    const r = await upsertTemplate(supabaseAdmin, t, idByName)
     exercises += r.exercises
-    console.log(`  ${r.name} — ${r.days} days, ${r.exercises} exercises`)
+    console.log(`  ${r.updated ? 'updated' : 'added'} ${r.name} — ${r.days} days, ${r.exercises} exercises`)
   }
   console.log(`\n${TEMPLATES.length} templates, ${exercises} exercises.`)
 }
 
-main().catch((err) => { console.error(err.message); process.exit(1) })
+if (require.main === module) {
+  main().catch((err) => { console.error(err.message); process.exit(1) })
+}
+
+module.exports = { TEMPLATES, ALIASES, CUSTOMS }
