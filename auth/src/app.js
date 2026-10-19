@@ -486,6 +486,10 @@ app.listen(PORT, () => {
 
   // Member-app broadcasts: due rows are claimed and sent every minute.
   require('./services/memberAppBroadcasts').startMemberAppBroadcastCron()
+
+  // Coaching exercise library: nightly YMove metadata sync (no-op without
+  // YMOVE_API_KEY).
+  require('./services/exerciseSync').startExerciseSyncCron()
   }
 
   // Memory verification instrumentation (see auth memory-leak fixes): log
