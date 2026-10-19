@@ -16,7 +16,9 @@ const { requireRole, roleLevel } = require('../middleware/role')
 const {
   normaliseTree, planTreeDiff, itemLabels, volumeByMuscle, mergeVolume, copyTree, UUID_RE,
 } = require('../lib/coachingPrograms')
-const { canSeeProgram, canEditProgram, copyFields, treeFromRows } = require('../lib/coachingAccess')
+const {
+  canSeeProgram, canEditProgram, copyFields, treeFromRows, programsToReplace, pacificDate,
+} = require('../lib/coachingAccess')
 const { applyTreePlan } = require('../lib/coachingWrite')
 
 const router = Router()
@@ -98,13 +100,7 @@ async function loadFull(program) {
   return { program, days: outDays, volume: mergeVolume(outDays.map(d => d.volume)) }
 }
 
-const writeTree = async (programId, plan) => {
-  try {
-    await applyTreePlan(supabaseAdmin, programId, plan)
-  } catch (err) {
-    throw new HttpError(502, err.message)
-  }
-}
+const PARTLY = 'Saved partly. Save again to finish.'
 
 // Insert a program row and its whole tree. A failure after the row exists
 // removes it again, so nobody is left with half a program.
@@ -113,12 +109,35 @@ async function createWithTree(fields, tree) {
     .from(PROGRAMS).insert(fields).select(LIST_COLS).single()
   if (error) throw new HttpError(502, error.message)
   try {
-    await writeTree(program.id, planTreeDiff({ days: [] }, tree))
+    await applyTreePlan(supabaseAdmin, program.id, planTreeDiff({ days: [] }, tree))
   } catch (err) {
     await supabaseAdmin.from(PROGRAMS).delete().eq('id', program.id)
-    throw new HttpError(502, err.message)
+    throw new HttpError(502, `Could not save the program: ${err.message}`)
   }
   return program
+}
+
+// Assigning a program that starts now ends the member's other live programs
+// (yesterday, Pacific) so only the new one is live. Best effort: the new
+// program already exists, so a failure here is reported, not thrown.
+async function replaceCurrent(program) {
+  const { data, error } = await supabaseAdmin
+    .from(PROGRAMS).select('id, kind, is_active, starts_on, ends_on')
+    .eq('kind', 'client').eq('is_active', true)
+    .eq('member_id', program.member_id).eq('club_number', program.club_number)
+  if (error) return { replaced: 0, warning: `Assigned, but their current program was not ended: ${error.message}` }
+  const changes = programsToReplace(data, pacificDate(), program.id)
+  let replaced = 0
+  const failed = []
+  for (const { id, patch } of changes) {
+    const { error: upErr } = await supabaseAdmin
+      .from(PROGRAMS).update({ ...patch, updated_at: now() }).eq('id', id)
+    if (upErr) failed.push(upErr.message)
+    else replaced++
+  }
+  return failed.length
+    ? { replaced, warning: `Assigned, but ${failed.length} current program(s) were not ended: ${failed[0]}` }
+    : { replaced }
 }
 
 const handle = (fn) => async (req, res) => {
@@ -231,15 +250,26 @@ router.put('/programs/:id', handle(async (req, res) => {
   const { days, items } = await loadRows(program.id, false)
   const stored = { days: days.map(d => ({ id: d.id, items: items.filter(i => i.day_id === d.id) })) }
 
+  // Tree first, program row last: the row's updated_at only moves once the
+  // whole tree is in. Without a transaction a step can still fail part way;
+  // applyTreePlan orders its writes so the same save sent again finishes it.
+  try {
+    await applyTreePlan(supabaseAdmin, program.id, planTreeDiff(stored, tree))
+  } catch (err) {
+    return fail(res, 502, err.partial ? `${PARTLY} (${err.message})` : `Could not save: ${err.message}`)
+  }
+
   const { data: updated, error: upErr } = await supabaseAdmin
     .from(PROGRAMS).update(patch).eq('id', program.id).select(LIST_COLS).single()
-  if (upErr) return fail(res, 502, upErr.message)
+  if (upErr) return fail(res, 502, `${PARTLY} (${upErr.message})`)
 
-  await writeTree(program.id, planTreeDiff(stored, tree))
   res.json(await loadFull(updated))
 }))
 
-// POST /coaching/programs/:id/copy   { kind, member_id?, club_number?, coach_staff_id?, starts_on?, name? }
+// POST /coaching/programs/:id/copy
+//   { kind, member_id?, club_number?, coach_staff_id?, starts_on?, name?, replace_current? }
+// replace_current (client copies starting today; default true when starts_on
+// is empty or today) ends the member's other live programs yesterday.
 router.post('/programs/:id/copy', handle(async (req, res) => {
   const source = await loadProgramForStaff(req, req.params.id)
   const { fields, error } = copyFields(source, req.body, caller(req).staffId)
@@ -252,7 +282,16 @@ router.post('/programs/:id/copy', handle(async (req, res) => {
   }
 
   const program = await createWithTree({ ...fields, created_by: actor(req) }, tree)
-  res.status(201).json(await loadFull(program))
+
+  let handover = {}
+  const startsNow = !fields.starts_on || fields.starts_on <= pacificDate()
+  const body = req.body || {}
+  const replace = 'replace_current' in body ? Boolean(body.replace_current) : startsNow
+  // A future start already takes over on its date; ending today's program now
+  // would leave the member with nothing in between.
+  if (fields.kind === 'client' && replace && startsNow) handover = await replaceCurrent(program)
+
+  res.status(201).json({ ...(await loadFull(program)), ...handover })
 }))
 
 // POST /coaching/programs/:id/publish — a trainer's template joins the WCS library.

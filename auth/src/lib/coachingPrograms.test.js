@@ -82,15 +82,31 @@ test('normaliseTree positions days and items by array order and cleans items', (
   assert.equal(b.notes.length, 400)
 })
 
-test('normaliseTree drops items whose exercise_id is not a uuid and caps counts', () => {
-  const many = Array.from({ length: 60 }, () => item())
+test('normaliseTree drops items whose exercise_id is not a uuid', () => {
   const { tree } = normaliseTree({
     name: 'P',
-    days: Array.from({ length: 20 }, () => ({ name: 'D', items: [item({ exercise_id: 'bench' }), ...many] })),
+    days: [{ name: 'D', items: [item({ exercise_id: 'bench' }), item(), item()] }],
   })
-  assert.equal(tree.days.length, 14)
-  assert.equal(tree.days[0].items.length, 40)
+  assert.equal(tree.days[0].items.length, 2)
   assert.ok(tree.days[0].items.every(i => i.exercise_id === EX.bench))
+})
+
+test('normaliseTree refuses more than 14 days instead of dropping them', () => {
+  const days = (n) => Array.from({ length: n }, () => ({ name: 'D', items: [item()] }))
+  assert.equal(normaliseTree({ name: 'P', days: days(14) }).tree.days.length, 14)
+  assert.deepEqual(normaliseTree({ name: 'P', days: days(15) }), { error: 'A program can have up to 14 days' })
+})
+
+test('normaliseTree refuses more than 40 exercises on a day instead of dropping them', () => {
+  const items = (n) => Array.from({ length: n }, () => item())
+  assert.equal(normaliseTree({ name: 'P', days: [{ name: 'D', items: items(40) }] }).tree.days[0].items.length, 40)
+  assert.deepEqual(
+    normaliseTree({ name: 'P', days: [{ name: 'D', items: items(41) }] }),
+    { error: 'A day can have up to 40 exercises' },
+  )
+  // Rows without a library exercise are dropped before counting.
+  const ok = normaliseTree({ name: 'P', days: [{ name: 'D', items: [...items(40), item({ exercise_id: '' })] }] })
+  assert.equal(ok.tree.days[0].items.length, 40)
 })
 
 const STORED = {
@@ -248,4 +264,18 @@ test('copyTree strips every id and leaves the source alone', () => {
   assert.equal(tree.days[0].id, 'd1')
   copy.days[0].items[0].sets = 99
   assert.equal(tree.days[0].items[0].sets, 3)
+})
+
+test('copyTree renumbers day and item positions 0..n-1 in order', () => {
+  const tree = {
+    program: { name: 'P', tags: [] },
+    days: [
+      { id: 'd1', position: 3, name: 'A', items: [{ id: 'i1', position: 2 }, { id: 'i2', position: 2 }] },
+      { id: 'd2', position: 3, name: 'B', items: [{ id: 'i3', position: 7 }] },
+    ],
+  }
+  const copy = copyTree(tree)
+  assert.deepEqual(copy.days.map(d => d.position), [0, 1])
+  assert.deepEqual(copy.days[0].items.map(i => i.position), [0, 1])
+  assert.deepEqual(copy.days[1].items.map(i => i.position), [0])
 })

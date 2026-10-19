@@ -202,12 +202,14 @@ export default function TemplateLibrary({ assignTo, onAssigned, onCancel, isMana
   )
 }
 
-// Copy a template onto a client. Today means it is their program now; a
-// future date waits behind whatever they are on until then.
+// Copy a template onto a client. Today means it is their program now (and by
+// default ends whatever they are on, yesterday); a future date waits behind
+// their current program until then.
 export function AssignDialog({ program, member, onClose, onDone }) {
   const [when, setWhen] = useState('now')
   const [date, setDate] = useState('')
   const [name, setName] = useState(program.name)
+  const [replace, setReplace] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -223,8 +225,9 @@ export function AssignDialog({ program, member, onClose, onDone }) {
         coach_staff_id: member.coach_staff_id || null,
         starts_on: when === 'later' ? date : null,
         name,
+        replace_current: when === 'now' && replace,
       })
-      onDone(r.program)
+      onDone(r.program, r)
     } catch (err) {
       setError(err.message)
       setBusy(false)
@@ -249,6 +252,15 @@ export function AssignDialog({ program, member, onClose, onDone }) {
           <label className="flex items-center gap-2"><input type="radio" checked={when === 'later'} onChange={() => setWhen('later')} /> On a date (next block)</label>
           {when === 'later' ? <input type="date" min={pacificToday()} className={field} value={date} onChange={e => setDate(e.target.value)} /> : null}
         </fieldset>
+        {when === 'now' ? (
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-0.5" checked={replace} onChange={e => setReplace(e.target.checked)} />
+            <span>
+              Replace their current program
+              <span className="block text-xs text-text-muted">It ends yesterday, so this is the only one live. Their workout history is kept.</span>
+            </span>
+          </label>
+        ) : null}
         {error ? <p className="text-sm text-wcs-red">{error}</p> : null}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="px-3 py-2 text-sm text-text-muted">Cancel</button>

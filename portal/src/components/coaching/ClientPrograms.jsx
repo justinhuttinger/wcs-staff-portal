@@ -63,8 +63,10 @@ export default function ClientPrograms({ member }) {
       <TemplateLibrary
         assignTo={member}
         onCancel={() => setView({ name: 'list' })}
-        onAssigned={(program) => {
-          flash(program.starts_on ? `Assigned. It takes over on ${program.starts_on}.` : 'Assigned. Tailor it for them below.')
+        onAssigned={(program, result) => {
+          if (result?.warning) setError(result.warning)
+          const ended = result?.replaced ? ` Ended ${result.replaced} current program${result.replaced === 1 ? '' : 's'}.` : ''
+          flash(program.starts_on ? `Assigned. It takes over on ${program.starts_on}.` : `Assigned.${ended} Tailor it for them below.`)
           setView({ name: 'edit', id: program.id })
         }}
       />

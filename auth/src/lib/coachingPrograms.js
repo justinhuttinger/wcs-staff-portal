@@ -59,7 +59,9 @@ function normaliseItem(raw, position) {
 /**
  * Clean a builder payload into { program, days[] }. Positions come from array
  * order, so the order the coach dragged things into is the order saved.
- * Items without a library exercise are dropped (a half-added row).
+ * Items without a library exercise are dropped (a half-added row). Too many
+ * days or exercises is an error, never a silent cut: the builder enforces the
+ * same limits, so hitting one here means the coach would otherwise lose work.
  */
 function normaliseTree(body) {
   const b = body || {}
@@ -87,13 +89,17 @@ function normaliseTree(body) {
     ends_on: endsOn,
   }
 
-  const days = (Array.isArray(b.days) ? b.days : []).slice(0, MAX_DAYS).map((d, i) => {
+  const rawDays = Array.isArray(b.days) ? b.days : []
+  if (rawDays.length > MAX_DAYS) return { error: `A program can have up to ${MAX_DAYS} days` }
+
+  let tooMany = false
+  const days = rawDays.map((d, i) => {
     const items = []
     for (const raw of Array.isArray(d?.items) ? d.items : []) {
-      if (items.length >= MAX_ITEMS) break
       const it = normaliseItem(raw, items.length)
       if (it) items.push(it)
     }
+    if (items.length > MAX_ITEMS) tooMany = true
     const day = {
       position: i,
       // A blank day name is a coach mid-edit, not a reason to lose the save.
@@ -104,6 +110,7 @@ function normaliseTree(body) {
     const id = keepId(d?.id)
     return id ? { id, ...day } : day
   })
+  if (tooMany) return { error: `A day can have up to ${MAX_ITEMS} exercises` }
 
   return { tree: { program, days } }
 }
@@ -238,18 +245,23 @@ function mergeVolume(list) {
   return out
 }
 
-/** A deep copy with every id removed: duplicate, assign, save as template. */
+/**
+ * A deep copy with every id removed: duplicate, assign, save as template.
+ * Positions are renumbered 0..n-1 in array order, so a source with duplicate
+ * or gapped positions copies in the order it was shown.
+ */
 function copyTree(tree) {
   return {
     program: { ...tree.program, tags: [...(tree.program?.tags || [])] },
-    days: (tree.days || []).map(({ id, items, ...day }) => ({
+    days: (tree.days || []).map(({ id, items, ...day }, d) => ({
       ...day,
-      items: (items || []).map(({ id: _id, ...it }) => ({ ...it })),
+      position: d,
+      items: (items || []).map(({ id: _id, ...it }, i) => ({ ...it, position: i })),
     })),
   }
 }
 
 module.exports = {
-  SECTIONS, MAX_DAYS, MAX_ITEMS, UUID_RE,
+  SECTIONS, MAX_DAYS, MAX_ITEMS, UUID_RE, isoDate,
   normaliseTree, planTreeDiff, itemLabels, volumeByMuscle, mergeVolume, copyTree,
 }

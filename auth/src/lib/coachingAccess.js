@@ -7,6 +7,8 @@
 // sees only clients they coach, manager their club) belongs in canSeeProgram /
 // canEditProgram's client branch, which is the one place every route asks.
 
+const { UUID_RE, isoDate } = require('./coachingPrograms')
+
 const text = (v, max) => (v == null ? null : String(v).trim().slice(0, max) || null)
 
 /** Templates: the WCS library, my own, or any if I'm a manager. */
@@ -53,6 +55,11 @@ function copyFields(source, body, staffId) {
     const memberId = text(b.member_id, 64)
     const clubNumber = text(b.club_number, 16)
     if (!memberId || !clubNumber) return { error: 'member_id and club_number are required' }
+    const blank = (v) => v == null || v === ''
+    const startsOn = blank(b.starts_on) ? null : isoDate(b.starts_on)
+    if (!blank(b.starts_on) && !startsOn) return { error: 'The start date must be a date (YYYY-MM-DD)' }
+    const coach = blank(b.coach_staff_id) ? null : String(b.coach_staff_id)
+    if (coach && !UUID_RE.test(coach)) return { error: 'coach_staff_id is not a staff id' }
     return {
       fields: {
         ...base,
@@ -60,10 +67,10 @@ function copyFields(source, body, staffId) {
         kind,
         member_id: memberId,
         club_number: clubNumber,
-        coach_staff_id: b.coach_staff_id || null,
+        coach_staff_id: coach,
         owner_staff_id: null,
         source_template_id: source.kind === 'template' ? source.id : (source.source_template_id || null),
-        starts_on: b.starts_on || null,
+        starts_on: startsOn,
         ends_on: null,
       },
     }
@@ -99,16 +106,54 @@ function treeFromRows(program, days, items) {
   const tree = { program: {}, days: [] }
   for (const k of [...PROGRAM_FIELDS, 'starts_on', 'ends_on']) tree.program[k] = program?.[k] ?? null
   if (!Array.isArray(tree.program.tags)) tree.program.tags = []
+  // Stable sorts, then positions renumbered 0..n-1: stored rows can share a
+  // position, and a copy must keep the order the coach saw.
   tree.days = [...(days || [])]
     .sort((a, b) => a.position - b.position)
-    .map(d => ({
+    .map((d, di) => ({
       id: d.id,
-      position: d.position,
+      position: di,
       name: d.name,
       instructions: d.instructions ?? null,
-      items: (byDay.get(d.id) || []).sort((a, b) => a.position - b.position),
+      items: (byDay.get(d.id) || [])
+        .sort((a, b) => a.position - b.position)
+        .map((it, ii) => ({ ...it, position: ii })),
     }))
   return tree
 }
 
-module.exports = { canSeeProgram, canEditProgram, copyFields, treeFromRows }
+/** YYYY-MM-DD for `now` in America/Los_Angeles (the clubs' calendar). */
+function pacificDate(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now)
+}
+
+/** A YYYY-MM-DD date moved by `days` calendar days. */
+function shiftDate(iso, days) {
+  const d = new Date(`${iso}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Assigning a program that starts today hands over from whatever the member is
+ * on: every OTHER active client program that is live today (started or no
+ * start, not ended) ends yesterday, so only the new one is live. One that only
+ * started today cannot end before it began (the table checks ends_on >=
+ * starts_on), so it is archived instead. Returns [{ id, patch }].
+ */
+function programsToReplace(programs, today, keepId) {
+  const yesterday = shiftDate(today, -1)
+  return (programs || [])
+    .filter(p => p && p.id !== keepId && p.kind === 'client' && p.is_active)
+    .filter(p => (!p.starts_on || p.starts_on <= today) && (!p.ends_on || p.ends_on >= today))
+    .map(p => ({
+      id: p.id,
+      patch: p.starts_on && p.starts_on > yesterday ? { is_active: false } : { ends_on: yesterday },
+    }))
+}
+
+module.exports = {
+  canSeeProgram, canEditProgram, copyFields, treeFromRows, programsToReplace, pacificDate, shiftDate,
+}
