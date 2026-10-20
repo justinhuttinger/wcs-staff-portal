@@ -65,6 +65,7 @@ const CATEGORY_GETTERS = {
   cogs: r => num(r.cogs),
   profit: r => num(r.profit),
   margin: r => num(r.margin_pct),
+  costed: r => num(r.costed_pct),
 }
 const SALES_GETTERS = {
   name: r => (r.name || '').toLowerCase(),
@@ -157,24 +158,44 @@ const SUB_TABS = [
 
 const moneyClass = (n) => (Number(n) < 0 ? 'text-wcs-red font-semibold' : Number(n) > 0 ? 'text-emerald-600 font-semibold' : 'text-text-primary')
 
+// Below this share of revenue carrying a cost, a margin is a guess. Matches
+// MIN_COST_COVERAGE_PCT in auth/src/lib/posSales.js (Analytics > Retail Analysis).
+const MIN_COST_COVERAGE_PCT = 50
+
+// Profit / margin over COSTED revenue only. A line with no cost on file still
+// counts toward revenue, but counting it as $0 COGS would book it as 100% profit
+// and inflate the margin, so profit and margin come from costed lines alone.
+function costedFigures(revenue, costedRevenue, cogs) {
+  const costedPct = revenue > 0 ? (costedRevenue / revenue) * 100 : null
+  const reliable = costedPct != null && costedPct >= MIN_COST_COVERAGE_PCT
+  return {
+    profit: +(costedRevenue - cogs).toFixed(2),
+    costed_pct: costedPct != null ? +costedPct.toFixed(1) : null,
+    margin_pct: reliable && costedRevenue > 0 ? +(((costedRevenue - cogs) / costedRevenue) * 100).toFixed(1) : null,
+  }
+}
+
 // Roll a list of { category, revenue, cogs } lines up into per-category revenue /
 // COGS / profit / margin. cogs may be null for a line whose item has no cost on
-// file — those lines still count toward revenue; their COGS just isn't added in.
+// file — those lines still count toward revenue but not toward profit / margin.
 function rollupByCategory(items) {
   const m = new Map()
   for (const r of items) {
     const cat = r.category || 'Uncategorized'
-    const e = m.get(cat) || { category: cat, revenue: 0, cogs: 0 }
+    const e = m.get(cat) || { category: cat, revenue: 0, costedRevenue: 0, cogs: 0 }
     e.revenue += Number(r.revenue) || 0
-    if (r.cogs != null) e.cogs += Number(r.cogs) || 0
+    if (r.cogs != null) {
+      e.costedRevenue += Number(r.revenue) || 0
+      e.cogs += Number(r.cogs) || 0
+    }
     m.set(cat, e)
   }
   return [...m.values()].map(e => ({
     category: e.category,
     revenue: +e.revenue.toFixed(2),
+    costedRevenue: +e.costedRevenue.toFixed(2),
     cogs: +e.cogs.toFixed(2),
-    profit: +(e.revenue - e.cogs).toFixed(2),
-    margin_pct: e.revenue > 0 ? +(((e.revenue - e.cogs) / e.revenue) * 100).toFixed(1) : null,
+    ...costedFigures(e.revenue, e.costedRevenue, e.cogs),
   })).sort((a, b) => b.revenue - a.revenue)
 }
 
@@ -183,8 +204,9 @@ function rollupByCategory(items) {
 function CategoryTable({ rows, revenueLabel = 'Revenue' }) {
   const [sort, cycle] = useSortState({ col: 'revenue', dir: 'desc' })
   if (!rows.length) return null
-  const tot = rows.reduce((a, r) => ({ revenue: a.revenue + r.revenue, cogs: a.cogs + r.cogs, profit: a.profit + r.profit }), { revenue: 0, cogs: 0, profit: 0 })
-  const totMargin = tot.revenue > 0 ? (tot.profit / tot.revenue) * 100 : null
+  const sums = rows.reduce((a, r) => ({ revenue: a.revenue + r.revenue, costedRevenue: a.costedRevenue + r.costedRevenue, cogs: a.cogs + r.cogs }), { revenue: 0, costedRevenue: 0, cogs: 0 })
+  const tot = { ...sums, ...costedFigures(sums.revenue, sums.costedRevenue, sums.cogs) }
+  const uncosted = rows.some(r => r.costed_pct != null && r.costed_pct < 100)
   const sorted = sortRows(rows, sort, CATEGORY_GETTERS)
   return (
     <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
@@ -198,6 +220,7 @@ function CategoryTable({ rows, revenueLabel = 'Revenue' }) {
               <SortHeader label="COGS" col="cogs" sort={sort} onSort={cycle} />
               <SortHeader label="Profit" col="profit" sort={sort} onSort={cycle} />
               <SortHeader label="Margin" col="margin" sort={sort} onSort={cycle} />
+              <SortHeader label="Costed" col="costed" sort={sort} onSort={cycle} />
             </tr>
           </thead>
           <tbody>
@@ -207,9 +230,10 @@ function CategoryTable({ rows, revenueLabel = 'Revenue' }) {
                 <td className="py-2 px-2 text-right">{fmtMoney(r.revenue)}</td>
                 <td className="py-2 px-2 text-right">{fmtMoney(r.cogs)}</td>
                 <td className={`py-2 px-2 text-right ${moneyClass(r.profit)}`}>{fmtMoney(r.profit)}</td>
-                <td className="py-2 px-4 text-right">
+                <td className="py-2 px-2 text-right">
                   {r.margin_pct != null ? <span className={r.margin_pct < 0 ? 'text-wcs-red font-semibold' : 'text-emerald-600 font-semibold'}>{r.margin_pct}%</span> : '—'}
                 </td>
+                <td className="py-2 px-4 text-right text-text-muted">{r.costed_pct != null ? `${r.costed_pct}%` : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -219,11 +243,18 @@ function CategoryTable({ rows, revenueLabel = 'Revenue' }) {
               <td className="py-2 px-2 text-right">{fmtMoney(tot.revenue)}</td>
               <td className="py-2 px-2 text-right">{fmtMoney(tot.cogs)}</td>
               <td className={`py-2 px-2 text-right ${moneyClass(tot.profit)}`}>{fmtMoney(tot.profit)}</td>
-              <td className="py-2 px-4 text-right">{totMargin != null ? `${totMargin.toFixed(1)}%` : '—'}</td>
+              <td className="py-2 px-2 text-right">{tot.margin_pct != null ? `${tot.margin_pct}%` : '—'}</td>
+              <td className="py-2 px-4 text-right text-text-muted">{tot.costed_pct != null ? `${tot.costed_pct}%` : '—'}</td>
             </tr>
           </tfoot>
         </table>
       </div>
+      {uncosted && (
+        <p className="text-xs text-text-muted px-4 py-2.5 border-t border-border">
+          Profit and margin cover only sales with a cost on file ("Costed" = share of {revenueLabel.toLowerCase()} that has one).
+          Margin is left blank when less than {MIN_COST_COVERAGE_PCT}% is costed.
+        </p>
+      )}
     </div>
   )
 }
