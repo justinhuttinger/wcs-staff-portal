@@ -262,3 +262,93 @@ test('processReferralReward: adjust failure adds no note', async () => {
   await processReferralReward({ ...BASE, ...deps });
   assert.strictEqual(calls.notes.length, 0);
 });
+
+// --- Per-club reward (Milwaukie $50 off), ABC-sourced referrals, VIP writeback ---
+const {
+  rewardFor, rewardedAmount, vipWritebackNote, isEligibleCandidate: eligible,
+} = require('../src/abc/referralRewards');
+
+test('rewardFor: Milwaukie is $50 off, everyone else a free month', () => {
+  assert.deepStrictEqual(rewardFor('31601'), { amountOff: 50 });
+  assert.deepStrictEqual(rewardFor('30935'), { amountOff: null });
+});
+
+test('rewardedAmount: free month is 0.00; $50 off subtracts and floors at zero', () => {
+  assert.strictEqual(rewardedAmount({ amountOff: null }, 54.99), '0.00');
+  assert.strictEqual(rewardedAmount({ amountOff: 50 }, 54.99), '4.99');
+  assert.strictEqual(rewardedAmount({ amountOff: 50 }, '89.00'), '39.00');
+  assert.strictEqual(rewardedAmount({ amountOff: 50 }, 39.99), '0.00');
+  assert.strictEqual(rewardedAmount({ amountOff: 50 }, undefined), null);
+});
+
+test('processReferralReward: Milwaukie referrer gets $50 off, status discounted', async () => {
+  const { deps, calls } = makeDeps({ invoices: [{ dueDate: '2026-05-31', profitCenterAbcCode: 'DUES', invoiceAmount: 89.99 }] });
+  const row = await processReferralReward({ ...BASE, location: { ...BASE.location, clubNumber: '31601' }, ...deps });
+  assert.strictEqual(calls.adjust[0].body.invoiceAmount, '39.99');
+  assert.strictEqual(calls.adjust[0].club, '31601');
+  assert.strictEqual(row.dues_status, 'discounted');
+  assert.strictEqual(row.original_amount, 89.99);
+  assert.strictEqual(row.new_amount, 39.99);
+  assert.match(calls.notes[0].note, /\$50 off next month/);
+  assert.match(calls.notes[0].note, /to \$39\.99/);
+  assert.strictEqual(calls.tagged.length, 1);
+});
+
+test('processReferralReward: $50 off with no invoice amount -> review, no adjust, no tag', async () => {
+  const { deps, calls } = makeDeps({ invoices: [{ dueDate: '2026-05-31', profitCenterAbcCode: 'DUES' }] });
+  const row = await processReferralReward({ ...BASE, location: { ...BASE.location, clubNumber: '31601' }, ...deps });
+  assert.strictEqual(calls.adjust.length, 0);
+  assert.strictEqual(calls.tagged.length, 0);
+  assert.strictEqual(row.dues_status, 'error');
+  assert.strictEqual(row.needs_review, true);
+});
+
+test('processReferralReward: cross-club referrer is paid at their home club', async () => {
+  const { deps, calls } = makeDeps();
+  const row = await processReferralReward({ ...BASE, referrerClubNumber: '31601', source: 'abc', ...deps });
+  assert.strictEqual(calls.adjust[0].club, '31601');
+  assert.strictEqual(row.club_number, '31601');
+  assert.strictEqual(row.source, 'abc');
+  assert.strictEqual(row.dues_status, 'discounted');
+});
+
+test('processReferralReward: VIP writeback notes the NEW member with the referrer name', async () => {
+  const { deps, calls } = makeDeps();
+  const row = await processReferralReward({ ...BASE, writeback: { referrerName: 'Jane Doe' }, ...deps });
+  const wb = calls.notes.find((n) => n.id === BASE.abcMember.member_id);
+  assert.ok(wb, 'note on the new member');
+  assert.match(wb.note, /referred by Jane Doe/);
+  assert.strictEqual(row.abc_writeback_status, 'noted');
+});
+
+test('processReferralReward: writeback already done is not repeated on retry', async () => {
+  const { deps, calls } = makeDeps();
+  const row = await processReferralReward({ ...BASE, writeback: { referrerName: 'Jane Doe', done: true }, ...deps });
+  assert.ok(!calls.notes.some((n) => n.id === BASE.abcMember.member_id));
+  assert.strictEqual(row.abc_writeback_status, 'noted');
+});
+
+test('processReferralReward: no writeback needed when ABC already names the referrer', async () => {
+  const { deps } = makeDeps();
+  const row = await processReferralReward({ ...BASE, ...deps });
+  assert.strictEqual(row.abc_writeback_status, 'not_needed');
+});
+
+test('vipWritebackNote falls back to the referrer id when there is no name', () => {
+  assert.match(vipWritebackNote({ referrerName: '', referrerAbcId: 'R9' }), /referred by member R9/);
+});
+
+test('isEligibleCandidate: discounted is terminal', () => {
+  const r = eligible({
+    abcMember: { member_id: 'NEW1', is_active: true, sign_date: '2026-10-25' },
+    referredByValue: 'REF1', existingRow: { dues_status: 'discounted' }, programStartDate: '2026-10-22',
+  });
+  assert.deepStrictEqual(r, { eligible: false, reason: 'terminal' });
+});
+
+test('isEligibleCandidate: requireNewMember blocks a re-sign of an old member', () => {
+  const abcMember = { member_id: 'NEW1', is_active: true, sign_date: '2026-10-25', since_date: '2024-03-01' };
+  const base = { abcMember, referredByValue: 'REF1', existingRow: null, programStartDate: '2026-10-22' };
+  assert.strictEqual(eligible(base).eligible, true);
+  assert.strictEqual(eligible({ ...base, requireNewMember: true }).eligible, false);
+});

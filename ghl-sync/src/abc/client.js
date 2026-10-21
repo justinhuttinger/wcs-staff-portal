@@ -156,6 +156,11 @@ function transformABCMember(raw, clubNumber) {
     // NOT agreementEntrySourceReportName (that field is the station name, e.g.
     // "Home", and never distinguishes web vs in-club). Used to tag online sales.
     agreement_entry_source: a.agreementEntrySource || null,
+    // Referral keyed in at point of sale. Home club can differ from this club
+    // (a Clackamas member referring someone into Milwaukie).
+    referring_member_id: a.referringMemberId || null,
+    referring_member_name: a.referringMemberName ? a.referringMemberName.replace(/\s+/g, ' ').trim() : null,
+    referring_member_home_club: a.referringMemberHomeClub || null,
     last_sync_at: new Date().toISOString(),
   };
 }
