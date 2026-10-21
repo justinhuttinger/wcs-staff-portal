@@ -200,21 +200,26 @@ async function reconcileLocation(location, runId) {
   // Referral field ids (looked up the same way as the mapped ABC fields).
   let referredByFieldId = null;
   let friendNameFieldId = null;
+  let referredByNameFieldId = null;
   if (referral.ENABLED) {
     const { data: refDefs } = await supabase
       .from('ghl_custom_field_defs')
       .select('id, field_key')
       .eq('location_id', locationId)
-      .in('field_key', [referral.REFERRED_BY_FIELD_KEY, referral.FRIEND_NAME_FIELD_KEY]);
+      .in('field_key', [referral.REFERRED_BY_FIELD_KEY, referral.FRIEND_NAME_FIELD_KEY, referral.REFERRED_BY_NAME_FIELD_KEY]);
     for (const fd of (refDefs || [])) {
       if (fd.field_key === referral.REFERRED_BY_FIELD_KEY) referredByFieldId = fd.id;
       if (fd.field_key === referral.FRIEND_NAME_FIELD_KEY) friendNameFieldId = fd.id;
+      if (fd.field_key === referral.REFERRED_BY_NAME_FIELD_KEY) referredByNameFieldId = fd.id;
     }
     if (!referredByFieldId) {
-      console.warn(`[Reconcile] ${locationName}: ${referral.REFERRED_BY_FIELD_KEY} field def not found — referral rewards skipped this location`);
+      console.warn(`[Reconcile] ${locationName}: ${referral.REFERRED_BY_FIELD_KEY} field def not found — GHL-sourced referral rewards skipped this location`);
     }
   }
-  const referralCandidates = [];
+  // GHL VIP referral per new member (member_id -> { abcId, name }), read from
+  // the matched contact in the loop below. Candidates are built after the loop
+  // so ABC-keyed referrals count even when the member has no GHL contact.
+  const ghlReferralByMember = new Map();
 
   // 4. Match and reconcile
   const logEntries = [];
@@ -502,12 +507,11 @@ async function reconcileLocation(location, runId) {
     // --- Referral reward candidate detection ---
     // Read-only here: only collect candidates. They are processed after the loop.
     if (referral.ENABLED && referredByFieldId && isActive) {
-      const referredByValue = (ghlContact.custom_fields || {})[referredByFieldId];
+      const cf = ghlContact.custom_fields || {};
+      const referredByValue = cf[referredByFieldId];
       if (referredByValue && String(referredByValue).trim()) {
-        referralCandidates.push({
-          abcMember: abc,
-          referredByValue: String(referredByValue).trim(),
-        });
+        const name = referredByNameFieldId ? String(cf[referredByNameFieldId] || '').trim() : '';
+        ghlReferralByMember.set(abc.member_id, { abcId: String(referredByValue).trim(), name });
       }
     }
 
@@ -717,18 +721,71 @@ async function reconcileLocation(location, runId) {
     }
   }
 
-  // 4.5 Referral rewards — process collected candidates.
-  if (referral.ENABLED && referredByFieldId && referralCandidates.length > 0) {
+  // 4.5 Referral rewards. A new member's referrer comes from ABC (keyed in at
+  // the sale) or, failing that, the GHL VIP referral field. ABC wins when both
+  // pass their date fence: it is what staff entered at point of sale.
+  const referralCandidates = [];
+  if (referral.ENABLED) {
+    const abcStart = referral.ABC_SOURCE_START_DATE > referral.PROGRAM_START_DATE
+      ? referral.ABC_SOURCE_START_DATE : referral.PROGRAM_START_DATE;
+    const abcById = new Map(abcMembers.map((m) => [m.member_id, m]));
+    for (const abc of abcMembers) {
+      if (abc.is_active !== true) continue;
+      const abcRefId = (abc.referring_member_id || '').trim();
+      const ghlRef = ghlReferralByMember.get(abc.member_id) || null;
+      const options = [];
+      // Add-on members on the same agreement carry the primary's referral; one reward per sale.
+      if (abcRefId && abc.is_primary_member !== false) {
+        options.push({
+          source: 'abc', referredByValue: abcRefId,
+          referrerClubNumber: abc.referring_member_home_club || clubNumber,
+          programStartDate: abcStart, requireNewMember: true, writeback: null,
+        });
+      }
+      if (ghlRef) {
+        const referrer = abcById.get(ghlRef.abcId);
+        const referrerName = ghlRef.name
+          || (referrer ? `${referrer.first_name || ''} ${referrer.last_name || ''}`.trim() : '');
+        options.push({
+          source: 'ghl', referredByValue: ghlRef.abcId,
+          referrerClubNumber: clubNumber,
+          programStartDate: referral.PROGRAM_START_DATE, requireNewMember: false,
+          // VIP referral ABC doesn't know about: copy the referrer onto the new member.
+          writeback: abcRefId ? null : { referrerName },
+        });
+      }
+      // Date fences first (no DB needed); terminal rows are checked below.
+      const pick = options.find((o) => isEligibleCandidate({
+        abcMember: abc, referredByValue: o.referredByValue, existingRow: null,
+        programStartDate: o.programStartDate, requireNewMember: o.requireNewMember,
+      }).eligible);
+      if (pick) referralCandidates.push({ abcMember: abc, ...pick });
+    }
+  }
+
+  if (referral.ENABLED && referralCandidates.length > 0) {
     const today = new Date().toISOString().slice(0, 10);
     let processedReferrals = 0;
 
     // Load existing referral_rewards rows for idempotency.
     const newMemberIds = referralCandidates.map((c) => c.abcMember.member_id);
-    const { data: existingRows } = await supabase
-      .from('referral_rewards')
-      .select('new_member_id, dues_status')
-      .in('new_member_id', newMemberIds);
-    const existingByMember = new Map((existingRows || []).map((r) => [r.new_member_id, r]));
+    const existingByMember = new Map();
+    let ledgerError = null;
+    for (let i = 0; i < newMemberIds.length && !ledgerError; i += 200) {
+      const { data: existingRows, error: exErr } = await supabase
+        .from('referral_rewards')
+        .select('new_member_id, dues_status, abc_writeback_status')
+        .in('new_member_id', newMemberIds.slice(i, i + 200));
+      if (exErr) ledgerError = exErr.message;
+      for (const r of existingRows || []) existingByMember.set(r.new_member_id, r);
+    }
+    // Without the ledger we can't tell who's already been paid: skip this cycle.
+    if (ledgerError) {
+      console.error(`[Referral] ${locationName}: failed to load referral_rewards, skipping rewards: ${ledgerError}`);
+      errors++;
+      errorDetails.push({ stage: 'referral', error: `load referral_rewards: ${ledgerError}` });
+      referralCandidates.length = 0;
+    }
 
     // tagReferrer writes the friend's name AND the trigger tag in a single GHL
     // PUT, so the SMS-triggering tag can never exist without the credit.
@@ -759,7 +816,8 @@ async function reconcileLocation(location, runId) {
         abcMember: cand.abcMember,
         referredByValue: cand.referredByValue,
         existingRow,
-        programStartDate: referral.PROGRAM_START_DATE,
+        programStartDate: cand.programStartDate,
+        requireNewMember: cand.requireNewMember,
       });
       if (!eligible) continue;
       processedReferrals++;
@@ -770,7 +828,12 @@ async function reconcileLocation(location, runId) {
           location, runId,
           abcMember: cand.abcMember,
           referrerAbcId: cand.referredByValue,
+          referrerClubNumber: cand.referrerClubNumber,
           referrerContact,
+          source: cand.source,
+          writeback: cand.writeback
+            ? { ...cand.writeback, done: existingRow?.abc_writeback_status === 'noted' }
+            : null,
           dryRun: DRY_RUN,
           today,
           fetchMemberInvoices,

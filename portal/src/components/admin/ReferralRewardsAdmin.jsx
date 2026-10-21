@@ -11,7 +11,15 @@ function StatusPill({ value, tone }) {
   return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tones[tone] || tones.gray}`}>{value}</span>
 }
 
-function duesTone(s) { return s === 'zeroed' ? 'green' : s === 'no_dues_invoice' ? 'orange' : 'red' }
+function duesTone(s) { return s === 'zeroed' || s === 'discounted' ? 'green' : s === 'no_dues_invoice' ? 'orange' : 'red' }
+
+// "$89.99 -> $39.99" once the invoice was adjusted; blank before.
+function money(n) { return n == null ? null : `$${Number(n).toFixed(2)}` }
+function amountLabel(r) {
+  const from = money(r.original_amount)
+  const to = money(r.new_amount)
+  return from && to ? `${from} → ${to}` : ''
+}
 function smsTone(s) { return s === 'tagged' ? 'green' : s === 'skipped' ? 'gray' : 'orange' }
 
 export default function ReferralRewardsAdmin() {
@@ -68,8 +76,8 @@ export default function ReferralRewardsAdmin() {
                   <p className="text-xs text-text-muted">
                     Referrer ABC #{r.referrer_abc_id} · {r.club_number} ·{' '}
                     {r.dues_status === 'no_dues_invoice' ? 'no upcoming DUES invoice' :
-                     r.sms_status === 'no_referrer_contact' ? 'dues zeroed, no GHL contact for SMS' :
-                     r.sms_status === 'error' ? 'dues zeroed, SMS tag failed' : (r.error || 'review')}
+                     r.sms_status === 'no_referrer_contact' ? 'reward applied, no GHL contact for SMS' :
+                     r.sms_status === 'error' ? 'reward applied, SMS tag failed' : (r.error || 'review')}
                   </p>
                 </div>
                 <button
@@ -95,7 +103,9 @@ export default function ReferralRewardsAdmin() {
                 <th className="py-1 pr-4 font-medium">New member</th>
                 <th className="py-1 pr-4 font-medium">Referrer ABC #</th>
                 <th className="py-1 pr-4 font-medium">Club</th>
+                <th className="py-1 pr-4 font-medium">Source</th>
                 <th className="py-1 pr-4 font-medium">Dues</th>
+                <th className="py-1 pr-4 font-medium">Amount</th>
                 <th className="py-1 pr-4 font-medium">SMS</th>
                 <th className="py-1 pr-4 font-medium">When</th>
               </tr>
@@ -106,7 +116,9 @@ export default function ReferralRewardsAdmin() {
                   <td className="py-1.5 pr-4 text-text-primary">{r.new_member_name || r.new_member_id}</td>
                   <td className="py-1.5 pr-4 text-text-muted">{r.referrer_abc_id}</td>
                   <td className="py-1.5 pr-4 text-text-muted">{r.club_number}</td>
+                  <td className="py-1.5 pr-4 text-text-muted">{r.source === 'abc' ? 'ABC sale' : 'VIP form'}</td>
                   <td className="py-1.5 pr-4"><StatusPill value={r.dues_status} tone={duesTone(r.dues_status)} /></td>
+                  <td className="py-1.5 pr-4 text-text-muted whitespace-nowrap">{amountLabel(r)}</td>
                   <td className="py-1.5 pr-4"><StatusPill value={r.sms_status} tone={smsTone(r.sms_status)} /></td>
                   <td className="py-1.5 pr-4 text-text-muted">{new Date(r.created_at).toLocaleDateString()}</td>
                 </tr>
