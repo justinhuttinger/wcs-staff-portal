@@ -50,6 +50,21 @@ async function metaFetch(endpoint, params, token) {
   return data
 }
 
+// Every page of a Graph list endpoint.
+async function metaFetchAll(endpoint, params, token) {
+  const rows = []
+  let page = await metaFetch(endpoint, params, token)
+  for (;;) {
+    rows.push(...(page.data || []))
+    const next = page.paging && page.paging.next
+    if (!next) break
+    const res = await fetch(next)
+    page = await res.json()
+    if (page.error) throw new Error(page.error.message || 'Meta API error')
+  }
+  return rows
+}
+
 function timeRange(start_date, end_date) {
   if (start_date && end_date) return { since: start_date, until: end_date }
   return undefined
@@ -102,23 +117,25 @@ router.get('/overview', async (req, res) => {
 
 // GET /meta-ads/campaigns (cached 5 min)
 router.get('/campaigns', async (req, res) => {
-  const { start_date, end_date, status } = req.query
-  const cacheKey = `campaigns:${start_date}:${end_date}:${status}`
+  const { start_date, end_date } = req.query
+  const cacheKey = `campaigns:${start_date}:${end_date}`
   const cached = getCached(cacheKey)
   if (cached) return res.json(cached)
 
   try {
     const { token, accountId } = getConfig()
 
-    // Fetch campaign metadata
-    const metaParams = {
+    // Every campaign that spent in the range comes back, whatever its status
+    // now: a campaign paused today still spent this month, and dropping it
+    // undercounted spend badly (Sept 2026: $2,472 shown vs $16,224 real).
+    // `status` is accepted for old clients but no longer filters; the page
+    // hides non-active rows itself and keeps them in its totals.
+    const metaRows = await metaFetchAll(`/${accountId}/campaigns`, {
       fields: 'name,status,objective,daily_budget,lifetime_budget,updated_time,effective_status',
-      limit: 100,
-    }
-    if (status !== 'all') metaParams.effective_status = JSON.stringify(['ACTIVE'])
-    const metaData = await metaFetch(`/${accountId}/campaigns`, metaParams, token)
+      limit: 500,
+    }, token)
     const campaignMeta = {}
-    for (const c of (metaData.data || [])) {
+    for (const c of metaRows) {
       campaignMeta[c.id] = {
         status: c.effective_status || c.status,
         objective: c.objective,
@@ -129,11 +146,9 @@ router.get('/campaigns', async (req, res) => {
     }
 
     // Fetch all ad sets to find most recent edit per campaign
-    const adsetParams = { fields: 'campaign_id,updated_time', limit: 500 }
-    if (status !== 'all') adsetParams.effective_status = JSON.stringify(['ACTIVE'])
     try {
-      const adsetData = await metaFetch(`/${accountId}/adsets`, adsetParams, token)
-      for (const as of (adsetData.data || [])) {
+      const adsetRows = await metaFetchAll(`/${accountId}/adsets`, { fields: 'campaign_id,updated_time', limit: 500 }, token)
+      for (const as of adsetRows) {
         const cid = as.campaign_id
         if (campaignMeta[cid] && as.updated_time) {
           const existing = campaignMeta[cid].updated_time
@@ -150,18 +165,15 @@ router.get('/campaigns', async (req, res) => {
     const insightParams = {
       fields: 'campaign_name,campaign_id,spend,impressions,clicks,actions,cost_per_action_type',
       level: 'campaign',
-      limit: 100,
+      limit: 500,
       sort: 'spend_descending',
     }
     const tr = timeRange(start_date, end_date)
     if (tr) insightParams.time_range = tr
     else insightParams.date_preset = 'last_30d'
-    if (status !== 'all') {
-      insightParams.filtering = [{ field: 'campaign.effective_status', operator: 'IN', value: ['ACTIVE'] }]
-    }
 
-    const data = await metaFetch(`/${accountId}/insights`, insightParams, token)
-    const campaigns = (data.data || []).map(row => {
+    const insightRows = await metaFetchAll(`/${accountId}/insights`, insightParams, token)
+    const campaigns = insightRows.map(row => {
       const meta = campaignMeta[row.campaign_id] || {}
       return {
         campaign_id: row.campaign_id,
