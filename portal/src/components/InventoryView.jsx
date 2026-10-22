@@ -185,6 +185,9 @@ function AdjustModal({ item, onClose, onSaved, lockedMode = null }) {
 // set here (or via received invoices) since ABC doesn't carry cost. UPC is
 // editable to fix unscannable items.
 function EditItemModal({ item, allClubs = false, onClose, onSaved }) {
+  // Fan the cost/UPC out to every club's copy (matched by UPC). Without a UPC
+  // there are no siblings to match, so it only ever touches this one row.
+  const [applyAll, setApplyAll] = useState(allClubs && !!item.upc)
   const [cost, setCost] = useState(item.unit_cost != null ? String(item.unit_cost) : '')
   const [upc, setUpc] = useState(item.upc || '')
   const [saving, setSaving] = useState(false)
@@ -198,8 +201,8 @@ function EditItemModal({ item, allClubs = false, onClose, onSaved }) {
     }
     setSaving(true); setError('')
     try {
-      const res = await updateInventoryItem(item.id, { unit_cost: costVal, upc: upc.trim(), apply_all_clubs: allClubs })
-      onSaved(res.item)
+      const res = await updateInventoryItem(item.id, { unit_cost: costVal, upc: upc.trim(), apply_all_clubs: applyAll })
+      onSaved(res.item, applyAll)
       onClose()
     } catch (err) { setError(err.message) } finally { setSaving(false) }
   }
@@ -207,9 +210,14 @@ function EditItemModal({ item, allClubs = false, onClose, onSaved }) {
   return (
     <Modal title={`Edit — ${item.item_name}`} onClose={onClose}>
       <div className="space-y-3">
-        {allClubs && (
-          <p className="text-[11px] text-text-primary bg-wcs-red/5 border border-wcs-red/20 rounded-lg px-3 py-2">
-            Editing for <span className="font-semibold">all clubs</span> — the cost and UPC you save apply to every club that carries this product.
+        {item.upc ? (
+          <label className="flex items-start gap-2 text-[11px] text-text-primary bg-wcs-red/5 border border-wcs-red/20 rounded-lg px-3 py-2 cursor-pointer">
+            <input type="checkbox" checked={applyAll} onChange={e => setApplyAll(e.target.checked)} className="mt-0.5 accent-wcs-red" />
+            <span>Apply to <span className="font-semibold">all clubs</span> — the cost and UPC you save apply to every club that carries this product.</span>
+          </label>
+        ) : allClubs && (
+          <p className="text-[11px] text-text-muted bg-bg border border-border rounded-lg px-3 py-2">
+            No UPC on file, so this edit only applies to this club's copy. Add a UPC to link it across clubs.
           </p>
         )}
         <div>
@@ -695,6 +703,10 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   // so a lead never sees a tab that would only 403. Unknown role names (an
   // admin-created custom role) fail closed, same as every other tile gate.
   const canSeeFinancials = ROLE_LEVELS[user?.staff?.role] >= ROLE_LEVELS.manager
+  // Audit tab + cost/UPC edits + cost import: the 'inventory-audit' permission
+  // (manager+ by default, adjustable in Roles & Permissions and per-person
+  // overrides). Mirrors requireTile('inventory-audit') on the server.
+  const canAudit = (user?.visible_tools || []).includes('inventory-audit')
   // Clubs this user may view/restock into. Invoices are always single-club.
   const accessibleSlugs = useMemo(() => {
     const all = LOCATION_OPTIONS.filter(o => o.slug !== 'all').map(o => o.slug)
@@ -714,7 +726,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
     return mine.length > 1 ? [{ slug: 'all', label: 'All My Clubs' }, ...mine] : mine
   }, [canSeeAllClubs, accessibleSlugs])
 
-  const [tab, setTab] = useState('items') // items | order | restock | audit (admin)
+  const [tab, setTab] = useState('items') // items | order | restock | received | audit (inventory-audit perm)
   // Within the To Order tab: 'all' = the computed reorder list, 'lists' = saved
   // shopping lists. Opening/creating a list swaps to a full-screen editor.
   const [orderView, setOrderView] = useState('all') // 'all' | 'lists'
@@ -748,6 +760,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
   const [syncBusy, setSyncBusy] = useState(false)
   const [audit, setAudit] = useState(null) // { items, scanned, min_margin, days }
   const [auditIssueFilter, setAuditIssueFilter] = useState('all_items') // all_items | issues | <issue key>
+  const [auditSearch, setAuditSearch] = useState('')
   const [costImporting, setCostImporting] = useState(false)
   const [costImportMsg, setCostImportMsg] = useState('')
   const [oversoldOnly, setOversoldOnly] = useState(false)
@@ -1053,7 +1066,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
 
   // Audit rows: on the All-clubs view, consolidate each product (same UPC) into
   // one row — union its issues, sum on-hand/sold — mirroring the Inventory tab.
-  // Editing a consolidated row applies cost/UPC to every club (apply_all_clubs).
+  // Audit edits default to every club (apply_all_clubs), toggleable in the modal.
   const auditRows = useMemo(() => {
     const list = audit?.items || []
     if (slug !== 'all') return list.map(i => ({ ...i, _members: [i], _consolidated: false }))
@@ -1077,13 +1090,17 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
     })
   }, [audit, slug])
 
-  // Audit rows after the active filter tile (All Items / Issues only / a specific
+  // Audit rows after the search box + the active filter tile (All Items / Issues only / a specific
   // issue). Shared by the table and the CSV export.
-  const filteredAuditRows = useMemo(() => auditRows.filter(i =>
-    auditIssueFilter === 'all_items' ? true
-      : auditIssueFilter === 'issues' ? (i.issues?.length > 0)
-        : i.issues?.includes(auditIssueFilter)
-  ), [auditRows, auditIssueFilter])
+  const filteredAuditRows = useMemo(() => {
+    const term = auditSearch.trim().toLowerCase()
+    return auditRows.filter(i =>
+      (!term || (i.item_name || '').toLowerCase().includes(term) || (i.upc || '').includes(term))
+      && (auditIssueFilter === 'all_items' ? true
+        : auditIssueFilter === 'issues' ? (i.issues?.length > 0)
+          : i.issues?.includes(auditIssueFilter))
+    )
+  }, [auditRows, auditIssueFilter, auditSearch])
 
   // Export the filtered audit rows — one line per product (not per club). Cost is
   // shared across clubs (by UPC), so the import fans a single new_cost out to
@@ -1173,7 +1190,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                 { key: 'order', label: 'To Order' },
                 { key: 'restock', label: 'Restock' },
                 ...(canSeeFinancials ? [{ key: 'received', label: 'Received' }] : []),
-                ...(isAdmin ? [{ key: 'audit', label: 'Audit' }] : []),
+                ...(canAudit ? [{ key: 'audit', label: 'Audit' }] : []),
               ].map(m => (
                 <button key={m.key} onClick={() => setTab(m.key)}
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${tab === m.key ? 'bg-white text-text-primary shadow-sm' : 'text-text-muted hover:text-text-primary'}`}>
@@ -1437,8 +1454,8 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
         </>
       )}
 
-      {/* === Audit tab (admin) === */}
-      {tab === 'audit' && isAdmin && (
+      {/* === Audit tab (inventory-audit permission) === */}
+      {tab === 'audit' && canAudit && (
         <div className="space-y-4">
           {loading && <p className="text-sm text-text-muted bg-surface rounded-xl border border-border p-6 text-center">Auditing items...</p>}
           {!loading && audit && (
@@ -1480,11 +1497,15 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                     )
                   })}
                 </div>
+                <div className="mt-3">
+                  <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">Search</span>
+                  <input value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="Item name or UPC..." className={inputCls} />
+                </div>
               </div>
 
               <div className="bg-surface/95 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
                 {filteredAuditRows.length === 0 ? (
-                  <p className="text-sm text-text-muted p-8 text-center">{auditIssueFilter === 'all_items' ? 'No items yet — sync the ABC catalog first.' : 'Nothing here for this filter.'}</p>
+                  <p className="text-sm text-text-muted p-8 text-center">{auditSearch.trim() ? `No items match “${auditSearch.trim()}”.` : auditIssueFilter === 'all_items' ? 'No items yet — sync the ABC catalog first.' : 'Nothing here for this filter.'}</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -1530,7 +1551,7 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
                               <td className="py-2 px-2 text-right">{fmtQty(i.sold_units)}</td>
                               <td className={`py-2 px-2 text-right font-bold ${Number(i.qty_on_hand) < 0 ? 'text-wcs-red' : 'text-text-primary'}`}>{fmtQty(i.qty_on_hand)}</td>
                               <td className="py-2 px-4 text-right whitespace-nowrap">
-                                <button onClick={() => setModal({ edit: i._members[0], allClubs: i._consolidated })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Edit Cost</button>
+                                <button onClick={() => setModal({ edit: i._members[0], allClubs: true })} className="text-xs font-semibold text-wcs-red hover:underline mr-3">Edit Cost</button>
                                 <button onClick={() => setModal({ history: i._members[0] })} className="text-xs font-semibold text-text-muted hover:text-text-primary hover:underline">History</button>
                               </td>
                             </tr>
@@ -1865,10 +1886,10 @@ export default function InventoryView({ onBack, location, isAdmin, user }) {
           item={modal.edit}
           allClubs={!!modal.allClubs}
           onClose={() => setModal(null)}
-          onSaved={(updated) => {
+          onSaved={(updated, appliedAll) => {
             // An all-clubs edit touched sibling rows the response doesn't carry,
             // so reload the catalog; otherwise just patch the one item in place.
-            if (modal.allClubs) loadItems()
+            if (appliedAll) loadItems()
             else onItemSaved(updated)
             // Cost edits change audit results — refresh if we're on that tab.
             if (tab === 'audit') getInventoryAudit({ location_slug: slug === 'all' ? '' : slug, include_clean: 1 }).then(setAudit).catch(() => {})

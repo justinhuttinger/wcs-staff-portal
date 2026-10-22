@@ -8,8 +8,9 @@ const { Router } = require('express')
 const multer = require('multer')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
-const { requireRole, requireReportAccess, resolveRole, canSeeAllLocations } = require('../middleware/role')
+const { requireRole, requireReportAccess, canSeeAllLocations } = require('../middleware/role')
 const { requireTile } = require('../middleware/tile')
+const { getVisibleTools } = require('../services/visibleTools')
 const { getAccessToken } = require('./googleBusiness')
 const { parseLocationSlugParam, SLUG_CLUB_MAP } = require('../utils/locationSlug')
 const { resolveScopedSlugs, getUserAllowedSlugs } = require('../services/locationScope')
@@ -301,7 +302,8 @@ router.get('/items/:id/movements', async (req, res) => {
   }
 })
 
-// PATCH /items/:id — toggle tracking (manager+). Admins can also set the
+// PATCH /items/:id — toggle tracking (manager+). Holders of the
+// 'inventory-audit' permission (manager+ by default) can also set the
 // item's unit cost directly (ABC has the price but not the cost — invoices
 // or this field are where cost comes from) and fix a missing/wrong UPC.
 //
@@ -316,14 +318,14 @@ router.patch('/items/:id', async (req, res) => {
     if (!patchTarget || !(await clubInScope(req, patchTarget.club_number))) {
       return res.status(404).json({ error: 'Item not found' })
     }
-    const isAdmin = resolveRole(req.staff.role) === 'admin'
     const patch = {}
 
     if (typeof req.body.is_tracked === 'boolean') patch.is_tracked = req.body.is_tracked
 
     const editsCostOrUpc = 'unit_cost' in req.body || 'upc' in req.body
     if (editsCostOrUpc) {
-      if (!isAdmin) return res.status(403).json({ error: 'Only admins can edit item cost or UPC' })
+      const tiles = await getVisibleTools(req.staff)
+      if (!tiles.includes('inventory-audit')) return res.status(403).json({ error: 'Inventory Audit access required to edit item cost or UPC' })
       if ('unit_cost' in req.body) {
         if (req.body.unit_cost === null || req.body.unit_cost === '') {
           patch.last_unit_cost = null
@@ -1247,7 +1249,7 @@ router.get('/movements', async (req, res) => {
   }
 })
 
-// --- Audit (admin only) -----------------------------------------------------------
+// --- Audit (inventory-audit permission; manager+ by default) -----------------------------------------------------------
 
 // GET /audit?location_slug=&days=30&min_margin=15 — items that are priced
 // poorly or have data problems. Issue flags per item:
@@ -1259,7 +1261,7 @@ router.get('/movements', async (req, res) => {
 //   negative_stock      qty_on_hand < 0 (oversold — counts have drifted)
 //   missing_upc         no UPC, so it can't be scanned
 //   no_category         no ABC category — add one in ABC so the 3am sync fixes it
-router.get('/audit', requireRole('admin'), async (req, res) => {
+router.get('/audit', requireTile('inventory-audit'), async (req, res) => {
   try {
     const { clubs, error: cErr } = await clubFilter(req)
     if (cErr) return res.status(400).json({ error: cErr })
@@ -1456,8 +1458,8 @@ router.get('/employee-spend', requireReportAccess('manager', ['pos-sales']), asy
 // POST /cost-import — bulk-set unit cost from a CSV (the audit export round-trip).
 // CSV must have item_id + new_cost columns (blank new_cost rows are left as-is).
 // A cost is applied to every club's copy of the product (same UPC), matching the
-// Edit Cost modal. Admin only — cost is sensitive.
-router.post('/cost-import', requireRole('admin'), upload.single('file'), async (req, res) => {
+// Edit Cost modal. Gated on the inventory-audit permission — cost is sensitive.
+router.post('/cost-import', requireTile('inventory-audit'), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
     const records = parseCsv(req.file.buffer.toString('utf8'))
