@@ -37,6 +37,20 @@ function checkinClockTime(ts) {
   return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
+// ABC can report a member past due for a single sync and clear it the next
+// (2026-10-22 ~4 AM: its billing run flagged ~190 members for 30 minutes, and
+// the GHL past-due SMS workflow texted them all). Past due only reaches GHL once
+// ABC has said so for this long. past_due_since is stamped by a trigger on
+// abc_members (migration 242); a missing stamp counts as confirmed.
+const PAST_DUE_CONFIRM_MS = (Number(process.env.PAST_DUE_CONFIRM_MINUTES) || 60) * 60 * 1000;
+const PAST_DUE_KEYS = ['contact.past_due', 'contact.past_due_balance'];
+
+function pastDueUnconfirmed(member, now) {
+  if (!member.is_past_due || !member.past_due_since) return false;
+  const since = new Date(member.past_due_since).getTime();
+  return Number.isFinite(since) && now - since < PAST_DUE_CONFIRM_MS;
+}
+
 function normText(v) {
   return v == null ? '' : String(v).trim();
 }
@@ -61,11 +75,15 @@ const NORMALIZERS = { text: normText, date: normDate, number: normNumber };
 
 /**
  * Desired value per field key for this member. A key is omitted when ABC has
- * no value, so a missing ABC value never wipes what GHL already holds.
+ * no value, so a missing ABC value never wipes what GHL already holds. The
+ * past-due keys are also omitted while past due is unconfirmed, so GHL keeps
+ * whatever it had until ABC's flag has held.
  */
-function desiredMemberDetails(member) {
+function desiredMemberDetails(member, now = Date.now()) {
   const out = {};
+  const holdPastDue = pastDueUnconfirmed(member, now);
   for (const [key, spec] of Object.entries(MEMBER_DETAIL_FIELDS)) {
+    if (holdPastDue && PAST_DUE_KEYS.includes(key)) continue;
     const raw = spec.from(member);
     if (NORMALIZERS[spec.kind](raw) === '') continue;
     out[key] = spec.kind === 'number' ? Number(raw) : spec.kind === 'date' ? normDate(raw) : normText(raw);
@@ -78,10 +96,10 @@ function desiredMemberDetails(member) {
  * `fieldKeyToId` maps field key → this location's field id; fields the
  * location doesn't have yet are skipped.
  */
-function memberDetailUpdates(member, currentCustomFields, fieldKeyToId) {
+function memberDetailUpdates(member, currentCustomFields, fieldKeyToId, now = Date.now()) {
   const cf = currentCustomFields || {};
   const updates = {};
-  for (const [key, value] of Object.entries(desiredMemberDetails(member))) {
+  for (const [key, value] of Object.entries(desiredMemberDetails(member, now))) {
     const fieldId = fieldKeyToId[key];
     if (!fieldId) continue;
     const norm = NORMALIZERS[MEMBER_DETAIL_FIELDS[key].kind];
@@ -100,6 +118,7 @@ function dateOfBirthUpdate(member, cachedDob) {
 module.exports = {
   MEMBER_DETAIL_FIELDS,
   MEMBER_DETAIL_FIELD_KEYS: Object.keys(MEMBER_DETAIL_FIELDS),
+  PAST_DUE_CONFIRM_MS,
   desiredMemberDetails,
   memberDetailUpdates,
   dateOfBirthUpdate,

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { desiredMemberDetails, memberDetailUpdates, dateOfBirthUpdate, MEMBER_DETAIL_FIELD_KEYS } = require('./memberDetailFields');
+const { desiredMemberDetails, memberDetailUpdates, dateOfBirthUpdate, MEMBER_DETAIL_FIELD_KEYS, PAST_DUE_CONFIRM_MS } = require('./memberDetailFields');
 
 const member = {
   next_billing_date: '2026-10-24',
@@ -89,4 +89,27 @@ test('date of birth: only when ABC has one and it differs', () => {
   assert.strictEqual(dateOfBirthUpdate(member, null), '1992-05-28');
   assert.strictEqual(dateOfBirthUpdate(member, '1992-05-28'), null);
   assert.strictEqual(dateOfBirthUpdate({ birth_date: null }, '1990-01-01'), null);
+});
+
+test('past due: held back from GHL until ABC has said so long enough', () => {
+  const now = Date.parse('2026-10-22T11:33:00Z');
+  const cf = { 'id:contact.past_due': 'No', 'id:contact.past_due_balance': 0 };
+  const blip = { is_past_due: true, total_past_due_balance: 50, past_due_since: '2026-10-22T11:03:00Z' };
+  assert.deepStrictEqual(memberDetailUpdates(blip, cf, ids, now), {});
+
+  const held = { ...blip, past_due_since: new Date(now - PAST_DUE_CONFIRM_MS).toISOString() };
+  assert.deepStrictEqual(memberDetailUpdates(held, cf, ids, now), {
+    'id:contact.past_due': 'Yes',
+    'id:contact.past_due_balance': 50,
+  });
+});
+
+test('past due: no stamp (column not there yet) counts as confirmed', () => {
+  const d = desiredMemberDetails({ is_past_due: true, total_past_due_balance: 50 });
+  assert.strictEqual(d['contact.past_due'], 'Yes');
+});
+
+test('past due: clearing is never held', () => {
+  const d = desiredMemberDetails({ is_past_due: false, total_past_due_balance: 0, past_due_since: null });
+  assert.strictEqual(d['contact.past_due'], 'No');
 });
