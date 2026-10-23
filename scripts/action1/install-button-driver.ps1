@@ -8,16 +8,29 @@
   COM port and WCS ABC reports "dongle_missing".
 
   Flow: skip if the Silicon Labs driver is already in the driver store
-  (unless -Force), download the official CP210x Universal Windows Driver
-  from silabs.com, extract it, add + install it with pnputil, then rescan
-  so a plugged-in dongle binds right away.
+  (unless -Force), get the official CP210x Universal Windows Driver zip,
+  extract it, add + install it with pnputil, then rescan so a plugged-in
+  dongle binds right away.
+
+  Where the zip comes from, first that works:
+    1. -DriverZip <path>, or CP210x_Universal_Windows_Driver.zip next to
+       this script or in C:\WCS
+    2. our mirror: downloads.westcoaststrength.com/kiosk/ (upload once, see
+       below). silabs.com sits behind Akamai, which 403s scripted downloads.
+    3. silabs.com directly, with a browser User-Agent (often still 403)
+
+  One-time mirror upload: download the zip in a browser from
+  https://www.silabs.com/documents/public/software/CP210x_Universal_Windows_Driver.zip
+  then:
+    npx wrangler r2 object put wcs-launcher-downloads/kiosk/CP210x_Universal_Windows_Driver.zip --file CP210x_Universal_Windows_Driver.zip --remote
 
   Run via Action1 "Run Script" as Local System, or by hand from an admin
   PowerShell:
     powershell -ExecutionPolicy Bypass -File install-button-driver.ps1
 
   Params:
-    -Force   reinstall even if the driver is already present
+    -Force            reinstall even if the driver is already present
+    -DriverZip <path> use this local driver zip instead of downloading
 
   Exit codes (Action1 treats non-zero as failed):
     0  driver present / installed
@@ -25,12 +38,18 @@
 #>
 
 param(
-  [switch] $Force
+  [switch] $Force,
+  [string] $DriverZip = ''
 )
 
 $ErrorActionPreference = 'Stop'
 
-$DriverUrl = 'https://www.silabs.com/documents/public/software/CP210x_Universal_Windows_Driver.zip'
+$ZipName = 'CP210x_Universal_Windows_Driver.zip'
+$DriverUrls = @(
+  "https://downloads.westcoaststrength.com/kiosk/$ZipName",
+  "https://www.silabs.com/documents/public/software/$ZipName"
+)
+$BrowserUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 $WorkDir = Join-Path $env:ProgramData 'WCS\button-driver'
 $LogFile = 'C:\WCS\button-driver.log'
 $DongleId = 'USB\VID_10C4&PID_EA60*'
@@ -68,9 +87,29 @@ try {
   $zip = Join-Path $WorkDir 'cp210x.zip'
   $extract = Join-Path $WorkDir 'driver'
 
-  Log "Downloading $DriverUrl"
-  $ProgressPreference = 'SilentlyContinue'
-  Invoke-WebRequest -Uri $DriverUrl -OutFile $zip -UseBasicParsing
+  # $PSScriptRoot is empty when Action1 runs the body without a file.
+  $here = if ($PSScriptRoot) { Join-Path $PSScriptRoot $ZipName } else { '' }
+  $local = @($DriverZip, $here, (Join-Path 'C:\WCS' $ZipName)) |
+    Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+  if ($local) {
+    Log "Using local driver zip $local"
+    Copy-Item $local $zip
+  } else {
+    $ProgressPreference = 'SilentlyContinue'
+    foreach ($url in $DriverUrls) {
+      try {
+        Log "Downloading $url"
+        Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing -UserAgent $BrowserUA
+        break
+      } catch {
+        Log "  failed: $($_.Exception.Message)"
+        Remove-Item $zip -ErrorAction SilentlyContinue
+      }
+    }
+    if (-not (Test-Path $zip)) {
+      throw "Could not download the driver. Upload $ZipName to the kiosk/ mirror (see script header) or copy it to C:\WCS."
+    }
+  }
 
   Expand-Archive -Path $zip -DestinationPath $extract -Force
   $inf = Get-ChildItem -Path $extract -Recurse -Filter 'silabser.inf' | Select-Object -First 1
