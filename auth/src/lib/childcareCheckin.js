@@ -38,7 +38,8 @@ function parseAge(value, unit) {
  * Check-in body -> rows to insert, or { error }.
  * {
  *   parent_first_name, parent_last_name, parent_phone,
- *   membership_kind: 'monthly'|'drop_in', alt_pickup: bool, alt_pickup_name,
+ *   membership_kind: 'monthly'|'drop_in',
+ *   alt_pickup: bool, alt_pickup_first_name, alt_pickup_last_name,
  *   children: [{ first_name, last_name, age, age_unit }]
  * }
  */
@@ -55,11 +56,15 @@ function parseCheckin(body, clubNumber) {
     return { error: 'Choose Monthly or Drop-in' }
   }
 
-  let altPickup = null
+  let altFirst = null
+  let altLast = null
   if (b.alt_pickup === true) {
-    const alt = cleanName(b.alt_pickup_name, 'Name of the person picking up')
-    if (alt.error) return alt
-    altPickup = alt.name
+    const first = cleanName(b.alt_pickup_first_name, 'First name of the person picking up')
+    if (first.error) return first
+    const last = cleanName(b.alt_pickup_last_name, 'Last name of the person picking up')
+    if (last.error) return last
+    altFirst = first.name
+    altLast = last.name
   }
 
   const children = Array.isArray(b.children) ? b.children : []
@@ -84,7 +89,8 @@ function parseCheckin(body, clubNumber) {
       parent_last_name: parentLast.name,
       parent_phone: phone.phone,
       membership_kind: b.membership_kind,
-      alt_pickup_name: altPickup,
+      alt_pickup_first_name: altFirst,
+      alt_pickup_last_name: altLast,
     })
   }
   return { rows }
@@ -96,20 +102,25 @@ function parseCheckin(body, clubNumber) {
  * The visit row is needed to fill the approved person's name from what was
  * recorded at check-in, so the desk cannot change it at the door.
  */
+function pickup(by, first, last) {
+  return { checked_out_by: by, checked_out_by_first_name: first, checked_out_by_last_name: last }
+}
+
 function parseCheckout(body, visit) {
   const by = (body || {}).picked_up_by
   if (by === 'same_parent') {
-    const parentName = `${visit.parent_first_name} ${visit.parent_last_name}`
-    return { update: { checked_out_by: 'same_parent', checked_out_by_name: parentName } }
+    return { update: pickup('same_parent', visit.parent_first_name, visit.parent_last_name) }
   }
   if (by === 'approved_alternate') {
-    if (!visit.alt_pickup_name) return { error: 'No one else was approved for pickup at check-in' }
-    return { update: { checked_out_by: 'approved_alternate', checked_out_by_name: visit.alt_pickup_name } }
+    if (!visit.alt_pickup_first_name) return { error: 'No one else was approved for pickup at check-in' }
+    return { update: pickup('approved_alternate', visit.alt_pickup_first_name, visit.alt_pickup_last_name) }
   }
   if (by === 'other') {
-    const name = cleanName((body || {}).name, 'Name of the person picking up')
-    if (name.error) return name
-    return { update: { checked_out_by: 'other', checked_out_by_name: name.name } }
+    const first = cleanName((body || {}).first_name, 'First name of the person picking up')
+    if (first.error) return first
+    const last = cleanName((body || {}).last_name, 'Last name of the person picking up')
+    if (last.error) return last
+    return { update: pickup('other', first.name, last.name) }
   }
   return { error: 'Choose who is picking up' }
 }

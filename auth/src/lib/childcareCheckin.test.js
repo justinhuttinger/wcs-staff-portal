@@ -43,17 +43,22 @@ test('parseCheckin builds one row per child with typed parent details', () => {
     parent_last_name: 'Rivera',
     parent_phone: '(503) 555-1234',
     membership_kind: 'drop_in',
-    alt_pickup_name: null,
+    alt_pickup_first_name: null,
+    alt_pickup_last_name: null,
   })
   assert.strictEqual(r.rows[1].child_age_months, 10)
 })
 
-test('parseCheckin requires a name when someone else may pick up', () => {
-  assert.match(parseCheckin({ ...base, alt_pickup: true }, 1).error, /picking up/)
-  const r = parseCheckin({ ...base, alt_pickup: true, alt_pickup_name: 'Grandma Jo' }, 1)
-  assert.strictEqual(r.rows[0].alt_pickup_name, 'Grandma Jo')
-  // An unticked box ignores a leftover name.
-  assert.strictEqual(parseCheckin({ ...base, alt_pickup: false, alt_pickup_name: 'X' }, 1).rows[0].alt_pickup_name, null)
+test('parseCheckin requires first and last name when someone else may pick up', () => {
+  assert.match(parseCheckin({ ...base, alt_pickup: true }, 1).error, /First name/)
+  assert.match(parseCheckin({ ...base, alt_pickup: true, alt_pickup_first_name: 'Jo' }, 1).error, /Last name/)
+  const r = parseCheckin({ ...base, alt_pickup: true, alt_pickup_first_name: ' Jo ', alt_pickup_last_name: 'Smith' }, 1)
+  assert.strictEqual(r.rows[0].alt_pickup_first_name, 'Jo')
+  assert.strictEqual(r.rows[0].alt_pickup_last_name, 'Smith')
+  // An unticked box ignores leftover names.
+  const off = parseCheckin({ ...base, alt_pickup: false, alt_pickup_first_name: 'X', alt_pickup_last_name: 'Y' }, 1).rows[0]
+  assert.strictEqual(off.alt_pickup_first_name, null)
+  assert.strictEqual(off.alt_pickup_last_name, null)
 })
 
 test('parseCheckin rejects missing pieces', () => {
@@ -66,17 +71,18 @@ test('parseCheckin rejects missing pieces', () => {
 })
 
 test('parseCheckout fills the name from the visit for parent and approved pickup', () => {
-  const visit = { parent_first_name: 'Sam', parent_last_name: 'Rivera', alt_pickup_name: 'Grandma Jo' }
+  const visit = { parent_first_name: 'Sam', parent_last_name: 'Rivera', alt_pickup_first_name: 'Jo', alt_pickup_last_name: 'Smith' }
   assert.deepStrictEqual(parseCheckout({ picked_up_by: 'same_parent' }, visit).update,
-    { checked_out_by: 'same_parent', checked_out_by_name: 'Sam Rivera' })
-  assert.deepStrictEqual(parseCheckout({ picked_up_by: 'approved_alternate', name: 'ignored' }, visit).update,
-    { checked_out_by: 'approved_alternate', checked_out_by_name: 'Grandma Jo' })
-  assert.deepStrictEqual(parseCheckout({ picked_up_by: 'other', name: ' Uncle  Ray ' }, visit).update,
-    { checked_out_by: 'other', checked_out_by_name: 'Uncle Ray' })
+    { checked_out_by: 'same_parent', checked_out_by_first_name: 'Sam', checked_out_by_last_name: 'Rivera' })
+  assert.deepStrictEqual(parseCheckout({ picked_up_by: 'approved_alternate', first_name: 'ignored' }, visit).update,
+    { checked_out_by: 'approved_alternate', checked_out_by_first_name: 'Jo', checked_out_by_last_name: 'Smith' })
+  assert.deepStrictEqual(parseCheckout({ picked_up_by: 'other', first_name: ' Uncle ', last_name: 'Ray' }, visit).update,
+    { checked_out_by: 'other', checked_out_by_first_name: 'Uncle', checked_out_by_last_name: 'Ray' })
 })
 
 test('parseCheckout refuses an approved pickup nobody approved, and a nameless other', () => {
-  assert.ok(parseCheckout({ picked_up_by: 'approved_alternate' }, { parent_first_name: 'A', parent_last_name: 'B', alt_pickup_name: null }).error)
-  assert.ok(parseCheckout({ picked_up_by: 'other', name: '' }, { parent_first_name: 'A', parent_last_name: 'B' }).error)
+  assert.ok(parseCheckout({ picked_up_by: 'approved_alternate' }, { parent_first_name: 'A', parent_last_name: 'B', alt_pickup_first_name: null }).error)
+  assert.ok(parseCheckout({ picked_up_by: 'other', first_name: '' }, { parent_first_name: 'A', parent_last_name: 'B' }).error)
+  assert.match(parseCheckout({ picked_up_by: 'other', first_name: 'Ray' }, { parent_first_name: 'A', parent_last_name: 'B' }).error, /Last name/)
   assert.ok(parseCheckout({}, { parent_first_name: 'A', parent_last_name: 'B' }).error)
 })

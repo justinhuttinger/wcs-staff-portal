@@ -15,6 +15,8 @@ const labelCls = 'block text-xs font-medium text-text-muted mb-1'
 
 const childName = v => `${v.child_first_name} ${v.child_last_name}`
 const parentName = v => `${v.parent_first_name} ${v.parent_last_name}`
+const altPickupName = v => (v.alt_pickup_first_name ? `${v.alt_pickup_first_name} ${v.alt_pickup_last_name}` : null)
+const pickedUpByName = v => `${v.checked_out_by_first_name} ${v.checked_out_by_last_name}`
 
 function fmtAge(months) {
   const y = Math.floor(months / 12)
@@ -91,7 +93,8 @@ function CheckinModal({ token, onClose, onSaved }) {
   const [parentPhone, setParentPhone] = useState('')
   const [kind, setKind] = useState(null)
   const [altPickup, setAltPickup] = useState(false)
-  const [altName, setAltName] = useState('')
+  const [altFirst, setAltFirst] = useState('')
+  const [altLast, setAltLast] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -102,7 +105,7 @@ function CheckinModal({ token, onClose, onSaved }) {
     && parentFirst.trim() && parentLast.trim()
     && (phoneDigits.length === 10 || (phoneDigits.length === 11 && phoneDigits.startsWith('1')))
     && kind
-    && (!altPickup || altName.trim())
+    && (!altPickup || (altFirst.trim() && altLast.trim()))
 
   async function submit(e) {
     e.preventDefault()
@@ -115,7 +118,8 @@ function CheckinModal({ token, onClose, onSaved }) {
         parent_phone: parentPhone,
         membership_kind: kind,
         alt_pickup: altPickup,
-        alt_pickup_name: altPickup ? altName : null,
+        alt_pickup_first_name: altPickup ? altFirst : null,
+        alt_pickup_last_name: altPickup ? altLast : null,
         children,
       })
       onSaved()
@@ -204,9 +208,15 @@ function CheckinModal({ token, onClose, onSaved }) {
             Someone else may pick up
           </label>
           {altPickup && (
-            <div>
-              <label className={labelCls}>Their name</label>
-              <input value={altName} onChange={e => setAltName(e.target.value)} maxLength={100} className={inputCls} />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={labelCls}>Their first name</label>
+                <input value={altFirst} onChange={e => setAltFirst(e.target.value)} maxLength={100} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Their last name</label>
+                <input value={altLast} onChange={e => setAltLast(e.target.value)} maxLength={100} className={inputCls} />
+              </div>
             </div>
           )}
         </div>
@@ -240,19 +250,24 @@ function PickupOption({ selected, onClick, title, detail }) {
 
 function CheckoutModal({ token, visit, onClose, onSaved }) {
   const [by, setBy] = useState(null)
-  const [otherName, setOtherName] = useState('')
+  const [otherFirst, setOtherFirst] = useState('')
+  const [otherLast, setOtherLast] = useState('')
   const [confirmed, setConfirmed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
-  const valid = by === 'same_parent' || by === 'approved_alternate' || (by === 'other' && otherName.trim() && confirmed)
+  const valid = by === 'same_parent' || by === 'approved_alternate' || (by === 'other' && otherFirst.trim() && otherLast.trim() && confirmed)
 
   async function submit(e) {
     e.preventDefault()
     setSaving(true)
     setError(null)
     try {
-      await publicChildcare.checkout(token, visit.id, { picked_up_by: by, name: by === 'other' ? otherName : null })
+      await publicChildcare.checkout(token, visit.id, {
+        picked_up_by: by,
+        first_name: by === 'other' ? otherFirst : null,
+        last_name: by === 'other' ? otherLast : null,
+      })
       onSaved()
     } catch (err) {
       setError(err.message || 'Could not check out')
@@ -272,9 +287,9 @@ function CheckoutModal({ token, visit, onClose, onSaved }) {
           <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">Who is picking up?</div>
           <PickupOption selected={by === 'same_parent'} onClick={() => setBy('same_parent')}
             title={parentName(visit)} detail="Same parent who checked in" />
-          {visit.alt_pickup_name && (
+          {altPickupName(visit) && (
             <PickupOption selected={by === 'approved_alternate'} onClick={() => setBy('approved_alternate')}
-              title={visit.alt_pickup_name} detail="Approved by the parent at check-in" />
+              title={altPickupName(visit)} detail="Approved by the parent at check-in" />
           )}
           <PickupOption selected={by === 'other'} onClick={() => setBy('other')}
             title="Someone else" detail="Not named at check-in" />
@@ -282,9 +297,15 @@ function CheckoutModal({ token, visit, onClose, onSaved }) {
 
         {by === 'other' && (
           <div className="space-y-3">
-            <div>
-              <label className={labelCls}>Name of the person picking up</label>
-              <input value={otherName} onChange={e => setOtherName(e.target.value)} maxLength={100} autoFocus className={inputCls} />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={labelCls}>Their first name</label>
+                <input value={otherFirst} onChange={e => setOtherFirst(e.target.value)} maxLength={100} autoFocus className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Their last name</label>
+                <input value={otherLast} onChange={e => setOtherLast(e.target.value)} maxLength={100} className={inputCls} />
+              </div>
             </div>
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               This person was not approved at check-in. Call {parentName(visit)} at{' '}
@@ -331,8 +352,8 @@ function InRoomRow({ v, onCheckout, viewOnly }) {
             </>
           )}
         </div>
-        {v.alt_pickup_name && (
-          <div className="text-xs text-text-muted">Also OK to pick up: <span className="text-text-primary">{v.alt_pickup_name}</span></div>
+        {altPickupName(v) && (
+          <div className="text-xs text-text-muted">Also OK to pick up: <span className="text-text-primary">{altPickupName(v)}</span></div>
         )}
       </div>
       <div className="text-right text-sm">
@@ -360,7 +381,7 @@ function CheckedOutRow({ v }) {
         {fmtTime(v.checked_in_at)} – {fmtTime(v.checked_out_at)} ({fmtDuration(v.checked_in_at, v.checked_out_at)})
       </span>
       <span className="ml-auto text-text-muted">
-        Picked up by <span className="text-text-primary">{v.checked_out_by_name}</span>
+        Picked up by <span className="text-text-primary">{pickedUpByName(v)}</span>
         {v.checked_out_by !== 'same_parent' && ` (${PICKUP_LABEL[v.checked_out_by]})`}
       </span>
     </div>
