@@ -1288,6 +1288,29 @@ export const groupXAttendanceLinks = {
     api(`/admin/group-x-attendance-links/${clubNumber}/regenerate`, { method: 'POST' }),
 }
 
+// Login-free childcare check-in link (childcare.html?token=...).
+export const publicChildcare = {
+  get: (token) => publicFetch(`/public/childcare/${encodeURIComponent(token)}`),
+  view: (token) => publicFetch(`/public/childcare-view/${encodeURIComponent(token)}`),
+  checkin: (token, body) =>
+    publicFetch(`/public/childcare/${encodeURIComponent(token)}/checkin`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  checkout: (token, id, body) =>
+    publicFetch(`/public/childcare/${encodeURIComponent(token)}/visits/${encodeURIComponent(id)}/checkout`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+}
+
+export const childcareLinks = {
+  list: () => api('/admin/childcare-links'),
+  // kind: 'form' (check-in) or 'view' (read-only room board)
+  regenerate: (clubNumber, kind) =>
+    api(`/admin/childcare-links/${clubNumber}/regenerate?kind=${kind}`, { method: 'POST' }),
+}
+
 export const publicTour = {
   get: (token) => publicFetch(`/public/tour/${token}`),
   employees: (token) => publicFetch(`/public/tour/${token}/employees`),
