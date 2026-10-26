@@ -13,6 +13,7 @@ export default defineConfig({
         mobile: resolve(__dirname, 'mobile.html'),
         tour: resolve(__dirname, 'tour.html'),
         groupx: resolve(__dirname, 'groupx.html'),
+        childcare: resolve(__dirname, 'childcare.html'),
         help: resolve(__dirname, 'help.html'),
       },
     },

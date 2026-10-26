@@ -129,6 +129,9 @@ app.use('/public/group-x', require('./routes/publicGroupX'))
 // whose GET-only CORS above would block this route's PUT preflight.
 app.use('/public/group-x-attendance', require('./routes/publicGroupXAttendance'))
 app.use('/admin/group-x-attendance-links', require('./routes/groupXAttendanceLinks'))
+// Login-free per-club childcare check-in (childcare.html?token=).
+app.use('/public/childcare', require('./routes/publicChildcare'))
+app.use('/admin/childcare-links', require('./routes/childcareLinks'))
 app.use('/public/facility', require('./routes/publicFacility'))
 // Public, unauthenticated delivery of a ticket attachment a handler chose to
 // share. Token-gated per file; the Storage bucket itself stays private.
