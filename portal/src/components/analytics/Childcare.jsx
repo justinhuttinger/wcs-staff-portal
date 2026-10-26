@@ -5,6 +5,7 @@ import DesktopLoading from '../DesktopLoading'
 import { fmtInt, fmtDay, colorFor } from './chartPalette'
 import { zebraColumn } from './charts'
 import { LOCATION_NAMES } from '../../config/locations'
+import ChildcareKiosk from './ChildcareKiosk'
 
 // ---------------------------------------------------------------------------
 // Childcare — Analytics (admin only)
@@ -39,7 +40,37 @@ const num = v => (typeof v === 'number' ? String(v) : '—')
 const MORNING = colorFor('morning', 0)
 const EVENING = colorFor('evening', 1)
 
-export default function Childcare({ startDate, endDate, locationSlug }) {
+// Two sources, two tabs: the Operandio checklist headcounts, and the
+// child-by-child check-ins from the childcare iPad (Admin -> Childcare Kiosk).
+const TABS = [
+  { key: 'headcounts', label: 'Checklist Headcounts' },
+  { key: 'kiosk', label: 'Kiosk Check-Ins' },
+]
+
+export default function Childcare(props) {
+  const [tab, setTab] = useState('headcounts')
+  return (
+    <div className="space-y-3">
+      <div className="bg-surface rounded-xl border border-border">
+        <div className="flex overflow-x-auto">
+          {TABS.map(t => (
+            <button key={t.key} type="button" onClick={() => setTab(t.key)}
+              className={`px-4 py-2.5 text-xs font-semibold whitespace-nowrap transition-colors ${
+                tab === t.key
+                  ? 'text-wcs-red border-b-2 border-wcs-red'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {tab === 'headcounts' ? <Headcounts {...props} /> : <ChildcareKiosk {...props} />}
+    </div>
+  )
+}
+
+function Headcounts({ startDate, endDate, locationSlug }) {
   const { data, loading, error, retrying } = useCancellableFetch(
     signal => getChildcareReport(
       { start: startDate, end: endDate, locationSlug },

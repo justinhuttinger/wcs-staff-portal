@@ -6,6 +6,7 @@ const authenticate = require('../middleware/auth')
 const { requireReportAccess } = require('../middleware/role')
 const { resolveScopedSlugs } = require('../services/locationScope')
 const { loadReport, EMPTY } = require('../services/childcare')
+const { loadKioskReport, aggregate } = require('../services/childcare/kiosk')
 const { REPORT_KEY } = require('../services/childcare/config')
 
 const router = Router()
@@ -13,15 +14,22 @@ router.use(authenticate)
 // Tier gate, not the roles grid: the grid controls tile visibility only.
 router.use(requireReportAccess('admin', [REPORT_KEY]))
 
+function parseRange(req) {
+  const start = String(req.query.start || '')
+  const end = String(req.query.end || '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    return { error: 'start and end are required (YYYY-MM-DD)' }
+  }
+  if (start > end) return { error: 'start must be on or before end' }
+  return { start, end }
+}
+
 // GET /reports/childcare?start=&end=&location_slug=
 router.get('/', async (req, res) => {
   try {
-    const start = String(req.query.start || '')
-    const end = String(req.query.end || '')
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
-      return res.status(400).json({ error: 'start and end are required (YYYY-MM-DD)' })
-    }
-    if (start > end) return res.status(400).json({ error: 'start must be on or before end' })
+    const range = parseRange(req)
+    if (range.error) return res.status(400).json({ error: range.error })
+    const { start, end } = range
 
     // Scoping goes through the shared helper. It returns a sentinel slug for a
     // restricted user with no assigned clubs rather than falling through to
@@ -34,6 +42,27 @@ router.get('/', async (req, res) => {
     }
 
     res.json(await loadReport({ start, end, slugs }))
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message })
+  }
+})
+
+// GET /reports/childcare/kiosk?start=&end=&location_slug=
+// What the childcare iPad recorded (Admin -> Childcare Kiosk), same gate and
+// same club scoping as the headcount report above.
+router.get('/kiosk', async (req, res) => {
+  try {
+    const range = parseRange(req)
+    if (range.error) return res.status(400).json({ error: range.error })
+
+    const scope = await resolveScopedSlugs(req)
+    let slugs = null
+    if (!scope.all) {
+      slugs = scope.slugs
+      if (!slugs || slugs.length === 0) return res.json(aggregate([]))
+    }
+
+    res.json(await loadKioskReport({ start: range.start, end: range.end, slugs }))
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message })
   }
