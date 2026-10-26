@@ -131,6 +131,7 @@ app.use('/public/group-x-attendance', require('./routes/publicGroupXAttendance')
 app.use('/admin/group-x-attendance-links', require('./routes/groupXAttendanceLinks'))
 // Login-free per-club childcare check-in (childcare.html?token=).
 app.use('/public/childcare', require('./routes/publicChildcare'))
+app.use('/public/childcare-view', require('./routes/publicChildcare').viewRouter)
 app.use('/admin/childcare-links', require('./routes/childcareLinks'))
 app.use('/public/facility', require('./routes/publicFacility'))
 // Public, unauthenticated delivery of a ticket attachment a handler chose to

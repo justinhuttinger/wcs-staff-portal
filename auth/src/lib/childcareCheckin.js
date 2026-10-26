@@ -37,16 +37,18 @@ function parseAge(value, unit) {
 /**
  * Check-in body -> rows to insert, or { error }.
  * {
- *   parent_name, parent_phone, membership_kind: 'monthly'|'drop_in',
- *   alt_pickup: bool, alt_pickup_name,
- *   children: [{ name, age, age_unit }]
+ *   parent_first_name, parent_last_name, parent_phone,
+ *   membership_kind: 'monthly'|'drop_in', alt_pickup: bool, alt_pickup_name,
+ *   children: [{ first_name, last_name, age, age_unit }]
  * }
  */
 function parseCheckin(body, clubNumber) {
   const b = body || {}
 
-  const parent = cleanName(b.parent_name, 'Parent name')
-  if (parent.error) return parent
+  const parentFirst = cleanName(b.parent_first_name, 'Parent first name')
+  if (parentFirst.error) return parentFirst
+  const parentLast = cleanName(b.parent_last_name, 'Parent last name')
+  if (parentLast.error) return parentLast
   const phone = parsePhone(b.parent_phone)
   if (phone.error) return phone
   if (b.membership_kind !== 'monthly' && b.membership_kind !== 'drop_in') {
@@ -67,15 +69,19 @@ function parseCheckin(body, clubNumber) {
   const rows = []
   for (const [i, c] of children.entries()) {
     const label = children.length > 1 ? `Child ${i + 1}` : 'Child'
-    const name = cleanName(c && c.name, `${label} name`)
-    if (name.error) return name
+    const first = cleanName(c && c.first_name, `${label} first name`)
+    if (first.error) return first
+    const last = cleanName(c && c.last_name, `${label} last name`)
+    if (last.error) return last
     const age = parseAge(c && c.age, c && c.age_unit)
     if (age.error) return { error: `${label}: ${age.error}` }
     rows.push({
       club_number: String(clubNumber),
-      child_name: name.name,
+      child_first_name: first.name,
+      child_last_name: last.name,
       child_age_months: age.months,
-      parent_name: parent.name,
+      parent_first_name: parentFirst.name,
+      parent_last_name: parentLast.name,
       parent_phone: phone.phone,
       membership_kind: b.membership_kind,
       alt_pickup_name: altPickup,
@@ -93,7 +99,8 @@ function parseCheckin(body, clubNumber) {
 function parseCheckout(body, visit) {
   const by = (body || {}).picked_up_by
   if (by === 'same_parent') {
-    return { update: { checked_out_by: 'same_parent', checked_out_by_name: visit.parent_name } }
+    const parentName = `${visit.parent_first_name} ${visit.parent_last_name}`
+    return { update: { checked_out_by: 'same_parent', checked_out_by_name: parentName } }
   }
   if (by === 'approved_alternate') {
     if (!visit.alt_pickup_name) return { error: 'No one else was approved for pickup at check-in' }

@@ -7,6 +7,10 @@
  *
  * Every field is typed by the desk. There is no ABC lookup and no parent or
  * child record: each visit stands alone.
+ *
+ * A second, read-only link per club (view_token) is served by `viewRouter`,
+ * mounted at /public/childcare-view/:token: who is in the room now, no
+ * phones, no actions.
  */
 const { Router } = require('express')
 const { CLUBS } = require('../lib/groupXClubs')
@@ -16,15 +20,20 @@ const { parseCheckin, parseCheckout } = require('../lib/childcareCheckin')
 
 const router = Router()
 
-const VISIT_COLS = 'id, child_name, child_age_months, parent_name, parent_phone, membership_kind, ' +
+const VISIT_COLS = 'id, child_first_name, child_last_name, child_age_months, ' +
+  'parent_first_name, parent_last_name, parent_phone, membership_kind, ' +
   'alt_pickup_name, checked_in_at, checked_out_at, checked_out_by, checked_out_by_name'
 
-async function resolveToken(token) {
+// The view link shows only what someone glancing at the room needs.
+const VIEW_COLS = 'id, child_first_name, child_last_name, child_age_months, ' +
+  'parent_first_name, parent_last_name, membership_kind, checked_in_at'
+
+async function resolveToken(token, column = 'public_token') {
   if (!token) return null
   const { data, error } = await supabaseAdmin
     .from('childcare_checkin_links')
     .select('club_number, active')
-    .eq('public_token', token)
+    .eq(column, token)
     .maybeSingle()
   if (error) throw new Error(error.message)
   if (!data || !data.active) return null
@@ -111,7 +120,7 @@ router.post('/:token/visits/:id/checkout', async (req, res) => {
     // another club's visits or rewrite a finished one.
     const { data: visit, error: readErr } = await supabaseAdmin
       .from('childcare_visits')
-      .select('id, parent_name, alt_pickup_name')
+      .select('id, parent_first_name, parent_last_name, alt_pickup_name')
       .eq('id', req.params.id)
       .eq('club_number', club.clubNumber)
       .is('checked_out_at', null)
@@ -137,4 +146,32 @@ router.post('/:token/visits/:id/checkout', async (req, res) => {
   } catch (err) { fail(res, err, 'check-out') }
 })
 
+// Read-only: children in the room now. Runs the same end-of-day sweep so a
+// view left open overnight does not keep showing yesterday's children.
+const viewRouter = Router()
+
+viewRouter.get('/:token', async (req, res) => {
+  try {
+    const club = await resolveToken(req.params.token, 'view_token')
+    if (!club) return res.status(404).json({ error: 'This childcare link is not valid' })
+
+    const dayStart = tourDayStart().toISOString()
+    await closeYesterday(club.clubNumber, dayStart)
+
+    const { data, error } = await supabaseAdmin
+      .from('childcare_visits')
+      .select(VIEW_COLS)
+      .eq('club_number', club.clubNumber)
+      .is('checked_out_at', null)
+      .eq('auto_closed', false)
+      .gte('checked_in_at', dayStart)
+      .order('checked_in_at', { ascending: true })
+    if (error) throw new Error(error.message)
+
+    res.set('Cache-Control', 'no-store')
+    res.json({ club: club.name, view_only: true, in_room: data || [], checked_out: [] })
+  } catch (err) { fail(res, err, 'view GET') }
+})
+
 module.exports = router
+module.exports.viewRouter = viewRouter

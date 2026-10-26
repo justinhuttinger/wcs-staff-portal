@@ -31,7 +31,7 @@ import ClassSeedingAdmin from './admin/ClassSeedingAdmin'
 import OnlineJoinAdmin from './admin/OnlineJoinAdmin'
 import VipReferralsAdmin from './admin/VipReferralsAdmin'
 import TourCheckinLocations from './admin/TourCheckinLocations'
-import ChildcareCheckinLinks from './admin/ChildcareCheckinLinks'
+import ChildcareKioskAdmin from './admin/ChildcareKioskAdmin'
 import ClubIntegrations from './admin/ClubIntegrations'
 import ClubsAdmin from './admin/ClubsAdmin'
 import ClubInfo from './admin/ClubInfo'
@@ -80,7 +80,7 @@ const SETUP_TILES = [
   { key: 'online-join', label: 'Online Join', desc: 'Membership Signup Admin', icon: 'M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z' },
   { key: 'vip-referrals', label: 'VIP Referrals', desc: 'Referral Submissions + Webhook Config', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
   { key: 'tour-checkin', label: 'Tour Check-In', desc: 'Check-In App per Location', icon: 'M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z' },
-  { key: 'childcare-checkin', label: 'Childcare Check-In', desc: 'iPad Link per Club', icon: 'M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z' },
+  { key: 'childcare-kiosk', label: 'Childcare Kiosk', desc: 'Check-In & Room View Links', icon: 'M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z' },
   { key: 'report-visibility', label: 'Report Visibility', desc: 'Reports per Club', icon: 'M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z' },
   { key: 'kpi-goals', label: 'KPI Goals', desc: 'Report Targets', icon: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z' },
   { key: 'nps', label: 'Feedback', desc: 'Member Surveys', icon: 'M8 10.5h8m-8 3h5m-5 6.5 -3 2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8z' },
@@ -232,7 +232,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'online-join' && <OnlineJoinAdmin />}
         {activeSection === 'vip-referrals' && <VipReferralsAdmin />}
         {activeSection === 'tour-checkin' && <TourCheckinLocations />}
-        {activeSection === 'childcare-checkin' && <ChildcareCheckinLinks />}
+        {activeSection === 'childcare-kiosk' && <ChildcareKioskAdmin />}
         {activeSection === 'clubs' && <ClubsAdmin />}
         {activeSection === 'club-integrations' && <ClubIntegrations />}
         {activeSection === 'club-info' && <ClubInfo />}

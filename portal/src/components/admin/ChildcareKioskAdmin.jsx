@@ -1,12 +1,18 @@
 import { useState, useEffect } from 'react'
 import { childcareLinks } from '../../lib/api'
 
-// Admin -> Childcare Check-In. One secret, login-free page per club where the
-// childcare desk checks children in and out. Same idea as the Group X
-// attendance links: whoever has the URL can use it, so Regenerate kills a leaked one.
+// Admin -> Childcare Kiosk. Two secret, login-free links per club:
+//   Check-in form  the childcare iPad: check children in and out
+//   Room view      read-only: who is in the room now (no phones, no actions)
+// Whoever has a URL can use it, so Regenerate kills a leaked one.
 
-function linkUrl(token) {
-  return token ? `${window.location.origin}/childcare.html?token=${token}` : ''
+const KINDS = [
+  { kind: 'form', label: 'Check-in form', param: 'token', field: 'form_token' },
+  { kind: 'view', label: 'Room view (read-only)', param: 'view', field: 'view_token' },
+]
+
+function linkUrl(param, token) {
+  return token ? `${window.location.origin}/childcare.html?${param}=${token}` : ''
 }
 
 function CopyButton({ value }) {
@@ -44,7 +50,7 @@ function CopyButton({ value }) {
   )
 }
 
-export default function ChildcareCheckinLinks() {
+export default function ChildcareKioskAdmin() {
   const [links, setLinks] = useState([])
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(null)
@@ -55,16 +61,16 @@ export default function ChildcareCheckinLinks() {
       .catch(e => setError(e.message))
   }, [])
 
-  async function regenerate(link) {
-    const verb = link.public_token ? 'Regenerate' : 'Create'
-    if (link.public_token && !window.confirm(`Regenerate the ${link.name} link? The old link stops working immediately.`)) return
-    setBusy(link.club_number)
+  async function regenerate(link, k) {
+    const existing = link[k.field]
+    if (existing && !window.confirm(`Regenerate the ${link.name} ${k.label.toLowerCase()} link? The old link stops working immediately.`)) return
+    setBusy(`${link.club_number}:${k.kind}`)
     setError(null)
     try {
-      const r = await childcareLinks.regenerate(link.club_number)
-      setLinks(ls => ls.map(l => (l.club_number === link.club_number ? { ...l, public_token: r.public_token } : l)))
+      const r = await childcareLinks.regenerate(link.club_number, k.kind)
+      setLinks(ls => ls.map(l => (l.club_number === link.club_number ? { ...l, [k.field]: r.token } : l)))
     } catch (e) {
-      setError(`${verb} failed: ${e.message}`)
+      setError(`${existing ? 'Regenerate' : 'Create'} failed: ${e.message}`)
     } finally {
       setBusy(null)
     }
@@ -73,9 +79,10 @@ export default function ChildcareCheckinLinks() {
   return (
     <div className="bg-surface rounded-xl border border-border p-4 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="font-semibold text-text-primary">Childcare check-in links</h3>
+        <h3 className="font-semibold text-text-primary">Childcare Kiosk</h3>
         <span className="text-xs text-text-muted">
-          No login needed. Open one on the childcare iPad and Add to Home Screen.
+          No login needed. Open the check-in form on the childcare iPad and Add to Home Screen.
+          The room view only shows who is checked in right now.
         </span>
       </div>
 
@@ -86,11 +93,12 @@ export default function ChildcareCheckinLinks() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <tbody>
-            {links.map(l => {
-              const url = linkUrl(l.public_token)
+            {links.map(l => KINDS.map((k, i) => {
+              const url = linkUrl(k.param, l[k.field])
               return (
-                <tr key={l.club_number} className="border-t border-border first:border-t-0">
-                  <td className="py-2 pr-3 font-medium text-text-primary whitespace-nowrap align-top">{l.name}</td>
+                <tr key={`${l.club_number}:${k.kind}`} className={i === 0 ? 'border-t border-border first:border-t-0' : ''}>
+                  <td className="py-2 pr-3 font-medium text-text-primary whitespace-nowrap align-top">{i === 0 ? l.name : ''}</td>
+                  <td className="py-2 pr-3 text-text-muted whitespace-nowrap align-top">{k.label}</td>
                   <td className="py-2 pr-3 w-full align-top">
                     <code className="block text-xs text-text-muted break-all font-mono">{url || 'No link yet'}</code>
                   </td>
@@ -107,17 +115,17 @@ export default function ChildcareCheckinLinks() {
                       )}
                       <button
                         type="button"
-                        disabled={busy === l.club_number}
-                        onClick={() => regenerate(l)}
+                        disabled={busy === `${l.club_number}:${k.kind}`}
+                        onClick={() => regenerate(l, k)}
                         className="px-2.5 py-1 text-xs rounded-md border border-border text-text-primary hover:bg-bg whitespace-nowrap disabled:opacity-50"
                       >
-                        {l.public_token ? 'Regenerate' : 'Create'}
+                        {url ? 'Regenerate' : 'Create'}
                       </button>
                     </div>
                   </td>
                 </tr>
               )
-            })}
+            }))}
           </tbody>
         </table>
       </div>

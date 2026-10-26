@@ -3,10 +3,11 @@ const assert = require('node:assert')
 const { parsePhone, parseAge, parseCheckin, parseCheckout } = require('./childcareCheckin')
 
 const base = {
-  parent_name: '  Sam   Rivera ',
+  parent_first_name: '  Sam ',
+  parent_last_name: 'Rivera',
   parent_phone: '503.555.1234',
   membership_kind: 'drop_in',
-  children: [{ name: 'Ava', age: '4', age_unit: 'years' }],
+  children: [{ first_name: 'Ava', last_name: 'Rivera', age: '4', age_unit: 'years' }],
 }
 
 test('parsePhone formats 10 digits and strips a leading 1', () => {
@@ -27,14 +28,19 @@ test('parseAge converts years to months and keeps months', () => {
 test('parseCheckin builds one row per child with typed parent details', () => {
   const r = parseCheckin({
     ...base,
-    children: [{ name: 'Ava', age: '4', age_unit: 'years' }, { name: 'Leo', age: '10', age_unit: 'months' }],
+    children: [
+      { first_name: 'Ava', last_name: 'Rivera', age: '4', age_unit: 'years' },
+      { first_name: 'Leo', last_name: 'Rivera', age: '10', age_unit: 'months' },
+    ],
   }, 30935)
   assert.strictEqual(r.rows.length, 2)
   assert.deepStrictEqual(r.rows[0], {
     club_number: '30935',
-    child_name: 'Ava',
+    child_first_name: 'Ava',
+    child_last_name: 'Rivera',
     child_age_months: 48,
-    parent_name: 'Sam Rivera',
+    parent_first_name: 'Sam',
+    parent_last_name: 'Rivera',
     parent_phone: '(503) 555-1234',
     membership_kind: 'drop_in',
     alt_pickup_name: null,
@@ -51,14 +57,16 @@ test('parseCheckin requires a name when someone else may pick up', () => {
 })
 
 test('parseCheckin rejects missing pieces', () => {
-  assert.ok(parseCheckin({ ...base, parent_name: ' ' }, 1).error)
+  assert.ok(parseCheckin({ ...base, parent_first_name: ' ' }, 1).error)
+  assert.match(parseCheckin({ ...base, parent_last_name: '' }, 1).error, /last name/)
+  assert.match(parseCheckin({ ...base, children: [{ first_name: 'Ava', age: 2, age_unit: 'years' }] }, 1).error, /last name/)
   assert.ok(parseCheckin({ ...base, membership_kind: 'pif' }, 1).error)
   assert.ok(parseCheckin({ ...base, children: [] }, 1).error)
-  assert.match(parseCheckin({ ...base, children: [base.children[0], { name: '', age: 2, age_unit: 'years' }] }, 1).error, /Child 2/)
+  assert.match(parseCheckin({ ...base, children: [base.children[0], { first_name: '', last_name: 'X', age: 2, age_unit: 'years' }] }, 1).error, /Child 2/)
 })
 
 test('parseCheckout fills the name from the visit for parent and approved pickup', () => {
-  const visit = { parent_name: 'Sam Rivera', alt_pickup_name: 'Grandma Jo' }
+  const visit = { parent_first_name: 'Sam', parent_last_name: 'Rivera', alt_pickup_name: 'Grandma Jo' }
   assert.deepStrictEqual(parseCheckout({ picked_up_by: 'same_parent' }, visit).update,
     { checked_out_by: 'same_parent', checked_out_by_name: 'Sam Rivera' })
   assert.deepStrictEqual(parseCheckout({ picked_up_by: 'approved_alternate', name: 'ignored' }, visit).update,
@@ -68,7 +76,7 @@ test('parseCheckout fills the name from the visit for parent and approved pickup
 })
 
 test('parseCheckout refuses an approved pickup nobody approved, and a nameless other', () => {
-  assert.ok(parseCheckout({ picked_up_by: 'approved_alternate' }, { parent_name: 'A', alt_pickup_name: null }).error)
-  assert.ok(parseCheckout({ picked_up_by: 'other', name: '' }, { parent_name: 'A' }).error)
-  assert.ok(parseCheckout({}, { parent_name: 'A' }).error)
+  assert.ok(parseCheckout({ picked_up_by: 'approved_alternate' }, { parent_first_name: 'A', parent_last_name: 'B', alt_pickup_name: null }).error)
+  assert.ok(parseCheckout({ picked_up_by: 'other', name: '' }, { parent_first_name: 'A', parent_last_name: 'B' }).error)
+  assert.ok(parseCheckout({}, { parent_first_name: 'A', parent_last_name: 'B' }).error)
 })

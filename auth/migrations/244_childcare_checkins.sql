@@ -6,13 +6,19 @@
 -- child are two independent rows. That is deliberate (Justin, 2026-10-26).
 --
 -- Same token model as group_x_attendance_links (203): the token IS the access,
--- and an admin can regenerate it from Admin -> Childcare Check-In if it leaks.
+-- and an admin can regenerate it from Admin -> Childcare Kiosk if it leaks.
+-- Two links per club:
+--   public_token  the check-in form (check in, check out)
+--   view_token    read-only "who is in the room now"
+-- Nothing is seeded: an admin creates each link from Admin -> Childcare Kiosk,
+-- so a club has no live link until someone deliberately makes one.
 --
 -- Idempotent: safe to re-run.
 
 create table if not exists childcare_checkin_links (
   club_number  text primary key,
-  public_token text not null unique,
+  public_token text unique,
+  view_token   text unique,
   active       boolean not null default true,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
@@ -20,22 +26,18 @@ create table if not exists childcare_checkin_links (
 
 alter table childcare_checkin_links enable row level security;
 
--- Mirrors config/clubs.json.
-insert into childcare_checkin_links (club_number, public_token)
-select c, encode(gen_random_bytes(24), 'hex')
-from unnest(array['30935', '31599', '7655', '31598', '31600', '31601', '32073']) as c
-on conflict (club_number) do nothing;
-
 create table if not exists childcare_visits (
   id                  uuid primary key default gen_random_uuid(),
   club_number         text not null,
 
-  child_name          text not null,
+  child_first_name    text not null,
+  child_last_name     text not null,
   -- Age is stored in months so under-1s stay countable (ratio rules care about
   -- them separately). The desk types years or months; the API converts.
   child_age_months    integer not null check (child_age_months between 0 and 216),
 
-  parent_name         text not null,
+  parent_first_name   text not null,
+  parent_last_name    text not null,
   parent_phone        text not null,
   membership_kind     text not null check (membership_kind in ('monthly', 'drop_in')),
 

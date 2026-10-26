@@ -4,12 +4,17 @@ import { publicChildcare } from '../lib/api'
 // Login-free childcare check-in for one club, opened from its secret link
 // (/childcare.html?token=...). Everything is typed by the desk on the day:
 // no member lookup and no saved families, so each visit stands on its own.
+// Opened with ?view= instead of ?token=, the same board is read-only: who is
+// in the room now, no phones, no check-in or check-out.
 
 // Short enough that two iPads in the same room agree within moments.
 const REFRESH_MS = 15 * 1000
 
 const inputCls = 'w-full border border-border rounded-lg px-3 py-2.5 text-base bg-surface text-text-primary'
 const labelCls = 'block text-xs font-medium text-text-muted mb-1'
+
+const childName = v => `${v.child_first_name} ${v.child_last_name}`
+const parentName = v => `${v.parent_first_name} ${v.parent_last_name}`
 
 function fmtAge(months) {
   const y = Math.floor(months / 12)
@@ -77,11 +82,12 @@ function ErrorBox({ children }) {
   return <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900 break-words">{children}</div>
 }
 
-const blankChild = () => ({ name: '', age: '', age_unit: 'years' })
+const blankChild = () => ({ first_name: '', last_name: '', age: '', age_unit: 'years' })
 
 function CheckinModal({ token, onClose, onSaved }) {
   const [children, setChildren] = useState([blankChild()])
-  const [parentName, setParentName] = useState('')
+  const [parentFirst, setParentFirst] = useState('')
+  const [parentLast, setParentLast] = useState('')
   const [parentPhone, setParentPhone] = useState('')
   const [kind, setKind] = useState(null)
   const [altPickup, setAltPickup] = useState(false)
@@ -92,8 +98,8 @@ function CheckinModal({ token, onClose, onSaved }) {
   const setChild = (i, patch) => setChildren(cs => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)))
 
   const phoneDigits = parentPhone.replace(/\D/g, '')
-  const valid = children.every(c => c.name.trim() && /^\d+$/.test(c.age))
-    && parentName.trim()
+  const valid = children.every(c => c.first_name.trim() && c.last_name.trim() && /^\d+$/.test(c.age))
+    && parentFirst.trim() && parentLast.trim()
     && (phoneDigits.length === 10 || (phoneDigits.length === 11 && phoneDigits.startsWith('1')))
     && kind
     && (!altPickup || altName.trim())
@@ -104,7 +110,8 @@ function CheckinModal({ token, onClose, onSaved }) {
     setError(null)
     try {
       await publicChildcare.checkin(token, {
-        parent_name: parentName,
+        parent_first_name: parentFirst,
+        parent_last_name: parentLast,
         parent_phone: parentPhone,
         membership_kind: kind,
         alt_pickup: altPickup,
@@ -134,10 +141,17 @@ function CheckinModal({ token, onClose, onSaved }) {
                     className="text-xs text-text-muted hover:text-wcs-red">Remove</button>
                 )}
               </div>
-              <div>
-                <label className={labelCls}>Child name</label>
-                <input value={c.name} onChange={e => setChild(i, { name: e.target.value })}
-                  maxLength={100} autoFocus={i === 0} className={inputCls} />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={labelCls}>First name</label>
+                  <input value={c.first_name} onChange={e => setChild(i, { first_name: e.target.value })}
+                    maxLength={100} autoFocus={i === 0} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Last name</label>
+                  <input value={c.last_name} onChange={e => setChild(i, { last_name: e.target.value })}
+                    maxLength={100} className={inputCls} />
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Age</label>
@@ -162,9 +176,15 @@ function CheckinModal({ token, onClose, onSaved }) {
         </div>
 
         <div className="space-y-3">
-          <div>
-            <label className={labelCls}>Parent name</label>
-            <input value={parentName} onChange={e => setParentName(e.target.value)} maxLength={100} className={inputCls} />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={labelCls}>Parent first name</label>
+              <input value={parentFirst} onChange={e => setParentFirst(e.target.value)} maxLength={100} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Parent last name</label>
+              <input value={parentLast} onChange={e => setParentLast(e.target.value)} maxLength={100} className={inputCls} />
+            </div>
           </div>
           <div>
             <label className={labelCls}>Parent phone</label>
@@ -242,16 +262,16 @@ function CheckoutModal({ token, visit, onClose, onSaved }) {
   }
 
   return (
-    <Modal title={`Check Out ${visit.child_name}`} onClose={onClose}>
+    <Modal title={`Check Out ${childName(visit)}`} onClose={onClose}>
       <form onSubmit={submit} className="p-5 space-y-4">
         <div className="text-sm text-text-muted">
-          Checked in at {fmtTime(visit.checked_in_at)} by {visit.parent_name}
+          Checked in at {fmtTime(visit.checked_in_at)} by {parentName(visit)}
         </div>
 
         <div className="space-y-2">
           <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">Who is picking up?</div>
           <PickupOption selected={by === 'same_parent'} onClick={() => setBy('same_parent')}
-            title={visit.parent_name} detail="Same parent who checked in" />
+            title={parentName(visit)} detail="Same parent who checked in" />
           {visit.alt_pickup_name && (
             <PickupOption selected={by === 'approved_alternate'} onClick={() => setBy('approved_alternate')}
               title={visit.alt_pickup_name} detail="Approved by the parent at check-in" />
@@ -267,9 +287,9 @@ function CheckoutModal({ token, visit, onClose, onSaved }) {
               <input value={otherName} onChange={e => setOtherName(e.target.value)} maxLength={100} autoFocus className={inputCls} />
             </div>
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              This person was not approved at check-in. Call {visit.parent_name} at{' '}
+              This person was not approved at check-in. Call {parentName(visit)} at{' '}
               <a href={`tel:${visit.parent_phone.replace(/\D/g, '')}`} className="font-semibold underline">{visit.parent_phone}</a>{' '}
-              before releasing {visit.child_name}.
+              before releasing {visit.child_first_name}.
             </div>
             <label className="flex items-center gap-3 text-sm text-text-primary">
               <input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} className="w-5 h-5" />
@@ -293,18 +313,23 @@ function CheckoutModal({ token, visit, onClose, onSaved }) {
   )
 }
 
-function InRoomRow({ v, onCheckout }) {
+function InRoomRow({ v, onCheckout, viewOnly }) {
   return (
     <div className="bg-surface rounded-xl border border-border px-4 py-3 flex flex-wrap items-center gap-3">
       <div className="flex-1 min-w-[12rem]">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold text-text-primary">{v.child_name}</span>
+          <span className="font-semibold text-text-primary">{childName(v)}</span>
           <span className="text-sm text-text-muted">{fmtAge(v.child_age_months)}</span>
           <KindBadge kind={v.membership_kind} />
         </div>
         <div className="text-sm text-text-muted">
-          {v.parent_name} ·{' '}
-          <a href={`tel:${v.parent_phone.replace(/\D/g, '')}`} className="text-text-primary underline">{v.parent_phone}</a>
+          {parentName(v)}
+          {!viewOnly && (
+            <>
+              {' · '}
+              <a href={`tel:${v.parent_phone.replace(/\D/g, '')}`} className="text-text-primary underline">{v.parent_phone}</a>
+            </>
+          )}
         </div>
         {v.alt_pickup_name && (
           <div className="text-xs text-text-muted">Also OK to pick up: <span className="text-text-primary">{v.alt_pickup_name}</span></div>
@@ -314,10 +339,12 @@ function InRoomRow({ v, onCheckout }) {
         <div className="text-text-primary">In {fmtTime(v.checked_in_at)}</div>
         <div className="text-text-muted">{fmtDuration(v.checked_in_at)}</div>
       </div>
-      <button type="button" onClick={() => onCheckout(v)}
-        className="px-4 py-2.5 text-sm rounded-lg border border-border text-text-primary font-medium hover:bg-bg">
-        Check Out
-      </button>
+      {!viewOnly && (
+        <button type="button" onClick={() => onCheckout(v)}
+          className="px-4 py-2.5 text-sm rounded-lg border border-border text-text-primary font-medium hover:bg-bg">
+          Check Out
+        </button>
+      )}
     </div>
   )
 }
@@ -327,7 +354,7 @@ const PICKUP_LABEL = { same_parent: 'Parent', approved_alternate: 'Approved', ot
 function CheckedOutRow({ v }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 border-t border-border first:border-t-0 text-sm">
-      <span className="font-medium text-text-primary">{v.child_name}</span>
+      <span className="font-medium text-text-primary">{childName(v)}</span>
       <KindBadge kind={v.membership_kind} />
       <span className="text-text-muted">
         {fmtTime(v.checked_in_at)} – {fmtTime(v.checked_out_at)} ({fmtDuration(v.checked_in_at, v.checked_out_at)})
@@ -340,7 +367,7 @@ function CheckedOutRow({ v }) {
   )
 }
 
-export default function ChildcareApp({ token }) {
+export default function ChildcareApp({ token, viewOnly = false }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -355,14 +382,14 @@ export default function ChildcareApp({ token }) {
       return
     }
     try {
-      setData(await publicChildcare.get(token))
+      setData(await (viewOnly ? publicChildcare.view(token) : publicChildcare.get(token)))
       setError(null)
     } catch (e) {
       setError(e.message)
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, viewOnly])
 
   useEffect(() => {
     load()
@@ -379,13 +406,13 @@ export default function ChildcareApp({ token }) {
         <div className="bg-surface rounded-xl border border-border px-4 py-3 flex flex-wrap items-center gap-3">
           <img src="/wcs-logo.png" alt="" className="w-8 h-8" />
           <div>
-            <h1 className="font-semibold text-text-primary leading-tight">Childcare Check-In</h1>
+            <h1 className="font-semibold text-text-primary leading-tight">{viewOnly ? 'Childcare Room' : 'Childcare Check-In'}</h1>
             {data?.club && <p className="text-sm text-text-muted leading-tight">{data.club}</p>}
           </div>
           {data && (
             <span className="ml-auto text-sm text-text-muted">{inRoom.length} in the room</span>
           )}
-          {data && (
+          {data && !viewOnly && (
             <button type="button" onClick={() => setCheckingIn(true)}
               className="px-5 py-2.5 text-sm rounded-lg bg-wcs-red text-white font-semibold hover:bg-wcs-red-hover">
               Check In
@@ -401,7 +428,7 @@ export default function ChildcareApp({ token }) {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-muted px-1">In the room</h2>
             {inRoom.length === 0
               ? <Card>No children checked in right now.</Card>
-              : inRoom.map(v => <InRoomRow key={v.id} v={v} onCheckout={setCheckingOut} />)}
+              : inRoom.map(v => <InRoomRow key={v.id} v={v} onCheckout={setCheckingOut} viewOnly={viewOnly} />)}
           </div>
         )}
 
