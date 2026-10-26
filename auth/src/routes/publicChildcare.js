@@ -22,7 +22,8 @@ const router = Router()
 
 const VISIT_COLS = 'id, child_first_name, child_last_name, child_age_months, ' +
   'parent_first_name, parent_last_name, parent_phone, membership_kind, ' +
-  'alt_pickup_name, checked_in_at, checked_out_at, checked_out_by, checked_out_by_name'
+  'alt_pickup_first_name, alt_pickup_last_name, checked_in_at, checked_out_at, checked_out_by, ' +
+  'checked_out_by_first_name, checked_out_by_last_name'
 
 // The view link shows only what someone glancing at the room needs.
 const VIEW_COLS = 'id, child_first_name, child_last_name, child_age_months, ' +
@@ -120,7 +121,7 @@ router.post('/:token/visits/:id/checkout', async (req, res) => {
     // another club's visits or rewrite a finished one.
     const { data: visit, error: readErr } = await supabaseAdmin
       .from('childcare_visits')
-      .select('id, parent_first_name, parent_last_name, alt_pickup_name')
+      .select('id, parent_first_name, parent_last_name, alt_pickup_first_name, alt_pickup_last_name')
       .eq('id', req.params.id)
       .eq('club_number', club.clubNumber)
       .is('checked_out_at', null)
