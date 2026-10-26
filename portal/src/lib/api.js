@@ -2458,6 +2458,13 @@ export async function getChildcareReport({ start, end, locationSlug } = {}, opti
   return api('/reports/childcare?' + qs.toString(), options)
 }
 
+// Childcare kiosk check-ins (Analytics -> Childcare -> Kiosk Check-Ins).
+export async function getChildcareKioskReport({ start, end, locationSlug } = {}, options = {}) {
+  const qs = new URLSearchParams({ start, end })
+  if (locationSlug) qs.set('location_slug', locationSlug)
+  return api('/reports/childcare/kiosk?' + qs.toString(), options)
+}
+
 // Admin-only Render infrastructure status (mobile "Render" tile). Read-only.
 export async function getRenderStatus(options = {}) {
   return api('/render-status', options)
