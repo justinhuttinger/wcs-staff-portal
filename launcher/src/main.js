@@ -12,6 +12,11 @@ if (IS_ABC_ONLY) app.setPath('userData', path.join(app.getPath('appData'), APP_D
 if (process.platform === 'win32') app.setAppUserModelId(APP_DISPLAY_NAME)
 log('=== APP STARTING === platform=' + process.platform + ' version=' + app.getVersion() + ' mode=' + APP_MODE)
 const { PORTAL_URL, getAbcUrl, getLocation, readConfig, writeConfig } = require('./config')
+// WCS ABC "pager only" (C:\WCS\config.json `pager_only: true`, set by
+// scripts/action1/set-pager-pc.ps1): for an always-on PC that doesn't run ABC
+// but has the call button receiver plugged in. No ABC window, just a tray
+// icon with the Admin window; the call button pages the phones as usual.
+const PAGER_ONLY = IS_ABC_ONLY && !!(readConfig() || {}).pager_only
 const { LOCATIONS, CLUB_NUMBERS, loadClubsAtStartup } = require('./locations')
 const TabManager = require('./tabs')
 const { showOverlay, closeOverlay, onResize: onOverlayResize } = require('./overlay')
@@ -178,6 +183,120 @@ function applyLocationConfig({ location, abc_url } = {}) {
   }
 }
 
+// WCS ABC Admin (Actions toolbar on ABC's Settings page, shown to admins
+// only; see ADMIN_ABC_NAMES in abc-scraper.js): change this PC's club and
+// ABC URL. Saving goes through applyLocationConfig, the same path as the
+// Kiosk Installs panel, which reloads the ABC tab; the call banner reads the
+// location on every poll, so it follows immediately. Pager-only opens it from
+// the tray instead. Registers the Admin IPC and the call button pager;
+// returns openAdmin().
+function setupAbcAdmin() {
+  let adminWin = null
+  const openAdmin = () => {
+    if (adminWin && !adminWin.isDestroyed()) { adminWin.focus(); return }
+    adminWin = new BrowserWindow({
+      width: 520,
+      height: 760,
+      title: 'WCS ABC Admin',
+      // Pager-only has no main window to sit on.
+      parent: mainWindow || undefined,
+      modal: !!mainWindow,
+      autoHideMenuBar: true,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      webPreferences: {
+        preload: path.join(__dirname, 'abc-admin-preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    })
+    adminWin.loadFile(path.join(__dirname, '..', 'ui', 'abc-admin.html'))
+    adminWin.on('closed', () => { adminWin = null })
+    log('[abc-admin] opened')
+  }
+  // Call button pager (phone base settings + Test page in this window).
+  require('./pager').setup({
+    // Nobody sits at a pager-only PC, so it doesn't chime there.
+    log, readConfig, writeConfig, playSound: PAGER_ONLY ? () => {} : () => require('./alert-sound').play('blue'),
+    getClub: require('./call-poller').clubNumber,
+  })
+  const volumeGuard = require('./volume-guard')
+  ipcMain.handle('abc-admin:get', () => ({
+    config: readConfig() || {}, locations: LOCATIONS, alertVolume: volumeGuard.targetPercent(),
+  }))
+  // "Test sound": play the call chime at the slider's level (not yet saved).
+  // The saved level comes back on the next check (<= 1 min) if not saved.
+  ipcMain.handle('abc-admin:test-sound', async (e, pct) => {
+    await volumeGuard.setLevel(pct)
+    require('./alert-sound').play('blue', { keepVolume: true })
+    return true
+  })
+  ipcMain.handle('abc-admin:save', (e, cfg) => {
+    const loc = LOCATIONS.find(l => l.name === (cfg && cfg.location))
+    if (!loc) return { success: false, error: 'Pick a club' }
+    let url
+    try { url = new URL(String((cfg && cfg.abc_url) || '').trim()) } catch { url = null }
+    if (!url || url.protocol !== 'https:' || !/(^|\.)abc(financial|fitness)\.com$/i.test(url.hostname)) {
+      return { success: false, error: 'ABC URL must be an https://…abcfinancial.com or abcfitness.com link' }
+    }
+    const vol = Number(cfg && cfg.alert_volume)
+    if (!Number.isFinite(vol) || vol < 0 || vol > 100) return { success: false, error: 'Alert volume must be 0-100' }
+    const before = readConfig() || {}
+    // Only reload ABC when the club or URL actually changed.
+    let res = { success: true }
+    if (before.location !== loc.name || before.abc_url !== url.toString()) {
+      res = applyLocationConfig({ location: loc.name, abc_url: url.toString() })
+      if (!res || !res.success) return res
+    }
+    writeConfig({ ...(readConfig() || {}), alert_volume: Math.round(vol) })
+    // A pager-only PC plays no alerts, so its volume is left alone.
+    if (!PAGER_ONLY) volumeGuard.ensure()
+    log('[abc-admin] saved location=' + loc.name + ' alert_volume=' + Math.round(vol))
+    return res
+  })
+  return openAdmin
+}
+
+// Per-user scheduled task that starts the app every 5 minutes while someone is
+// signed in. The single-instance lock makes extra starts exit at once, so it
+// only matters when the app isn't running: after a silent update (the
+// updater's relaunch isn't reliable) or a crash. Users can create tasks for
+// themselves, so no admin rights are needed.
+const KEEPALIVE_TASK = 'WCS ABC Pager Keepalive'
+
+function syncKeepaliveTask(on) {
+  if (process.platform !== 'win32' || !app.isPackaged) return
+  const { execFile } = require('child_process')
+  const args = on
+    ? ['/Create', '/F', '/TN', KEEPALIVE_TASK, '/SC', 'MINUTE', '/MO', '5', '/TR', `"${app.getPath('exe')}"`]
+    : ['/Delete', '/F', '/TN', KEEPALIVE_TASK]
+  execFile('schtasks.exe', args, { windowsHide: true }, (err) => {
+    // Deleting a task that was never created fails; that's the usual case.
+    if (on) log('[pager-only] keepalive task ' + (err ? 'failed: ' + err.message : 'registered'))
+  })
+}
+
+// Pager-only startup: no ABC window. The tray opens Admin (phone base,
+// pairing, Test page); everything else is the normal pager.
+function startPagerOnly() {
+  log('[pager-only] starting: call button only, no ABC window')
+  const openAdmin = setupAbcAdmin()
+  // Both behind the call button password (pager-lock.js), if one is set.
+  const lock = require('./pager-lock')
+  createTray(null, 'abc-tray-icon.png', {
+    tooltip: 'WCS Call Button',
+    showLabel: 'Call button settings',
+    onShow: async () => { if (await lock.unlock({ readConfig, log, action: 'open settings' })) openAdmin() },
+    onQuit: async () => { if (await lock.unlock({ readConfig, log, action: 'quit' })) app.quit() },
+  })
+  // Opens at sign-in, and comes back on its own if it stops.
+  app.setLoginItemSettings({ openAtLogin: true, path: app.getPath('exe'), name: APP_DISPLAY_NAME })
+  syncKeepaliveTask(true)
+  silentUpdater.start(log)
+}
+
 // abc-scraper asks which app it's in (check-in cues are WCS ABC
 // only). Registered before any window exists so the sync call always answers.
 ipcMain.on('wcs-app-mode', (e) => { e.returnValue = APP_MODE })
@@ -213,6 +332,8 @@ app.on('ready', async () => {
   // config.json, so this resolves immediately; a manual install hits the
   // picker once.
   await pickLocationIfNeeded()
+
+  if (PAGER_ONLY) return startPagerOnly()
 
   const { session } = require('electron')
 
@@ -283,6 +404,8 @@ app.on('ready', async () => {
   } else {
     app.setLoginItemSettings({ openAtLogin: false })
   }
+  // A PC that was pager-only and isn't any more.
+  if (IS_ABC_ONLY) syncKeepaliveTask(false)
 
   // WCS ABC: one full-window ABC view, no tab bar (height 0, never created).
   // TabManager still hosts the view for its UA, context menu, link routing
@@ -631,74 +754,10 @@ app.on('ready', async () => {
     })
   })
 
-  // WCS ABC Admin (Actions toolbar on ABC's Settings page, shown to admins
-  // only; see ADMIN_ABC_NAMES in abc-scraper.js): change this PC's club and
-  // ABC URL. Saving goes through applyLocationConfig, the same path as the
-  // Kiosk Installs panel, which reloads the ABC tab; the call banner reads the
-  // location on every poll, so it follows immediately.
+  // WCS ABC Admin, opened from ABC's Settings page.
   if (IS_ABC_ONLY) {
-    let adminWin = null
-    ipcMain.on('abc-open-admin', () => {
-      if (adminWin && !adminWin.isDestroyed()) { adminWin.focus(); return }
-      adminWin = new BrowserWindow({
-        width: 520,
-        height: 760,
-        title: 'WCS ABC Admin',
-        parent: mainWindow,
-        modal: true,
-        autoHideMenuBar: true,
-        resizable: false,
-        minimizable: false,
-        maximizable: false,
-        fullscreenable: false,
-        webPreferences: {
-          preload: path.join(__dirname, 'abc-admin-preload.js'),
-          contextIsolation: true,
-          nodeIntegration: false,
-        },
-      })
-      adminWin.loadFile(path.join(__dirname, '..', 'ui', 'abc-admin.html'))
-      adminWin.on('closed', () => { adminWin = null })
-      log('[abc-admin] opened')
-    })
-    // Call button pager (phone base settings + Test page in this window).
-    require('./pager').setup({
-      log, readConfig, writeConfig, playSound: () => require('./alert-sound').play('blue'),
-      getClub: require('./call-poller').clubNumber,
-    })
-    const volumeGuard = require('./volume-guard')
-    ipcMain.handle('abc-admin:get', () => ({
-      config: readConfig() || {}, locations: LOCATIONS, alertVolume: volumeGuard.targetPercent(),
-    }))
-    // "Test sound": play the call chime at the slider's level (not yet saved).
-    // The saved level comes back on the next check (<= 1 min) if not saved.
-    ipcMain.handle('abc-admin:test-sound', async (e, pct) => {
-      await volumeGuard.setLevel(pct)
-      require('./alert-sound').play('blue', { keepVolume: true })
-      return true
-    })
-    ipcMain.handle('abc-admin:save', (e, cfg) => {
-      const loc = LOCATIONS.find(l => l.name === (cfg && cfg.location))
-      if (!loc) return { success: false, error: 'Pick a club' }
-      let url
-      try { url = new URL(String((cfg && cfg.abc_url) || '').trim()) } catch { url = null }
-      if (!url || url.protocol !== 'https:' || !/(^|\.)abc(financial|fitness)\.com$/i.test(url.hostname)) {
-        return { success: false, error: 'ABC URL must be an https://…abcfinancial.com or abcfitness.com link' }
-      }
-      const vol = Number(cfg && cfg.alert_volume)
-      if (!Number.isFinite(vol) || vol < 0 || vol > 100) return { success: false, error: 'Alert volume must be 0-100' }
-      const before = readConfig() || {}
-      // Only reload ABC when the club or URL actually changed.
-      let res = { success: true }
-      if (before.location !== loc.name || before.abc_url !== url.toString()) {
-        res = applyLocationConfig({ location: loc.name, abc_url: url.toString() })
-        if (!res || !res.success) return res
-      }
-      writeConfig({ ...(readConfig() || {}), alert_volume: Math.round(vol) })
-      volumeGuard.ensure()
-      log('[abc-admin] saved location=' + loc.name + ' alert_volume=' + Math.round(vol))
-      return res
-    })
+    const openAdmin = setupAbcAdmin()
+    ipcMain.on('abc-open-admin', openAdmin)
   }
 
   // Credential IPC — preload scripts request creds for auto-fill.
@@ -845,6 +904,7 @@ app.on('ready', async () => {
 
 app.on('window-all-closed', () => {
   // Quit on close on both platforms — single-window app, no value in
-  // keeping a windowless process around on macOS.
-  app.quit()
+  // keeping a windowless process around on macOS. Pager-only lives in the
+  // tray, so closing Admin keeps it running.
+  if (!PAGER_ONLY) app.quit()
 })
