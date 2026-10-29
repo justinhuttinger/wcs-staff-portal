@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>WCS Call Button</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <style>
+    :root {
+      --bg: #f5f5f7;
+      --card: #ffffff;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --border: #d2d2d7;
+      --accent: #007aff;
+      --accent-hover: #0066cc;
+      --error: #d70015;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1e1e1e;
+        --card: #2c2c2e;
+        --text: #f5f5f7;
+        --muted: #98989d;
+        --border: #3a3a3c;
+        --accent: #0a84ff;
+        --accent-hover: #409cff;
+        --error: #ff453a;
+      }
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      font: 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+    form { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+    p { color: var(--muted); }
+    input {
+      font: inherit; padding: 8px 10px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--card); color: var(--text);
+    }
+    input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    .row { display: flex; align-items: center; gap: 10px; }
+    .error { color: var(--error); flex: 1; min-height: 1em; }
+    button {
+      font: inherit; padding: 7px 16px; border-radius: 6px; border: 0;
+      /* Darker than --accent so the white label passes WCAG AA. */
+      background: #0060c0; color: #fff; cursor: pointer;
+    }
+    button:hover { background: #004f9e; }
+  </style>
+</head>
+<body>
+  <form id="form">
+    <p id="label">Enter the call button password.</p>
+    <input type="password" id="pw" autocomplete="off" autofocus>
+    <div class="row">
+      <div class="error" id="error"></div>
+      <button type="submit">Unlock</button>
+    </div>
+  </form>
+  <script src="pager-lock.js"></script>
+</body>
+</html>
