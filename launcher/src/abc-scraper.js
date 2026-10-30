@@ -648,18 +648,16 @@ function updateClubHomeMemo() {
   root.innerHTML = '<style>' +
     ':host{display:block;font-family:Roboto,Arial,sans-serif;color:#111;}' +
     '.card{box-sizing:border-box;height:100%;display:flex;flex-direction:column;background:#fff;border-radius:8px;padding:20px 24px;}' +
-    '.kicker{margin:0;font-size:12px;font-weight:700;letter-spacing:.2em;color:#ff0000;text-transform:uppercase;}' +
-    '.title{margin:4px 0 14px;padding-bottom:8px;border-bottom:3px solid #111;font-family:' + DISPLAY_FONT + ';font-size:30px;font-weight:400;line-height:1;text-transform:uppercase;}' +
+    '.title{margin:0 0 14px;padding-bottom:8px;border-bottom:3px solid #111;font-family:' + DISPLAY_FONT + ';font-size:30px;font-weight:400;line-height:1;text-transform:uppercase;}' +
     '.scroll{flex:1;min-height:0;overflow-y:auto;padding-right:8px;}' +
     '.section+.section{margin-top:16px;}' +
     '.section-title{margin:0 0 10px;font-family:' + DISPLAY_FONT + ';font-size:22px;font-weight:400;text-transform:uppercase;}' +
     '.items{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px 20px;}' +
     '.item h5{margin:0 0 6px;padding-bottom:3px;border-bottom:3px solid #ff0000;font-family:' + DISPLAY_FONT + ';font-size:20px;font-weight:400;line-height:1.1;text-transform:uppercase;}' +
     '.item p{margin:0 0 6px;font-size:14px;line-height:1.35;}' +
-    '</style><div class="card"><p class="kicker"></p><h3 class="title"></h3><div class="scroll"></div></div>'
+    '</style><div class="card"><h3 class="title"></h3><div class="scroll"></div></div>'
   const monthDate = new Date(String(clubMemo.month) + 'T12:00:00')
-  root.querySelector('.kicker').textContent = 'Memo · ' + monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) + ' · ' + (clubMemo.club_name || '')
-  root.querySelector('.title').textContent = monthDate.toLocaleDateString('en-US', { month: 'long' }) + ' Game Plan'
+  root.querySelector('.title').textContent = 'Memo - ' + monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   const scroll = root.querySelector('.scroll')
   scroll.appendChild(memoSection(doc, '', clubMemo.main_items || []))
   if ((clubMemo.club_items || []).length) {

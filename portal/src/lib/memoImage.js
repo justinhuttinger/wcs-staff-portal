@@ -105,13 +105,9 @@ export async function drawMemoImage({ month, clubName, mainItems, clubItems }) {
   ctx.fillRect(0, 0, IMAGE_WIDTH, CLOCK_BAND)
 
   ctx.textBaseline = 'alphabetic'
-  ctx.fillStyle = RED
-  ctx.font = `700 34px ${BODY}`
-  ctx.fillText(`MEMO · ${monthTitle(month).toUpperCase()}${clubName ? ` · ${clubName.toUpperCase()}` : ''}`, MARGIN, CLOCK_BAND - 120)
   ctx.fillStyle = '#ffffff'
   ctx.font = `76px ${DISPLAY}`
-  const name = new Date(month + 'T12:00:00').toLocaleDateString('en-US', { month: 'long' }).toUpperCase()
-  ctx.fillText(`${name} GAME PLAN`, MARGIN, CLOCK_BAND - 40)
+  ctx.fillText(`MEMO - ${monthTitle(month).toUpperCase()}`, MARGIN, CLOCK_BAND - 40)
 
   const top = CLOCK_BAND + 50
   const width = IMAGE_WIDTH - MARGIN * 2
