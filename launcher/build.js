@@ -18,8 +18,19 @@
 //                                "Trusted Signing Certificate Profile Signer" role
 
 const { spawnSync } = require('child_process')
+const fs = require('fs')
+const path = require('path')
 
 const args = process.argv.slice(2)
+
+// WCS ABC's buttons use the Prohibition font, which is gitignored (see
+// .gitignore), so a fresh worktree doesn't have it. Without it the build
+// quietly falls back to the default font (0.0.19 shipped that way).
+const displayFont = path.join(__dirname, 'assets', 'fonts', 'ProhibitionTest-Regular.otf')
+if (args.some((arg) => arg.includes('electron-builder.abc.yml')) && !fs.existsSync(displayFont)) {
+  console.error(`[build] Missing ${displayFont}. Copy ProhibitionTest-Regular.otf there before building WCS ABC.`)
+  process.exit(1)
+}
 const { AZURE_SIGN_ENDPOINT, AZURE_SIGN_ACCOUNT, AZURE_SIGN_PROFILE } = process.env
 const signingVars = [
   'AZURE_SIGN_ENDPOINT', 'AZURE_SIGN_ACCOUNT', 'AZURE_SIGN_PROFILE',
