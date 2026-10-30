@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { getLiveMemo, getMemosManage, saveMainMemo, saveClubMemo, publishClubMemo, endClubMemo } from '../lib/api'
 import { arrangeMemo, arrangeNotes, descriptionLines, splitLabel, textTier } from '../lib/memoLayout'
 import { drawMemoImage, downloadCanvas, IMAGE_WIDTH, IMAGE_HEIGHT } from '../lib/memoImage'
+import { fitMemoForPrint, MEMO_CSS } from '../lib/memoPrint'
 
 // Monthly club memo. Current is what staff read and print; Editor is where Main
 // (every club) and each club's own items are written and published. Every month
@@ -80,7 +81,7 @@ function Description({ text, tier }) {
 }
 
 function MemoRow({ row, tier }) {
-  const cols = { 1: 'md:grid-cols-1', 2: 'md:grid-cols-2', 3: 'md:grid-cols-3' }[row.items.length]
+  const cols = { 1: 'md:grid-cols-1 print:grid-cols-1', 2: 'md:grid-cols-2 print:grid-cols-2', 3: 'md:grid-cols-3 print:grid-cols-3' }[row.items.length]
   const display = `memo-display ${tier.title} leading-none uppercase mb-2`
   const box = row.style === 'feature' ? 'border-[3px] border-black p-5'
     : row.style === 'band' ? 'bg-black text-white p-5' : ''
@@ -102,7 +103,7 @@ function MemoPage({ month, clubName, mainItems, clubItems }) {
   return (
     <div className="memo-print bg-white text-black rounded-xl p-6 sm:p-10 space-y-6">
       <header className="border-b-4 border-black pb-3">
-        <p className="text-xs sm:text-sm font-bold tracking-[0.25em] text-[#ff0000] uppercase">/ Memo · {monthLabel(month)}{clubName ? ` · ${clubName}` : ''}</p>
+        <p className="text-xs sm:text-sm font-bold tracking-[0.25em] text-[#ff0000] uppercase">Memo · {monthLabel(month)}{clubName ? ` · ${clubName}` : ''}</p>
         <h3 className="memo-display text-4xl sm:text-5xl leading-none uppercase mt-2">{monthName(month)} Game Plan</h3>
       </header>
       {arrangeMemo(mainItems).map((row, i) => <MemoRow key={i} row={row} tier={tier} />)}
@@ -141,7 +142,7 @@ function CurrentMemo() {
           {data.clubs.length > 1 && data.clubs.map(c => (
             <button key={c.slug} type="button" onClick={() => setClub(c.slug)} className={pill(c.slug === data.club?.slug)}>{c.name}</button>
           ))}
-          {data.memo && <button type="button" onClick={() => window.print()} className={`${BTN} ml-auto`}>Print</button>}
+          {data.memo && <button type="button" onClick={() => { fitMemoForPrint(); window.print() }} className={`${BTN} ml-auto`}>Print</button>}
         </div>
       )}
       {data.memo ? (
@@ -449,20 +450,15 @@ export default function MemosView({ user, onBack }) {
   const canEdit = visibleTools.includes('memos:company-edit') || ['manager', 'marketing', 'corporate', 'director', 'admin'].includes(role)
   const [tab, setTab] = useState('current')
 
+  // Ctrl+P skips the Print button, so fit the page here as well.
+  useEffect(() => {
+    window.addEventListener('beforeprint', fitMemoForPrint)
+    return () => window.removeEventListener('beforeprint', fitMemoForPrint)
+  }, [])
+
   return (
     <div className="w-full max-w-5xl mx-auto px-8 pb-12">
-      <style>{`
-        .memo-display { font-family: 'WCSDisplay', Impact, sans-serif; font-weight: 400; }
-        @media print {
-          body * { visibility: hidden; }
-          .memo-print, .memo-print * { visibility: visible; }
-          .memo-print { position: absolute; left: 0; top: 0; width: 100%; padding: 0; border-radius: 0; }
-          .memo-row { break-inside: avoid; }
-          .no-print { display: none !important; }
-          @page { margin: 0.4in; size: portrait; }
-          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
-      `}</style>
+      <style>{MEMO_CSS}</style>
       <div className="no-print bg-surface/95 backdrop-blur-sm rounded-xl border border-border px-4 py-2.5 mb-3 flex flex-wrap items-center gap-3">
         <button type="button" onClick={onBack} className="redundant-back text-sm text-tile-sub hover:text-text-primary shrink-0">&larr; Back</button>
         <h2 className="text-sm font-bold text-text-primary">Memos</h2>
