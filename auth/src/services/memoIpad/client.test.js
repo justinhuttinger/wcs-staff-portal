@@ -84,7 +84,8 @@ test('a refused upload is an error, not silent success', async () => {
   const { impl, calls } = fakeFetch({ 'POST https://svc.test/wall/b1/lock': () => reply(415) })
   await assert.rejects(createClient({ env, fetchImpl: impl }).setLockImage('b1', Buffer.from('x')), /Uploading the image failed \(415\)/)
   assert.ok(calls[0].body instanceof FormData)
-  assert.ok(calls[0].body.get('file'))
+  assert.ok(calls[0].body.get('image'), 'the service only accepts the field named image')
+  assert.strictEqual(calls[0].body.get('file'), null)
 })
 
 test('isConfigured needs every setting', () => {

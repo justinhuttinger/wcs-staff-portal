@@ -102,13 +102,20 @@ function createClient({ env = process.env, fetchImpl = fetch } = {}) {
 
   async function setLockImage(target, bytes, type = 'image/png') {
     const body = new FormData()
-    body.append('file', new Blob([bytes], { type }), type === 'image/png' ? 'memo.png' : 'memo.jpg')
+    // A wrong field name still answers 200 and blanks the lock image, so callers
+    // must check the id that comes back. See confirmLockImage.
+    body.append('image', new Blob([bytes], { type }), type === 'image/png' ? 'memo.png' : 'memo.jpg')
     const { res } = await request(`${base()}/${target}/lock`, { method: 'POST', body, headers: jsonHeaders })
     if (res.status !== 200) throw new Error(`Uploading the image failed (${res.status})`)
     return res.json()
   }
 
-  return { signIn, readWallpaper, readImage, setLockImage }
+  async function clearLockImage(target) {
+    const { res } = await request(`${base()}/${target}/lock`, { method: 'DELETE', headers: jsonHeaders })
+    if (res.status >= 300) throw new Error(`Removing the image failed (${res.status})`)
+  }
+
+  return { signIn, readWallpaper, readImage, setLockImage, clearLockImage }
 }
 
 module.exports = { createClient, isConfigured }
