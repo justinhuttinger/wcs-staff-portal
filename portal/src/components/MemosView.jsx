@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getLiveMemo, getMemosManage, saveMainMemo, saveClubMemo, publishClubMemo, endClubMemo } from '../lib/api'
+import { getLiveMemo, getMemosManage, saveMainMemo, saveClubMemo, publishClubMemo, endClubMemo, uploadClubMemoImage, retryClubIpad } from '../lib/api'
 import { arrangeMemo, arrangeNotes, descriptionLines, splitLabel, textTier } from '../lib/memoLayout'
-import { drawMemoImage, downloadCanvas, IMAGE_WIDTH, IMAGE_HEIGHT } from '../lib/memoImage'
+import { drawMemoImage, downloadCanvas, canvasToPng, IMAGE_WIDTH, IMAGE_HEIGHT } from '../lib/memoImage'
 import { fitMemoForPrint, MEMO_CSS } from '../lib/memoPrint'
 
 // Monthly club memo. Current is what staff read and print; Editor is where Main
@@ -51,6 +51,20 @@ function toLocalInput(value) {
 function fromLocalInput(value) {
   return value ? new Date(value).toISOString() : null
 }
+
+// Draws a club's image and sends it to the server, which updates the iPads. A
+// problem here must never undo the publish, so callers get a message back.
+async function sendIpadImage(edition, club, mainItems, clubItems) {
+  try {
+    const { canvas } = await drawMemoImage({ month: edition.month, clubName: club.name, mainItems, clubItems })
+    await uploadClubMemoImage(edition.id, club.slug, await canvasToPng(canvas))
+    return null
+  } catch (err) {
+    return `${club.name}: ${err.message}`
+  }
+}
+
+const IPAD_LABELS = { sent: 'iPads updated', restored: 'iPads back to normal', pending: 'iPads updating', waiting: 'iPads waiting', failed: 'iPad update failed', no_normal: 'iPads need a look' }
 
 function StateBadge({ state }) {
   return (
@@ -186,7 +200,18 @@ function MainEditor({ edition, canEdit, clubs, onChanged }) {
     setSaved('')
     try {
       await saveMainMemo(edition.month, { items, ...extra })
+      // Main is on every published club's image, so they all need redrawing.
+      const problems = []
+      if (edition.id && edition.status === 'ready' && extra.ready !== false) {
+        for (const c of clubs) {
+          const row = edition.club_memos[c.slug]
+          if (row?.status !== 'published') continue
+          const problem = await sendIpadImage(edition, c, items, row.items || [])
+          if (problem) problems.push(problem)
+        }
+      }
       setSaved(message)
+      if (problems.length) setError(`Saved, but some iPad images didn't update. ${problems.join(' ')}`)
       await onChanged()
     } catch (err) {
       setError(err.message)
@@ -231,6 +256,14 @@ function MainEditor({ edition, canEdit, clubs, onChanged }) {
                   <span className="flex items-center gap-2 text-xs text-text-muted">
                     {row.starts_at && <span>{dateLabel(row.starts_at)}{row.ends_at ? ` to ${dateLabel(row.ends_at)}` : ''}</span>}
                     <StateBadge state={row.state || 'not_started'} />
+                    {c.ipad && (
+                      <span className={c.ipad.status === 'failed' || c.ipad.status === 'no_normal' ? 'text-red-600' : ''} title={c.ipad.error || (c.ipad.sent_at ? `Last sent ${dateLabel(c.ipad.sent_at)}` : '')}>
+                        {IPAD_LABELS[c.ipad.status] || 'iPads not sent yet'}
+                      </span>
+                    )}
+                    {canEdit && c.ipad?.status === 'failed' && (
+                      <button type="button" onClick={() => retryClubIpad(c.slug).then(onChanged).catch(err => setError(err.message))} className={BTN}>Retry</button>
+                    )}
                   </span>
                 </div>
               )
@@ -327,12 +360,23 @@ function ClubEditor({ edition, club, onChanged }) {
     }
   }
 
-  const save = () => run(() => saveClubMemo(edition.id, club.slug, { items }), 'Saved')
-  const publish = () => run(() => publishClubMemo(edition.id, club.slug, {
-    items,
-    starts_at: startMode === 'date' ? fromLocalInput(startsAt) : null,
-    ends_at: endMode === 'date' ? fromLocalInput(endsAt) : null,
-  }), published ? 'Updated' : 'Published')
+  const clean = () => items.filter(i => i.title || i.description)
+  const save = () => run(async () => {
+    await saveClubMemo(edition.id, club.slug, { items })
+    if (published) {
+      const problem = await sendIpadImage(edition, club, edition.items || [], clean())
+      if (problem) setError(`Saved, but the iPad image didn't update. ${problem}`)
+    }
+  }, 'Saved')
+  const publish = () => run(async () => {
+    await publishClubMemo(edition.id, club.slug, {
+      items,
+      starts_at: startMode === 'date' ? fromLocalInput(startsAt) : null,
+      ends_at: endMode === 'date' ? fromLocalInput(endsAt) : null,
+    })
+    const problem = await sendIpadImage(edition, club, edition.items || [], clean())
+    if (problem) setError(`Published, but the iPad image didn't update. ${problem}`)
+  }, published ? 'Updated' : 'Published')
   const end = () => {
     if (window.confirm(`Take down ${club.name}'s ${monthLabel(edition.month)} memo now?`)) {
       run(() => endClubMemo(edition.id, club.slug), 'Taken down')

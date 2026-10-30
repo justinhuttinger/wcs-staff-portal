@@ -159,6 +159,12 @@ export async function drawMemoImage({ month, clubName, mainItems, clubItems }) {
   return { canvas, small: layout.small }
 }
 
+export function canvasToPng(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('Could not draw the image'))), 'image/png')
+  })
+}
+
 export function downloadCanvas(canvas, filename) {
   canvas.toBlob((blob) => {
     const url = URL.createObjectURL(blob)
