@@ -19,6 +19,8 @@ test('every memo route is registered', () => {
     ['/editions/:id/clubs/:slug', 'put'],
     ['/editions/:id/clubs/:slug/publish', 'post'],
     ['/editions/:id/clubs/:slug/end', 'post'],
+    ['/editions/:id/clubs/:slug/image', 'post'],
+    ['/clubs/:slug/ipad-retry', 'post'],
   ]) {
     assert.ok(routeEntry(path, method), `expected ${method.toUpperCase()} ${path}`)
   }
@@ -30,6 +32,8 @@ test('company routes require a company editor and club routes load the club cont
   assert.strictEqual(guard('/editions/:id/clubs/:slug', 'put'), 'loadClubContext')
   assert.strictEqual(guard('/editions/:id/clubs/:slug/publish', 'post'), 'loadClubContext')
   assert.strictEqual(guard('/editions/:id/clubs/:slug/end', 'post'), 'loadClubContext')
+  assert.strictEqual(guard('/clubs/:slug/ipad-retry', 'post'), 'requireCompanyEditor')
+  assert.ok(routeEntry('/editions/:id/clubs/:slug/image', 'post').route.stack.some(l => l.name === 'loadImageContext'))
 })
 
 test('months are never created by hand', () => {

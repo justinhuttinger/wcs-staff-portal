@@ -972,6 +972,12 @@ export async function saveClubMemo(id, slug, data) {
 export async function publishClubMemo(id, slug, data) {
   return api('/memos/editions/' + id + '/clubs/' + slug + '/publish', { method: 'POST', body: JSON.stringify(data) })
 }
+export async function uploadClubMemoImage(id, slug, blob) {
+  return api('/memos/editions/' + id + '/clubs/' + slug + '/image', { method: 'POST', body: blob, headers: { 'Content-Type': 'image/png' } })
+}
+export async function retryClubIpad(slug) {
+  return api('/memos/clubs/' + slug + '/ipad-retry', { method: 'POST', body: '{}' })
+}
 export async function endClubMemo(id, slug) {
   return api('/memos/editions/' + id + '/clubs/' + slug + '/end', { method: 'POST', body: '{}' })
 }

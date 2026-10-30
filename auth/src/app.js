@@ -338,6 +338,13 @@ app.listen(PORT, () => {
     console.error('[operandioSync] failed to start:', err.message)
   }
 
+  // Memo images to iPad lock screens — opt-in via MEMO_IPAD_SYNC_ENABLED=true.
+  try {
+    require('./services/memoIpad/sync').start()
+  } catch (err) {
+    console.error('[memoIpad] failed to start:', err.message)
+  }
+
   // Blog automation weekly cron — opt-in via BLOG_AUTOMATION_ENABLED=true.
   try {
     require('./services/blogAutomation').start()

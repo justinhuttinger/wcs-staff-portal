@@ -2,7 +2,8 @@
 // company section and mark it ready; each club's managers then add notes and
 // publish that club's memo. Everyone with the tile reads their club's live memo.
 // See docs/superpowers/specs/2026-10-30-monthly-memo-design.md.
-const { Router } = require('express')
+const { Router, raw } = require('express')
+const memoIpad = require('../services/memoIpad/sync')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { requireTile } = require('../middleware/tile')
@@ -72,6 +73,28 @@ async function loadClubContext(req, res, next) {
     next()
   } catch (err) {
     console.error('[Memos] club context error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+}
+
+// Who can send a club's iPad image: a company editor (Main edits redraw every
+// club) or a manager of that club. The memo must already be published.
+async function loadImageContext(req, res, next) {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid memo id' })
+    if (!(await canEditCompany(req.staff))) {
+      if (!isManagerPlus(req.staff)) return res.status(403).json({ error: 'Not allowed' })
+      if (!canEditClub(await clubScope(req.staff), req.params.slug)) return res.status(403).json({ error: 'That club is not one of yours' })
+    }
+    const { data: memo, error } = await supabaseAdmin
+      .from('club_memos').select('id, status')
+      .eq('edition_id', req.params.id).eq('club_slug', req.params.slug).maybeSingle()
+    if (error) throw error
+    if (!memo || memo.status !== 'published') return res.status(409).json({ error: 'This memo is not published' })
+    req.memo = memo
+    next()
+  } catch (err) {
+    console.error('[Memos] image context error:', err.message)
     res.status(500).json({ error: err.message })
   }
 }
@@ -149,9 +172,21 @@ router.get('/manage', async (req, res) => {
       liveByClub[slug] = pickLiveMemo((rows || []).filter(r => r.club_slug === slug), now)?.id || null
     }
     const byMonth = new Map((editions || []).map(e => [e.month, e]))
+
+    const { data: ipadRows, error: ipadErr } = await supabaseAdmin
+      .from('memo_clubs').select('club_slug, ipad_target, ipad_status, ipad_error, ipad_pushed_at')
+    if (ipadErr) throw ipadErr
+    const ipadBySlug = new Map((ipadRows || []).map(r => [r.club_slug, r]))
+
     res.json({
       can: { company, clubs: manager && clubs.some(c => c.editable) },
-      clubs,
+      clubs: clubs.map(c => {
+        const ipad = ipadBySlug.get(c.slug)
+        return {
+          ...c,
+          ipad: ipad?.ipad_target ? { status: ipad.ipad_status, error: ipad.ipad_error, sent_at: ipad.ipad_pushed_at } : null,
+        }
+      }),
       current_month: currentMonth(now),
       editions: monthOptions([...byMonth.keys()], now).map(month => {
         const e = byMonth.get(month) || { id: null, month, status: 'draft', items: [] }
@@ -267,6 +302,7 @@ router.post('/editions/:id/clubs/:slug/publish', loadClubContext, async (req, re
       .select()
       .single()
     if (error) throw error
+    memoIpad.kick()
     res.json({ memo: data })
   } catch (err) {
     fail(res, 'publish', err)
@@ -295,9 +331,48 @@ router.post('/editions/:id/clubs/:slug/end', loadClubContext, async (req, res) =
       .select()
       .single()
     if (error) throw error
+    memoIpad.kick()
     res.json({ memo: data })
   } catch (err) {
     fail(res, 'end', err)
+  }
+})
+
+// POST /editions/:id/clubs/:slug/image — the iPad image, drawn in the browser.
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+router.post('/editions/:id/clubs/:slug/image', raw({ type: 'image/png', limit: '4mb' }), loadImageContext, async (req, res) => {
+  try {
+    if (!Buffer.isBuffer(req.body) || !req.body.subarray(0, 4).equals(PNG_SIGNATURE)) {
+      return res.status(400).json({ error: 'Expected a PNG image' })
+    }
+    const md5 = memoIpad.md5(req.body)
+    const { error } = await supabaseAdmin.from('club_memo_images').upsert({
+      club_memo_id: req.memo.id,
+      image_base64: req.body.toString('base64'),
+      md5,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'club_memo_id' })
+    if (error) throw error
+    memoIpad.kick()
+    res.json({ md5 })
+  } catch (err) {
+    fail(res, 'save image', err)
+  }
+})
+
+// POST /clubs/:slug/ipad-retry — try again after a failure. Failures never retry
+// by themselves, so a bad login can't be repeated until the account locks.
+router.post('/clubs/:slug/ipad-retry', requireCompanyEditor, async (req, res) => {
+  try {
+    const { error } = await supabaseAdmin
+      .from('memo_clubs')
+      .update({ ipad_status: 'pending', ipad_failed_md5: null, ipad_error: null, updated_at: new Date().toISOString() })
+      .eq('club_slug', req.params.slug)
+    if (error) throw error
+    memoIpad.kick()
+    res.json({ ok: true })
+  } catch (err) {
+    fail(res, 'retry', err)
   }
 })
 
