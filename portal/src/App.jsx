@@ -906,7 +906,7 @@ export default function App() {
       ) : showEventCalendar ? (
         <MarketingTrackerView eventMode onBack={() => setShowEventCalendar(false)} />
       ) : showMemos ? (
-        <MemosView user={user} />
+        <MemosView user={user} onBack={() => setShowMemos(false)} />
       ) : showInventory ? (
         <InventoryView onBack={() => setShowInventory(false)} location={location} isAdmin={isAdmin} user={user} />
       ) : showMediaLibrary ? (
