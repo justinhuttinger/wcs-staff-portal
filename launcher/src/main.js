@@ -389,6 +389,7 @@ app.on('ready', async () => {
   if (IS_ABC_ONLY) require('./member-alerts').setup(log)
   // WCS ABC: "See Calendar" window (club tours + Day Ones, no sign-in).
   if (IS_ABC_ONLY) require('./club-calendar').setup(log, mainWindow)
+  if (IS_ABC_ONLY) require('./club-memo').setup(log)
 
   // Don't open at sign-in. Older builds registered a login item, so actively
   // turn it off: this removes that entry (HKCU Run key on Windows, Login

@@ -563,6 +563,97 @@ function updateClubHomeButtons() {
   card.appendChild(host)
 }
 
+// --- Club Home memo card (WCS ABC) ---------------------------------------------
+// This club's live monthly memo, across the top of Club Home. It sits in the same
+// grid as ABC's cards, so ABC's own cards just move down. No memo, or no connection,
+// means no card. Text only ever goes in through textContent.
+const MEMO_REFRESH_MS = 10 * 60 * 1000
+let clubMemo = null
+let clubMemoKey = ''
+
+function refreshClubMemo() {
+  ipcRenderer.invoke('club-memo:get').then((res) => {
+    clubMemo = (res && res.memo) || null
+    clubMemoKey = clubMemo ? JSON.stringify(clubMemo) : ''
+  }).catch(() => {})
+}
+
+function memoSection(doc, title, items) {
+  const section = doc.createElement('div')
+  section.className = 'section'
+  if (title) {
+    const h = doc.createElement('h4')
+    h.className = 'section-title'
+    h.textContent = title
+    section.appendChild(h)
+  }
+  const grid = doc.createElement('div')
+  grid.className = 'items'
+  for (const item of items) {
+    const box = doc.createElement('div')
+    box.className = 'item'
+    const t = doc.createElement('h5')
+    t.textContent = item.title || ''
+    box.appendChild(t)
+    const lines = String(item.description || '').split('\n').map(l => l.trim()).filter(Boolean)
+    for (const line of lines) {
+      const p = doc.createElement('p')
+      p.textContent = line
+      box.appendChild(p)
+    }
+    grid.appendChild(box)
+  }
+  section.appendChild(grid)
+  return section
+}
+
+function updateClubHomeMemo() {
+  let doc
+  try {
+    const frame = document.querySelector('#main')
+    doc = frame && frame.contentDocument
+    if (!doc || !/ClubHomeCommand\.pml/i.test(doc.location.href)) return
+  } catch (e) {
+    return
+  }
+  const existing = doc.querySelector('[data-wcs-club-memo]')
+  if (!clubMemo) {
+    if (existing) existing.remove()
+    return
+  }
+  if (existing && existing.getAttribute('data-wcs-club-memo') === clubMemoKey) return
+  const anchor = doc.querySelector('[data-abc-id="announcements-widget"]')
+  if (!anchor || !anchor.parentElement) return
+  if (existing) existing.remove()
+
+  ensureDisplayFont(doc)
+  const host = doc.createElement('div')
+  host.setAttribute('data-wcs-club-memo', clubMemoKey)
+  host.style.cssText = 'grid-column:1/-1;order:-1;margin-bottom:16px;'
+  const root = host.attachShadow({ mode: 'closed' })
+  root.innerHTML = '<style>' +
+    ':host{display:block;font-family:Roboto,Arial,sans-serif;color:#111;}' +
+    '.card{box-sizing:border-box;background:#fff;border-radius:8px;padding:20px 24px;}' +
+    '.kicker{margin:0;font-size:12px;font-weight:700;letter-spacing:.2em;color:#ff0000;text-transform:uppercase;}' +
+    '.title{margin:4px 0 14px;padding-bottom:8px;border-bottom:3px solid #111;font-family:' + DISPLAY_FONT + ';font-size:30px;font-weight:400;line-height:1;text-transform:uppercase;}' +
+    '.scroll{max-height:320px;overflow-y:auto;padding-right:8px;}' +
+    '.section+.section{margin-top:16px;}' +
+    '.section-title{margin:0 0 10px;font-family:' + DISPLAY_FONT + ';font-size:22px;font-weight:400;text-transform:uppercase;}' +
+    '.items{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px 20px;}' +
+    '.item h5{margin:0 0 6px;padding-bottom:3px;border-bottom:3px solid #ff0000;font-family:' + DISPLAY_FONT + ';font-size:20px;font-weight:400;line-height:1.1;text-transform:uppercase;}' +
+    '.item p{margin:0 0 6px;font-size:14px;line-height:1.35;}' +
+    '</style><div class="card"><p class="kicker"></p><h3 class="title"></h3><div class="scroll"></div></div>'
+  const monthDate = new Date(String(clubMemo.month) + 'T12:00:00')
+  root.querySelector('.kicker').textContent = 'Memo · ' + monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) + ' · ' + (clubMemo.club_name || '')
+  root.querySelector('.title').textContent = monthDate.toLocaleDateString('en-US', { month: 'long' }) + ' Game Plan'
+  const scroll = root.querySelector('.scroll')
+  scroll.appendChild(memoSection(doc, '', clubMemo.main_items || []))
+  if ((clubMemo.club_items || []).length) {
+    scroll.appendChild(memoSection(doc, (clubMemo.club_name || 'Club') + ' Notes', clubMemo.club_items))
+  }
+  anchor.parentElement.insertBefore(host, anchor.parentElement.firstChild)
+}
+
 // --- Check-in alert cues ----------------------------------------------------
 // ABC's check-in feed (right-hand panel of the main shell) adds one
 // `.checkin-card[cilid]` per check-in, with a `.datatrak-alert <severity>` tag
@@ -1274,6 +1365,9 @@ window.addEventListener('DOMContentLoaded', () => {
   if (IS_ABC_APP && window.top === window) {
     updateClubHomeButtons()
     setInterval(updateClubHomeButtons, 1000)
+    refreshClubMemo()
+    setInterval(refreshClubMemo, MEMO_REFRESH_MS)
+    setInterval(updateClubHomeMemo, 1000)
   }
   console.log('[WCS Scraper] Loaded on:', window.location.href)
 
