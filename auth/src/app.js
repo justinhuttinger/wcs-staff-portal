@@ -102,6 +102,7 @@ app.use('/telephony', require('./routes/telephony'))
 app.use('/member-alerts', require('./routes/memberAlerts'))
 // Read-only club calendar (tours + Day Ones) for the WCS ABC "See Calendar" button.
 app.use('/club-calendar', require('./routes/clubCalendar'))
+app.use('/club-memo', require('./routes/clubMemo'))
 app.use('/webhooks', require('./routes/webhooks'))
 app.use('/webhooks', require('./routes/metaCapi'))
 // Same module, second mount: the Gravity Forms lead route answers at
