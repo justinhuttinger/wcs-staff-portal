@@ -11,6 +11,13 @@ const { pickLiveMemo } = require('../../lib/memoRules')
 const { createClient, isConfigured } = require('./client')
 
 const md5 = bytes => createHash('md5').update(bytes).digest('hex')
+const CLEARED = 'cleared'
+
+// The service answers 200 even when an upload didn't take, so the only proof is
+// it naming the exact image that was sent.
+function confirmLockImage(result, bytes) {
+  if (result?.lock !== md5(bytes)) throw new Error('The upload did not take')
+}
 
 // What to do for one club. live = its live memo or null; image = { md5 } or null.
 function planClub({ club, live, image }) {
@@ -25,9 +32,10 @@ function planClub({ club, live, image }) {
   } else {
     // Nothing of ours is on the iPads, so leave them alone.
     if (!club.ipad_pushed_md5) return { action: 'none' }
-    if (!club.normal_image_md5) return { action: 'no_normal' }
-    action = 'restore'
-    desired = club.normal_image_md5
+    if (!club.normal_saved_at) return { action: 'no_normal' }
+    // The club had no lock image of its own, so going back to normal means none.
+    action = club.normal_image_md5 ? 'restore' : 'clear'
+    desired = club.normal_image_md5 || CLEARED
   }
   if (club.ipad_pushed_md5 === desired) return { action: 'none' }
   if (club.ipad_status === 'failed' && club.ipad_failed_md5 === desired) return { action: 'none' }
@@ -113,7 +121,7 @@ async function runSync({ supabaseAdmin = require('../supabase').supabaseAdmin, c
         await record(supabaseAdmin, club.club_slug, { ipad_status: 'no_normal', ipad_error: 'The memo ended, but this club had no normal image to put back.' })
       }
     }
-    const todo = work.filter(w => w.plan.action === 'push' || w.plan.action === 'restore')
+    const todo = work.filter(w => ['push', 'restore', 'clear'].includes(w.plan.action))
     if (todo.length === 0) return { sent: 0 }
 
     const api = client || createClient()
@@ -131,10 +139,12 @@ async function runSync({ supabaseAdmin = require('../supabase').supabaseAdmin, c
       const { club, plan } = item
       try {
         await saveNormalImage(supabaseAdmin, api, club)
-        const { bytes, type } = await loadBytes(supabaseAdmin, item)
-        const result = await api.setLockImage(club.ipad_target, bytes, type)
-        const expected = md5(bytes)
-        if (result?.lock && result.lock !== expected) throw new Error('The upload did not take')
+        if (plan.action === 'clear') {
+          await api.clearLockImage(club.ipad_target)
+        } else {
+          const { bytes, type } = await loadBytes(supabaseAdmin, item)
+          confirmLockImage(await api.setLockImage(club.ipad_target, bytes, type), bytes)
+        }
         await record(supabaseAdmin, club.club_slug, {
           ipad_status: plan.action === 'push' ? 'sent' : 'restored',
           ipad_error: null,
@@ -176,4 +186,4 @@ function start() {
   console.log('[MemoIpad] scheduled every 5m')
 }
 
-module.exports = { planClub, runSync, kick, start, isEnabled, md5 }
+module.exports = { planClub, confirmLockImage, runSync, kick, start, isEnabled, md5 }
