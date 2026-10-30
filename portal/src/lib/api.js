@@ -956,6 +956,29 @@ export async function uploadMarketingAsset(file) {
   return api('/marketing-tracker/upload', { method: 'POST', body: fd })
 }
 
+// Monthly club memo.
+export async function getLiveMemo(club) {
+  return api('/memos/live' + (club ? '?club=' + encodeURIComponent(club) : ''))
+}
+export async function getMemosManage() {
+  return api('/memos/manage')
+}
+export async function createMemoEdition(month) {
+  return api('/memos/editions', { method: 'POST', body: JSON.stringify({ month }) })
+}
+export async function updateMemoEdition(id, data) {
+  return api('/memos/editions/' + id, { method: 'PUT', body: JSON.stringify(data) })
+}
+export async function saveClubMemo(id, slug, data) {
+  return api('/memos/editions/' + id + '/clubs/' + slug, { method: 'PUT', body: JSON.stringify(data) })
+}
+export async function publishClubMemo(id, slug, data) {
+  return api('/memos/editions/' + id + '/clubs/' + slug + '/publish', { method: 'POST', body: JSON.stringify(data) })
+}
+export async function endClubMemo(id, slug) {
+  return api('/memos/editions/' + id + '/clubs/' + slug + '/end', { method: 'POST', body: '{}' })
+}
+
 // GM Event Calendar — events-only, club-scoped view of the Marketing Tracker
 // (same rows, type 'event'). Status is set by Marketing, not here.
 export async function getEventCalendar() {

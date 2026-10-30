@@ -15,6 +15,7 @@ const TILE_ICONS = {
   dayOne: 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4',
   facility: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5M12 12.75h.008v.008H12v-.008z',
   more: 'M6.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM12.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM18.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z',
+  memos: 'M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z',
   till: 'M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z',
   groupX: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z',
   eventCalendar: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z',
@@ -132,7 +133,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingSection, onEventCalendar, onInventory, onForms, onQuizzes, onNps, onAdsManager, onWorkflowTransfer, onGroupX, onFacility, onTill, onCoaching, onGhlScripts, userRole, userName, marketingAddon, marketingCaps, customReports }) {
+export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingSection, onEventCalendar, onMemos, onInventory, onForms, onQuizzes, onNps, onAdsManager, onWorkflowTransfer, onGroupX, onFacility, onTill, onCoaching, onGhlScripts, userRole, userName, marketingAddon, marketingCaps, customReports }) {
   // DECLARED HERE, ABOVE EVERY READER. It used to sit ~200 lines further down,
   // next to the leaderboard score card that first needed it, which was fine
   // until marketingCells started reading it from further up: a `const` is in
@@ -405,6 +406,10 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
   // Each carries the same gate it would have had on the board, so More never
   // offers a screen the board itself would have withheld.
   const moreCells = [
+    onMemos && (visibleTools || []).includes('memos') && (
+      <SvgTileButton key="memos" href="#open/memos" onClick={() => { setShowMore(false); onMemos() }}
+        iconPath={TILE_ICONS.memos} label="Memos" desc="Monthly club memo" />
+    ),
     onTill && (visibleTools || []).includes('till') && (
       <SvgTileButton key="till" href="#open/till" onClick={() => { setShowMore(false); onTill() }}
         iconPath={TILE_ICONS.till} label="Till" desc="Cash in / out" />
@@ -495,6 +500,8 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
         // short by construction and has no "More" drawer to nest Till in.
         case 'inventory':
           return onInventory && <SvgTileButton href="#open/inventory" key={key} onClick={onInventory} iconPath={TILE_ICONS.inventory} label="Inventory" desc="Stock & Costs" />
+        case 'memos':
+          return onMemos && <SvgTileButton href="#open/memos" key={key} onClick={onMemos} iconPath={TILE_ICONS.memos} label="Memos" desc="Monthly club memo" />
         case 'till':
           return onTill && <SvgTileButton href="#open/till" key={key} onClick={onTill} iconPath={TILE_ICONS.till} label="Till" desc="Cash in / out" />
         case 'ghlScripts':

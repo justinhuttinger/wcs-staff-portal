@@ -52,6 +52,7 @@ function canSeeTool(tool, { role, visibleTools }) {
     case 'ghlScripts': return (visibleTools || []).includes('ghlScripts')
     case 'marketing:workflows': return (visibleTools || []).includes('marketing:workflows')
     case 'eventCalendar': return (visibleTools || []).includes('eventCalendar')
+    case 'memos': return (visibleTools || []).includes('memos')
     case 'admin': return role === 'admin'
     default: return true
   }
@@ -74,6 +75,12 @@ export function visibleChangelog(ctx) {
 }
 
 export const CHANGELOG = [
+  {
+    id: 25, date: '2026-10-30',
+    title: 'Memos: one monthly memo for your club',
+    body: 'New Memos tile under More. Read and print the current memo for your club. Corporate writes the company section each month, then managers at each club add their notes and publish, choosing when it shows and until when.',
+    audience: { tool: 'memos' },
+  },
   {
     id: 24, date: '2026-10-19',
     title: 'Coaching: build programs and coach clients in the member app',
