@@ -15,8 +15,7 @@ test('every memo route is registered', () => {
   for (const [path, method] of [
     ['/live', 'get'],
     ['/manage', 'get'],
-    ['/editions', 'post'],
-    ['/editions/:id', 'put'],
+    ['/editions/:month', 'put'],
     ['/editions/:id/clubs/:slug', 'put'],
     ['/editions/:id/clubs/:slug/publish', 'post'],
     ['/editions/:id/clubs/:slug/end', 'post'],
@@ -27,11 +26,14 @@ test('every memo route is registered', () => {
 
 test('company routes require a company editor and club routes load the club context', () => {
   const guard = (path, method) => routeEntry(path, method).route.stack[0].name
-  assert.strictEqual(guard('/editions', 'post'), 'requireCompanyEditor')
-  assert.strictEqual(guard('/editions/:id', 'put'), 'requireCompanyEditor')
+  assert.strictEqual(guard('/editions/:month', 'put'), 'requireCompanyEditor')
   assert.strictEqual(guard('/editions/:id/clubs/:slug', 'put'), 'loadClubContext')
   assert.strictEqual(guard('/editions/:id/clubs/:slug/publish', 'post'), 'loadClubContext')
   assert.strictEqual(guard('/editions/:id/clubs/:slug/end', 'post'), 'loadClubContext')
+})
+
+test('months are never created by hand', () => {
+  assert.strictEqual(routeEntry('/editions', 'post'), undefined)
 })
 
 test('the whole router sits behind sign-in and the memos tile', () => {

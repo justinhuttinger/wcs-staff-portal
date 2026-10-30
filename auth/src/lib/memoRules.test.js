@@ -2,6 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 const {
   monthKey, pickLiveMemo, clubStatus, parseDates, canEditClub, canPublish, cleanText,
+  cleanItems, itemsError, monthOptions, currentMonth,
 } = require('./memoRules')
 
 const NOW = new Date('2026-11-15T12:00:00Z')
@@ -75,4 +76,31 @@ test('cleanText trims, enforces the cap and treats non-strings as empty', () => 
   assert.strictEqual(cleanText('  hi  ', 10), 'hi')
   assert.strictEqual(cleanText('abcdef', 3), 'abc')
   assert.strictEqual(cleanText(5, 10), '')
+})
+
+test('cleanItems trims, drops empty rows, keeps half-written ones and ignores junk', () => {
+  assert.deepStrictEqual(cleanItems([
+    { title: ' A ', description: ' B ', extra: 'x' },
+    { title: '', description: '  ' },
+    { title: 'Only title' },
+  ]), [{ title: 'A', description: 'B' }, { title: 'Only title', description: '' }])
+  assert.deepStrictEqual(cleanItems('nope'), [])
+})
+
+test('itemsError requires both a title and a description', () => {
+  assert.strictEqual(itemsError([{ title: 'A', description: 'B' }]), null)
+  assert.ok(itemsError([{ title: 'A', description: '' }]))
+  assert.ok(itemsError([{ title: '', description: 'B' }]))
+  assert.strictEqual(itemsError([]), null)
+  assert.strictEqual(itemsError(undefined), null)
+})
+
+test('monthOptions always offers this month and the next three, plus anything written', () => {
+  const now = new Date('2026-11-15T12:00:00Z')
+  assert.deepStrictEqual(monthOptions(['2026-08-01', '2026-11-01'], now),
+    ['2027-02-01', '2027-01-01', '2026-12-01', '2026-11-01', '2026-08-01'])
+})
+
+test('the current month is Pacific, not UTC, at a month boundary', () => {
+  assert.strictEqual(currentMonth(new Date('2026-12-01T03:00:00Z')), '2026-11-01')
 })

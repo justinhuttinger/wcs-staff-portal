@@ -1,10 +1,9 @@
 // Rules for the monthly club memo (routes/memos.js). Pure, so they can be tested
 // without a database.
 
-// Short text for the iPad lock screen image. Provisional: the real limit comes
-// from a readability check on an iPad when the image is built.
-const LOCK_SCREEN_MAX = 280
-const BODY_MAX = 20000
+const MAX_ITEMS = 40
+const TITLE_MAX = 120
+const DESCRIPTION_MAX = 2000
 
 // 'YYYY-MM' or 'YYYY-MM-DD' -> first of that month, else null.
 function monthKey(value) {
@@ -60,10 +59,49 @@ function canPublish(edition) {
   return edition?.status === 'ready'
 }
 
-function cleanText(value, max = BODY_MAX) {
+// Whitelist a list of { title, description }. Half-written items are kept so a
+// draft can be saved; itemsError is what stops them being published.
+function cleanItems(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(item => ({
+      title: cleanText(item?.title, TITLE_MAX),
+      description: cleanText(item?.description, DESCRIPTION_MAX),
+    }))
+    .filter(item => item.title || item.description)
+    .slice(0, MAX_ITEMS)
+}
+
+function itemsError(items) {
+  if ((items || []).some(item => !item.title || !item.description)) {
+    return 'Every item needs a title and a description'
+  }
+  return null
+}
+
+// This month in Pacific, as the first of the month.
+function currentMonth(now = new Date()) {
+  const [y, m] = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit' })
+    .format(now).split('-')
+  return `${y}-${m}-01`
+}
+
+// The month selector: every month already written, plus this month and the next
+// three, newest first. There is always a memo for the month; nobody creates one.
+function monthOptions(existingMonths, now = new Date()) {
+  const [y, m] = currentMonth(now).split('-').map(Number)
+  const months = new Set(existingMonths || [])
+  for (let i = 0; i < 4; i++) {
+    months.add(new Date(Date.UTC(y, m - 1 + i, 1)).toISOString().slice(0, 10))
+  }
+  return [...months].sort().reverse()
+}
+
+function cleanText(value, max = DESCRIPTION_MAX) {
   return typeof value === 'string' ? value.trim().slice(0, max) : ''
 }
 
 module.exports = {
-  LOCK_SCREEN_MAX, BODY_MAX, monthKey, pickLiveMemo, clubStatus, parseDates, canEditClub, canPublish, cleanText,
+  monthKey, pickLiveMemo, clubStatus, parseDates, canEditClub, canPublish, cleanText,
+  cleanItems, itemsError, monthOptions, currentMonth,
 }

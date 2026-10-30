@@ -963,11 +963,8 @@ export async function getLiveMemo(club) {
 export async function getMemosManage() {
   return api('/memos/manage')
 }
-export async function createMemoEdition(month) {
-  return api('/memos/editions', { method: 'POST', body: JSON.stringify({ month }) })
-}
-export async function updateMemoEdition(id, data) {
-  return api('/memos/editions/' + id, { method: 'PUT', body: JSON.stringify(data) })
+export async function saveMainMemo(month, data) {
+  return api('/memos/editions/' + month, { method: 'PUT', body: JSON.stringify(data) })
 }
 export async function saveClubMemo(id, slug, data) {
   return api('/memos/editions/' + id + '/clubs/' + slug, { method: 'PUT', body: JSON.stringify(data) })
