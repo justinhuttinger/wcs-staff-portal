@@ -564,9 +564,11 @@ function updateClubHomeButtons() {
 }
 
 // --- Club Home memo card (WCS ABC) ---------------------------------------------
-// This club's live monthly memo, across the top of Club Home. It sits in the same
-// grid as ABC's cards, so ABC's own cards just move down. No memo, or no connection,
-// means no card. Text only ever goes in through textContent.
+// This club's live monthly memo, under Quick Links, in the grid cells of ABC's
+// Upcoming Events and Point of Sale cards. Those two are hidden only while there
+// is a memo: no memo, or no connection, puts them straight back. Text only ever
+// goes in through textContent.
+const CLUB_HOME_MEMO_REPLACES = ['upcoming-events', 'point-of-sale']
 const MEMO_REFRESH_MS = 10 * 60 * 1000
 let clubMemo = null
 let clubMemoKey = ''
@@ -607,6 +609,13 @@ function memoSection(doc, title, items) {
   return section
 }
 
+function setReplacedCardsHidden(doc, hidden) {
+  for (const id of CLUB_HOME_MEMO_REPLACES) {
+    const card = doc.querySelector(`[data-abc-id="${id}"]`)
+    if (card) card.style.display = hidden ? 'none' : ''
+  }
+}
+
 function updateClubHomeMemo() {
   let doc
   try {
@@ -619,24 +628,29 @@ function updateClubHomeMemo() {
   const existing = doc.querySelector('[data-wcs-club-memo]')
   if (!clubMemo) {
     if (existing) existing.remove()
+    setReplacedCardsHidden(doc, false)
     return
   }
-  if (existing && existing.getAttribute('data-wcs-club-memo') === clubMemoKey) return
-  const anchor = doc.querySelector('[data-abc-id="announcements-widget"]')
+  if (existing && existing.getAttribute('data-wcs-club-memo') === clubMemoKey) {
+    // ABC can re-render its cards, which would bring them back.
+    setReplacedCardsHidden(doc, true)
+    return
+  }
+  const anchor = doc.querySelector('[data-abc-id="upcoming-events"]')
   if (!anchor || !anchor.parentElement) return
   if (existing) existing.remove()
 
   ensureDisplayFont(doc)
   const host = doc.createElement('div')
   host.setAttribute('data-wcs-club-memo', clubMemoKey)
-  host.style.cssText = 'grid-column:1/-1;order:-1;margin-bottom:16px;'
+  host.style.cssText = 'grid-row:2;grid-column:1 / 3;min-width:0;min-height:0;'
   const root = host.attachShadow({ mode: 'closed' })
   root.innerHTML = '<style>' +
     ':host{display:block;font-family:Roboto,Arial,sans-serif;color:#111;}' +
-    '.card{box-sizing:border-box;background:#fff;border-radius:8px;padding:20px 24px;}' +
+    '.card{box-sizing:border-box;height:100%;display:flex;flex-direction:column;background:#fff;border-radius:8px;padding:20px 24px;}' +
     '.kicker{margin:0;font-size:12px;font-weight:700;letter-spacing:.2em;color:#ff0000;text-transform:uppercase;}' +
     '.title{margin:4px 0 14px;padding-bottom:8px;border-bottom:3px solid #111;font-family:' + DISPLAY_FONT + ';font-size:30px;font-weight:400;line-height:1;text-transform:uppercase;}' +
-    '.scroll{max-height:320px;overflow-y:auto;padding-right:8px;}' +
+    '.scroll{flex:1;min-height:0;overflow-y:auto;padding-right:8px;}' +
     '.section+.section{margin-top:16px;}' +
     '.section-title{margin:0 0 10px;font-family:' + DISPLAY_FONT + ';font-size:22px;font-weight:400;text-transform:uppercase;}' +
     '.items{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px 20px;}' +
@@ -651,7 +665,8 @@ function updateClubHomeMemo() {
   if ((clubMemo.club_items || []).length) {
     scroll.appendChild(memoSection(doc, (clubMemo.club_name || 'Club') + ' Notes', clubMemo.club_items))
   }
-  anchor.parentElement.insertBefore(host, anchor.parentElement.firstChild)
+  anchor.parentElement.insertBefore(host, anchor)
+  setReplacedCardsHidden(doc, true)
 }
 
 // --- Check-in alert cues ----------------------------------------------------
