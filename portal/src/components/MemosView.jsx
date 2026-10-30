@@ -117,8 +117,7 @@ function MemoPage({ month, clubName, mainItems, clubItems }) {
   return (
     <div className="memo-print bg-white text-black rounded-xl p-6 sm:p-10 space-y-6">
       <header className="border-b-4 border-black pb-3">
-        <p className="text-xs sm:text-sm font-bold tracking-[0.25em] text-[#ff0000] uppercase">Memo · {monthLabel(month)}{clubName ? ` · ${clubName}` : ''}</p>
-        <h3 className="memo-display text-4xl sm:text-5xl leading-none uppercase mt-2">{monthName(month)} Game Plan</h3>
+        <h3 className="memo-display text-4xl sm:text-5xl leading-none uppercase">Memo - {monthLabel(month)}</h3>
       </header>
       {arrangeMemo(mainItems).map((row, i) => <MemoRow key={i} row={row} tier={tier} />)}
       {clubItems.length > 0 && (
