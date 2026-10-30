@@ -3,9 +3,9 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
 
 const test = require('node:test')
 const assert = require('node:assert')
-const { planClub, isEnabled } = require('./sync')
+const { planClub, confirmLockImage, md5, isEnabled } = require('./sync')
 
-const club = (over = {}) => ({ ipad_target: 'b1', ipad_pushed_md5: null, ipad_status: null, ipad_failed_md5: null, normal_image_md5: 'normal', ...over })
+const club = (over = {}) => ({ ipad_target: 'b1', ipad_pushed_md5: null, ipad_status: null, ipad_failed_md5: null, normal_saved_at: '2026-10-30', normal_image_md5: 'normal', ...over })
 const live = { id: 'memo1' }
 
 test('a club with no target is never touched', () => {
@@ -36,8 +36,24 @@ test('after restoring, nothing more happens', () => {
   assert.strictEqual(planClub({ club: club({ ipad_pushed_md5: 'normal' }), live: null, image: null }).action, 'none')
 })
 
-test('a memo that ends with no normal image to restore is reported', () => {
-  assert.strictEqual(planClub({ club: club({ ipad_pushed_md5: 'a', normal_image_md5: null }), live: null, image: null }).action, 'no_normal')
+test('a club with no lock image of its own goes back to none', () => {
+  assert.deepStrictEqual(planClub({ club: club({ ipad_pushed_md5: 'a', normal_image_md5: null }), live: null, image: null }), { action: 'clear', desired: 'cleared' })
+})
+
+test('once cleared, nothing more happens', () => {
+  assert.strictEqual(planClub({ club: club({ ipad_pushed_md5: 'cleared', normal_image_md5: null }), live: null, image: null }).action, 'none')
+})
+
+test('a memo that ends before the normal image was ever saved is reported, not cleared', () => {
+  assert.strictEqual(planClub({ club: club({ ipad_pushed_md5: 'a', normal_saved_at: null }), live: null, image: null }).action, 'no_normal')
+})
+
+test('an upload only counts when the service names the exact image sent', () => {
+  const bytes = Buffer.from('image')
+  assert.doesNotThrow(() => confirmLockImage({ lock: md5(bytes) }, bytes))
+  assert.throws(() => confirmLockImage({ lock: null }, bytes), /did not take/)
+  assert.throws(() => confirmLockImage({ lock: 'other' }, bytes), /did not take/)
+  assert.throws(() => confirmLockImage(undefined, bytes), /did not take/)
 })
 
 test('a failure does not retry on its own, so bad logins cannot lock the account', () => {
