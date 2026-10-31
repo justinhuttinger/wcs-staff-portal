@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getLiveMemo, getMemosManage, saveMainMemo, saveClubMemo, publishClubMemo, endClubMemo, getClubMemoImagePlan, uploadClubMemoImage, retryClubIpad } from '../lib/api'
+import { getLiveMemo, getMemosManage, saveMainMemo, saveClubMemo, publishClubMemo, endClubNote, getClubMemoImagePlan, uploadClubMemoImage, retryClubIpad } from '../lib/api'
 import { arrangeMemo, arrangeNotes, descriptionLines, splitLabel, textTier } from '../lib/memoLayout'
 import { drawMemoImage, downloadCanvas, canvasToPng, IMAGE_WIDTH, IMAGE_HEIGHT } from '../lib/memoImage'
 import { fitMemoForPrint, MEMO_CSS } from '../lib/memoPrint'
 
 // Monthly club memo. Current is what staff read and print; Editor is where Main
-// (every club, on its own dates) and each club's own notes (on theirs) are written
-// and published. Every month always exists in the selector, so there is nothing to
+// (every club, on its own dates) and each club's own notes (each on its own) are
+// written and published. Every month always exists in the selector, so there is nothing to
 // create.
 
 const STATE_LABELS = { not_started: 'No notes', draft: 'Draft', scheduled: 'Scheduled', live: 'Live', ended: 'Ended', replaced: 'Replaced' }
@@ -58,12 +58,12 @@ function fromLocalInput(value) {
 // callers get a message back.
 async function sendIpadImages(club) {
   try {
-    const { memos } = await getClubMemoImagePlan(club.slug)
+    const { memos, left_out: leftOut } = await getClubMemoImagePlan(club.slug)
     for (const memo of memos) {
       const { canvas } = await drawMemoImage({ month: memo.month, clubName: club.name, mainItems: memo.main_items, clubItems: memo.club_items })
       await uploadClubMemoImage(club.slug, memo.key, await canvasToPng(canvas))
     }
-    return null
+    return leftOut > 0 ? `${club.name} has too many date changes coming up. The iPads may stop updating until someone saves again closer to those dates.` : null
   } catch (err) {
     return `${club.name}: ${err.message}`
   }
@@ -210,7 +210,7 @@ function DateFields({ dates, nextLabel }) {
   )
 }
 
-function ItemsEditor({ items, onChange, emptyHint }) {
+function ItemsEditor({ items, onChange, emptyHint, renderExtra, addLabel = '+ Add Item' }) {
   const update = (i, field, value) => onChange(items.map((item, n) => (n === i ? { ...item, [field]: value } : item)))
   return (
     <div className="space-y-3">
@@ -222,9 +222,10 @@ function ItemsEditor({ items, onChange, emptyHint }) {
             <button type="button" onClick={() => onChange(items.filter((_, n) => n !== i))} className="text-text-muted hover:text-text-primary text-xl leading-none px-2" aria-label={`Remove ${item.title || 'item'}`}>&times;</button>
           </div>
           <textarea value={item.description} onChange={e => update(i, 'description', e.target.value)} rows={3} maxLength={2000} placeholder="Description. Put each point on its own line for bullets." className={INPUT} />
+          {renderExtra && renderExtra(item, i, patch => onChange(items.map((it, n) => (n === i ? { ...it, ...patch } : it))))}
         </div>
       ))}
-      <button type="button" onClick={() => onChange([...items, { title: '', description: '' }])} className={BTN}>+ Add Item</button>
+      <button type="button" onClick={() => onChange([...items, { title: '', description: '' }])} className={BTN}>{addLabel}</button>
     </div>
   )
 }
@@ -300,7 +301,6 @@ function MainEditor({ edition, canEdit, clubs, onChanged }) {
                 <div key={c.slug} className="flex flex-wrap items-center justify-between gap-2 py-2">
                   <span className="text-sm text-text-primary">{c.name}</span>
                   <span className="flex items-center gap-2 text-xs text-text-muted">
-                    {row.starts_at && <span>{dateLabel(row.starts_at)}{row.ends_at ? ` to ${dateLabel(row.ends_at)}` : ''}</span>}
                     <StateBadge state={row.state || 'not_started'} />
                     {c.ipad && (
                       <span className={c.ipad.status === 'failed' || c.ipad.status === 'no_normal' ? 'text-red-600' : ''} title={c.ipad.error || (c.ipad.sent_at ? `Last sent ${dateLabel(c.ipad.sent_at)}` : '')}>
@@ -379,14 +379,45 @@ function IpadImage({ edition, club, items }) {
   )
 }
 
+// A note's dates. Blank means the usual: from when it's published, until a later
+// month's main memo starts.
+function NoteDates({ note, disabled, onChange, onEnd }) {
+  const [open, setOpen] = useState(false)
+  const summary = `${note.starts_at ? dateLabel(note.starts_at) : 'From when published'} until ${note.ends_at ? dateLabel(note.ends_at) : 'a later month\'s main memo starts'}`
+  return (
+    <div className="text-xs text-text-muted">
+      <div className="flex flex-wrap items-center gap-2">
+        {note.state && <StateBadge state={note.state} />}
+        <span>{summary}</span>
+        <button type="button" onClick={() => setOpen(!open)} className="underline hover:text-text-primary">{open ? 'Hide Dates' : 'Change Dates'}</button>
+        {['live', 'scheduled'].includes(note.state) && <button type="button" disabled={disabled} onClick={onEnd} className="underline hover:text-text-primary disabled:opacity-50">End Now</button>}
+      </div>
+      {open && (
+        <div className="grid sm:grid-cols-2 gap-3 mt-2">
+          <div>
+            <label className={LABEL}>Show From</label>
+            <input type="datetime-local" value={toLocalInput(note.starts_at)} onChange={e => onChange({ starts_at: fromLocalInput(e.target.value) })} className={INPUT} />
+          </div>
+          <div>
+            <label className={LABEL}>Show Until</label>
+            <input type="datetime-local" value={toLocalInput(note.ends_at)} onChange={e => onChange({ ends_at: fromLocalInput(e.target.value) })} className={INPUT} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ClubEditor({ edition, club, onChanged }) {
   const memo = edition.club_memos[club.slug] || { state: 'not_started' }
-  const published = memo.status === 'published'
+  const published = (memo.items || []).some(n => n.published)
   const [items, setItems] = useState(memo.items || [])
-  const dates = useDates(memo)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState('')
+
+  // Back from the server, notes have their ids and states.
+  useEffect(() => { setItems(memo.items || []) }, [memo.items])
 
   const run = async (fn, message) => {
     setBusy(true)
@@ -411,14 +442,15 @@ function ClubEditor({ edition, club, onChanged }) {
     }
   }, 'Saved')
   const publish = () => run(async () => {
-    await publishClubMemo(edition.month, club.slug, { items, ...dates.values() })
+    await publishClubMemo(edition.month, club.slug, { items })
     const problem = await sendIpadImages(club)
     if (problem) setError(`Published, but the iPad image didn't update. ${problem}`)
   }, published ? 'Updated' : 'Published')
-  const end = () => {
-    if (window.confirm(`Take down ${club.name}'s ${monthLabel(edition.month)} notes now?`)) {
+  const end = (note, month = edition.month) => {
+    if (window.confirm(`Take down "${note.title}" at ${club.name} now?`)) {
       run(async () => {
-        await endClubMemo(edition.month, club.slug)
+        await saveClubMemo(edition.month, club.slug, { items })
+        await endClubNote(month, club.slug, note.id)
         const problem = await sendIpadImages(club)
         if (problem) setError(`Taken down, but the iPad image didn't update. ${problem}`)
       }, 'Taken down')
@@ -432,22 +464,40 @@ function ClubEditor({ edition, club, onChanged }) {
           <h3 className="text-sm font-bold text-text-primary">{club.name} Notes: {monthLabel(edition.month)}</h3>
           <StateBadge state={memo.state} />
         </div>
-        <p className="text-sm text-tile-sub mb-4">Only {club.name} sees these, added to the main memo. The main memo shows either way. Set an end date to keep notes up across months.</p>
-        <ItemsEditor items={items} onChange={setItems} emptyHint="No notes yet. The main memo shows without them." />
-
-        <DateFields dates={dates} nextLabel="A later month's main memo starts" />
+        <p className="text-sm text-tile-sub mb-4">Only {club.name} sees these, added to the main memo. The main memo shows either way. Give a note an end date to keep it up across months.</p>
+        <ItemsEditor
+          items={items}
+          onChange={setItems}
+          addLabel="+ Add Note"
+          emptyHint="No notes yet. The main memo shows without them."
+          renderExtra={(note, i, patch) => <NoteDates note={note} disabled={busy} onChange={patch} onEnd={() => end(note)} />}
+        />
+        {memo.carried?.length > 0 && (
+          <div className="mt-5">
+            <h4 className={LABEL}>Carried Over from Earlier Months</h4>
+            <div className="space-y-2">
+              {memo.carried.map(note => (
+                <div key={note.id} className="rounded-lg border border-border p-3 flex flex-wrap items-center gap-2 text-sm">
+                  <StateBadge state={note.state} />
+                  <span className="font-semibold text-text-primary">{note.title}</span>
+                  <span className="text-xs text-text-muted">{monthName(note.month)} note, until {dateLabel(note.ends_at)}</span>
+                  <button type="button" disabled={busy} onClick={() => end(note, note.month)} className={`${BTN} ml-auto`}>End Now</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
         <div className="flex flex-wrap items-center gap-2 mt-4">
           <button type="button" disabled={busy} onClick={save} className={BTN}>Save</button>
           <button type="button" disabled={busy} onClick={publish} className={BTN_RED}>
-            {published ? 'Save and Update' : dates.startMode === 'now' ? 'Publish and Show Now' : 'Publish on This Date'}
+            {published ? 'Save and Publish' : 'Publish Notes'}
           </button>
-          {published && memo.state !== 'ended' && <button type="button" disabled={busy} onClick={end} className={BTN}>End Now</button>}
           {saved && <span className="text-xs text-green-600">{saved}</span>}
         </div>
       </div>
-      <IpadImage edition={edition} club={club} items={items} />
+      <IpadImage edition={edition} club={club} items={items.filter(n => n.state !== 'ended' && n.state !== 'replaced')} />
     </>
   )
 }
