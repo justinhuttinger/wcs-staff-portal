@@ -4,6 +4,7 @@
 const MAX_ITEMS = 40
 const TITLE_MAX = 120
 const DESCRIPTION_MAX = 2000
+const MAX_PLANNED_IMAGES = 12
 
 // 'YYYY-MM' or 'YYYY-MM-DD' -> first of that month, else null.
 function monthKey(value) {
@@ -14,26 +15,82 @@ function monthKey(value) {
   return `${m[1]}-${m[2]}-01`
 }
 
-// The club's newest started memo, unless that memo has ended. Deliberately does
-// not fall back to an older one: ending a memo must not resurrect last month's.
+function newestStarted(rows, t) {
+  return (rows || [])
+    .filter(r => (r.status === 'published' || r.status === 'ready') && r.starts_at && new Date(r.starts_at).getTime() <= t)
+    .sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at))[0] || null
+}
+
+// The newest started memo, unless that memo has ended. Deliberately does not fall
+// back to an older one: ending a memo must not resurrect last month's.
 function pickLiveMemo(rows, now = new Date()) {
   const t = now.getTime()
-  const started = (rows || [])
-    .filter(r => r.status === 'published' && r.starts_at && new Date(r.starts_at).getTime() <= t)
-    .sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at))
-  const newest = started[0]
+  const newest = newestStarted(rows, t)
   if (!newest) return null
   if (newest.ends_at && new Date(newest.ends_at).getTime() <= t) return null
   return newest
 }
 
-function clubStatus(row, liveId, now = new Date()) {
+// What a club shows at a moment: the live Main plus every set of its notes in date.
+// Notes with no end date last until a Main for a later month starts; notes with an
+// end date run across months until then. notes = one club's rows.
+function composeMemo(editions, notes, now = new Date()) {
+  const t = now.getTime()
+  const monthById = new Map((editions || []).map(e => [e.id, e.month]))
+  const edition = pickLiveMemo(editions, now)
+  const newestMonth = newestStarted(editions, t)?.month || ''
+  const live = (notes || [])
+    .filter((n) => {
+      if (n.status !== 'published' || !n.items?.length) return false
+      if (!n.starts_at || new Date(n.starts_at).getTime() > t) return false
+      if (n.ends_at) return new Date(n.ends_at).getTime() > t
+      return (monthById.get(n.edition_id) || '') >= newestMonth
+    })
+    .sort((a, b) => (monthById.get(b.edition_id) || '').localeCompare(monthById.get(a.edition_id) || '')
+      || new Date(b.starts_at) - new Date(a.starts_at))
+  if (!edition && live.length === 0) return null
+  return {
+    key: `${edition?.id || 'none'}~${live.map(n => n.id).sort().join('.')}`,
+    month: edition?.month || monthById.get(live[0].edition_id),
+    main_items: edition?.items || [],
+    club_items: live.flatMap(n => n.items),
+    note_ids: live.map(n => n.id),
+  }
+}
+
+// Everything a club will show from now on, one entry per change. The browser draws
+// each ahead of time, so a date can change the iPads with nobody signed in.
+function memoPlan(editions, notes, now = new Date()) {
+  const t = now.getTime()
+  const times = new Set([t])
+  for (const row of [...(editions || []), ...(notes || [])]) {
+    for (const value of [row.starts_at, row.ends_at]) {
+      const time = value ? new Date(value).getTime() : 0
+      if (time > t) times.add(time)
+    }
+  }
+  const plan = new Map()
+  for (const time of [...times].sort((a, b) => a - b)) {
+    const memo = composeMemo(editions, notes, new Date(time))
+    if (memo && !plan.has(memo.key)) plan.set(memo.key, memo)
+  }
+  return [...plan.values()].slice(0, MAX_PLANNED_IMAGES)
+}
+
+function clubStatus(row, liveIds, now = new Date()) {
   if (!row) return 'not_started'
+  if (Array.isArray(row.items) && row.items.length === 0) return 'not_started'
   if (row.status !== 'published') return 'draft'
   const t = now.getTime()
   if (new Date(row.starts_at).getTime() > t) return 'scheduled'
   if (row.ends_at && new Date(row.ends_at).getTime() <= t) return 'ended'
-  return row.id === liveId ? 'live' : 'replaced'
+  return [].concat(liveIds).includes(row.id) ? 'live' : 'replaced'
+}
+
+// Main's state in the same words as a club's notes.
+function editionStatus(edition, liveId, now = new Date()) {
+  if (edition.status !== 'ready') return 'draft'
+  return clubStatus({ id: edition.id, status: 'published', starts_at: edition.starts_at, ends_at: edition.ends_at }, liveId, now)
 }
 
 // A missing start means "show now"; a missing end means "until the next one".
@@ -53,10 +110,6 @@ function parseDates(body, now = new Date()) {
 // scope = the caller's club slugs; null = every club.
 function canEditClub(scope, slug) {
   return scope === null || (scope || []).includes(slug)
-}
-
-function canPublish(edition) {
-  return edition?.status === 'ready'
 }
 
 // Whitelist a list of { title, description }. Half-written items are kept so a
@@ -102,6 +155,6 @@ function cleanText(value, max = DESCRIPTION_MAX) {
 }
 
 module.exports = {
-  monthKey, pickLiveMemo, clubStatus, parseDates, canEditClub, canPublish, cleanText,
+  monthKey, pickLiveMemo, composeMemo, memoPlan, clubStatus, editionStatus, parseDates, canEditClub, cleanText,
   cleanItems, itemsError, monthOptions, currentMonth,
 }

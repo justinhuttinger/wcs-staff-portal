@@ -1,17 +1,19 @@
-// Monthly club memo. Company editors ('memos:company-edit') write the month's
-// company section and mark it ready; each club's managers then add notes and
-// publish that club's memo. Everyone with the tile reads their club's live memo.
+// Monthly club memo. Company editors ('memos:company-edit') write and publish Main
+// with its own dates, and it goes live at every club by itself. Each club's managers
+// publish notes whenever they like, with their own dates, which can run across
+// months. Everyone with the tile reads their club's live memo.
 // See docs/superpowers/specs/2026-10-30-monthly-memo-design.md.
 const { Router, raw } = require('express')
 const memoIpad = require('../services/memoIpad/sync')
 const { supabaseAdmin } = require('../services/supabase')
+const { loadEditions, loadNotes } = require('../services/memoData')
 const authenticate = require('../middleware/auth')
 const { requireTile } = require('../middleware/tile')
 const { canSeeAllLocations, roleLevel, ROLE_HIERARCHY } = require('../middleware/role')
 const { getVisibleTools } = require('../services/visibleTools')
 const { CLUBS } = require('../config/clubs')
 const {
-  monthKey, pickLiveMemo, clubStatus, parseDates, canEditClub, canPublish,
+  monthKey, pickLiveMemo, composeMemo, memoPlan, clubStatus, editionStatus, parseDates, canEditClub,
   cleanItems, itemsError, monthOptions, currentMonth,
 } = require('../lib/memoRules')
 
@@ -55,20 +57,33 @@ async function requireCompanyEditor(req, res, next) {
   }
 }
 
-// Manager+ of this club, on a real enabled club and an existing edition.
+// The month's row, created the first time a club writes notes for it.
+async function findEdition(param, staffId) {
+  const month = monthKey(param)
+  if (!month) {
+    const { data, error } = await supabaseAdmin.from('memo_editions').select('*').eq('id', param).maybeSingle()
+    if (error) throw error
+    return data
+  }
+  const { error: createErr } = await supabaseAdmin
+    .from('memo_editions').upsert({ month, created_by: staffId }, { onConflict: 'month', ignoreDuplicates: true })
+  if (createErr) throw createErr
+  const { data, error } = await supabaseAdmin.from('memo_editions').select('*').eq('month', month).maybeSingle()
+  if (error) throw error
+  return data
+}
+
+// Manager+ of this club, on a real enabled club and a real month.
 async function loadClubContext(req, res, next) {
   try {
-    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid memo id' })
+    if (!UUID_RE.test(req.params.id) && !monthKey(req.params.id)) return res.status(400).json({ error: 'Invalid memo id' })
     if (!isManagerPlus(req.staff)) return res.status(403).json({ error: 'Only managers can edit club memos' })
     const scope = await clubScope(req.staff)
     if (!canEditClub(scope, req.params.slug)) return res.status(403).json({ error: 'That club is not one of yours' })
     const clubs = await enabledClubs()
     if (!clubs.some(c => c.slug === req.params.slug)) return res.status(404).json({ error: 'Club not found' })
-    const { data: edition, error } = await supabaseAdmin
-      .from('memo_editions').select('*').eq('id', req.params.id).maybeSingle()
-    if (error) throw error
+    const edition = await findEdition(req.params.id, req.staff.id)
     if (!edition) return res.status(404).json({ error: 'Memo not found' })
-    if (!canPublish(edition)) return res.status(409).json({ error: 'The company section is not ready yet' })
     req.edition = edition
     next()
   } catch (err) {
@@ -78,20 +93,15 @@ async function loadClubContext(req, res, next) {
 }
 
 // Who can send a club's iPad image: a company editor (Main edits redraw every
-// club) or a manager of that club. The memo must already be published.
+// club) or a manager of that club.
 async function loadImageContext(req, res, next) {
   try {
-    if (!UUID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid memo id' })
     if (!(await canEditCompany(req.staff))) {
       if (!isManagerPlus(req.staff)) return res.status(403).json({ error: 'Not allowed' })
       if (!canEditClub(await clubScope(req.staff), req.params.slug)) return res.status(403).json({ error: 'That club is not one of yours' })
     }
-    const { data: memo, error } = await supabaseAdmin
-      .from('club_memos').select('id, status')
-      .eq('edition_id', req.params.id).eq('club_slug', req.params.slug).maybeSingle()
-    if (error) throw error
-    if (!memo || memo.status !== 'published') return res.status(409).json({ error: 'This memo is not published' })
-    req.memo = memo
+    if (!(await enabledClubs()).some(c => c.slug === req.params.slug)) return res.status(404).json({ error: 'Club not found' })
+    req.plan = memoPlan(await loadEditions(), await loadNotes([req.params.slug]))
     next()
   } catch (err) {
     console.error('[Memos] image context error:', err.message)
@@ -117,23 +127,11 @@ router.get('/live', async (req, res) => {
     const club = clubs.find(c => c.slug === req.query.club) || clubs[0] || null
     if (!club) return res.json({ clubs: [], club: null, memo: null })
 
-    const { data, error } = await supabaseAdmin
-      .from('club_memos')
-      .select('id, status, items, starts_at, ends_at, memo_editions(month, items)')
-      .eq('club_slug', club.slug)
-      .eq('status', 'published')
-    if (error) throw error
-    const live = pickLiveMemo(data || [])
+    const live = composeMemo(await loadEditions(), await loadNotes([club.slug]))
     res.json({
       clubs,
       club,
-      memo: live && {
-        month: live.memo_editions?.month,
-        main_items: live.memo_editions?.items || [],
-        club_items: live.items || [],
-        starts_at: live.starts_at,
-        ends_at: live.ends_at,
-      },
+      memo: live && { month: live.month, main_items: live.main_items, club_items: live.club_items },
     })
   } catch (err) {
     fail(res, 'live', err)
@@ -142,7 +140,7 @@ router.get('/live', async (req, res) => {
 
 // GET /manage — every month in the selector with its per-club status. A month
 // nobody has written yet comes back with id null; it is created on first save.
-// Only company editors see Main items before they're published to clubs.
+// Only company editors see Main items before they're published.
 router.get('/manage', async (req, res) => {
   try {
     const company = await canEditCompany(req.staff)
@@ -169,8 +167,9 @@ router.get('/manage', async (req, res) => {
     const now = new Date()
     const liveByClub = {}
     for (const slug of slugs) {
-      liveByClub[slug] = pickLiveMemo((rows || []).filter(r => r.club_slug === slug), now)?.id || null
+      liveByClub[slug] = composeMemo(editions, (rows || []).filter(r => r.club_slug === slug), now)?.note_ids || []
     }
+    const liveMainId = pickLiveMemo(editions, now)?.id || null
     const byMonth = new Map((editions || []).map(e => [e.month, e]))
 
     const { data: ipadRows, error: ipadErr } = await supabaseAdmin
@@ -194,6 +193,9 @@ router.get('/manage', async (req, res) => {
           id: e.id,
           month,
           status: e.status,
+          starts_at: e.starts_at || null,
+          ends_at: e.ends_at || null,
+          state: editionStatus(e, liveMainId, now),
           items: company || e.status === 'ready' ? e.items || [] : [],
           club_memos: Object.fromEntries(slugs.map(slug => {
             const row = (rows || []).find(r => e.id && r.edition_id === e.id && r.club_slug === slug) || null
@@ -207,22 +209,24 @@ router.get('/manage', async (req, res) => {
   }
 })
 
-// PUT /editions/:month { items?, ready? } — save the Main memo for a month,
-// creating its row the first time. ready=true publishes it to the clubs. Live
-// memos read Main directly, so edits after publishing show right away.
+// PUT /editions/:month { items?, ready?, starts_at?, ends_at? } — save Main for a
+// month, creating its row the first time. ready=true publishes it with those dates:
+// no start = show now, no end = until the next Main starts. ready=false takes it
+// down. Live memos read Main directly, so edits after publishing show right away.
 router.put('/editions/:month', requireCompanyEditor, async (req, res) => {
   try {
     const month = monthKey(req.params.month)
     if (!month) return res.status(400).json({ error: 'Invalid month' })
     const { data: current, error: readErr } = await supabaseAdmin
-      .from('memo_editions').select('id, items, status').eq('month', month).maybeSingle()
+      .from('memo_editions').select('id, items, status, starts_at').eq('month', month).maybeSingle()
     if (readErr) throw readErr
 
-    const now = new Date().toISOString()
+    const nowDate = new Date()
+    const now = nowDate.toISOString()
     const items = req.body?.items !== undefined ? cleanItems(req.body.items) : (current?.items || [])
     const row = { month, items, updated_by: req.staff.id, updated_at: now }
 
-    // Whatever clubs can already see has to stay complete.
+    // Whatever can already be seen has to stay complete.
     const publishing = req.body?.ready === true || (current?.status === 'ready' && req.body?.ready !== false)
     if (publishing) {
       if (items.length === 0) return res.status(400).json({ error: 'Add at least one item first' })
@@ -230,32 +234,37 @@ router.put('/editions/:month', requireCompanyEditor, async (req, res) => {
       if (invalid) return res.status(400).json({ error: invalid })
     }
     if (req.body?.ready === true) {
+      const dates = parseDates(req.body, nowDate)
+      if (dates.error) return res.status(400).json({ error: dates.error })
       row.status = 'ready'
       row.ready_at = now
+      row.starts_at = dates.starts_at
+      row.ends_at = dates.ends_at
     } else if (req.body?.ready === false) {
-      if (current) {
-        const { count, error: countErr } = await supabaseAdmin
-          .from('club_memos').select('id', { count: 'exact', head: true })
-          .eq('edition_id', current.id).eq('status', 'published')
-        if (countErr) throw countErr
-        if (count > 0) return res.status(409).json({ error: 'Clubs have already published this month' })
+      // Ended rather than unpublished once started, so last month's doesn't come back.
+      if (current?.status === 'ready' && current.starts_at && new Date(current.starts_at) <= nowDate) {
+        row.ends_at = now
+      } else {
+        row.status = 'draft'
+        row.ready_at = null
+        row.starts_at = null
+        row.ends_at = null
       }
-      row.status = 'draft'
-      row.ready_at = null
     }
     if (!current) row.created_by = req.staff.id
 
     const { data, error } = await supabaseAdmin
       .from('memo_editions').upsert(row, { onConflict: 'month' }).select().single()
     if (error) throw error
+    memoIpad.kick()
     res.json({ edition: data })
   } catch (err) {
     fail(res, 'save main', err)
   }
 })
 
-// PUT /editions/:id/clubs/:slug { items? } — save without
-// changing whether it's published.
+// PUT /editions/:month/clubs/:slug { items? } — save without changing whether it's
+// published.
 router.put('/editions/:id/clubs/:slug', loadClubContext, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
@@ -276,21 +285,24 @@ router.put('/editions/:id/clubs/:slug', loadClubContext, async (req, res) => {
   }
 })
 
-// POST /editions/:id/clubs/:slug/publish { items?, starts_at?, ends_at? }
-// Publish, or change the dates of a published memo. No start = show now.
+// POST /editions/:month/clubs/:slug/publish { items, starts_at?, ends_at? }
+// Publish notes, or change their dates. Main doesn't wait for this. No start = show
+// now; no end = until a later month's Main starts.
 router.post('/editions/:id/clubs/:slug/publish', loadClubContext, async (req, res) => {
   try {
     const now = new Date()
     const dates = parseDates(req.body, now)
     if (dates.error) return res.status(400).json({ error: dates.error })
-    const invalid = itemsError(itemFields(req.body).items)
+    const items = cleanItems(req.body?.items)
+    if (items.length === 0) return res.status(400).json({ error: 'Add at least one note first' })
+    const invalid = itemsError(items)
     if (invalid) return res.status(400).json({ error: invalid })
     const { data, error } = await supabaseAdmin
       .from('club_memos')
       .upsert({
         edition_id: req.edition.id,
         club_slug: req.params.slug,
-        ...itemFields(req.body),
+        items,
         status: 'published',
         starts_at: dates.starts_at,
         ends_at: dates.ends_at,
@@ -309,7 +321,7 @@ router.post('/editions/:id/clubs/:slug/publish', loadClubContext, async (req, re
   }
 })
 
-// POST /editions/:id/clubs/:slug/end — pull a memo now. One that hasn't started
+// POST /editions/:month/clubs/:slug/end — pull a club's notes now. One that hasn't started
 // goes back to draft: an end before its start would otherwise block whatever is
 // live once that start date arrives.
 router.post('/editions/:id/clubs/:slug/end', loadClubContext, async (req, res) => {
@@ -338,21 +350,47 @@ router.post('/editions/:id/clubs/:slug/end', loadClubContext, async (req, res) =
   }
 })
 
-// POST /editions/:id/clubs/:slug/image — the iPad image, drawn in the browser.
+// GET /clubs/:slug/image-plan — what to draw for this club's iPads: everything it
+// will show from now on. Empty when the club has no iPads set up.
+router.get('/clubs/:slug/image-plan', loadImageContext, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('memo_clubs').select('ipad_target').eq('club_slug', req.params.slug).maybeSingle()
+    if (error) throw error
+    res.json({ memos: data?.ipad_target ? req.plan : [] })
+  } catch (err) {
+    fail(res, 'image plan', err)
+  }
+})
+
+// POST /clubs/:slug/image?key= — one drawn iPad image. Images no longer in the plan
+// are removed, so each club holds only what it can still show.
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47])
-router.post('/editions/:id/clubs/:slug/image', raw({ type: 'image/png', limit: '4mb' }), loadImageContext, async (req, res) => {
+router.post('/clubs/:slug/image', raw({ type: 'image/png', limit: '4mb' }), loadImageContext, async (req, res) => {
   try {
     if (!Buffer.isBuffer(req.body) || !req.body.subarray(0, 4).equals(PNG_SIGNATURE)) {
       return res.status(400).json({ error: 'Expected a PNG image' })
     }
+    const keys = req.plan.map(m => m.key)
+    if (!keys.includes(req.query.key)) return res.status(409).json({ error: 'This memo changed. Refresh and save again.' })
     const md5 = memoIpad.md5(req.body)
-    const { error } = await supabaseAdmin.from('club_memo_images').upsert({
-      club_memo_id: req.memo.id,
+    const { error } = await supabaseAdmin.from('memo_club_images').upsert({
+      club_slug: req.params.slug,
+      composition_key: req.query.key,
       image_base64: req.body.toString('base64'),
       md5,
       updated_at: new Date().toISOString(),
-    }, { onConflict: 'club_memo_id' })
+    }, { onConflict: 'club_slug,composition_key' })
     if (error) throw error
+    const { data: held, error: heldErr } = await supabaseAdmin
+      .from('memo_club_images').select('composition_key').eq('club_slug', req.params.slug)
+    if (heldErr) throw heldErr
+    const stale = (held || []).map(r => r.composition_key).filter(k => !keys.includes(k))
+    if (stale.length) {
+      const { error: pruneErr } = await supabaseAdmin
+        .from('memo_club_images').delete().eq('club_slug', req.params.slug).in('composition_key', stale)
+      if (pruneErr) throw pruneErr
+    }
     memoIpad.kick()
     res.json({ md5 })
   } catch (err) {

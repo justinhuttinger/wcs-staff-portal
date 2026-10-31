@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { getLiveMemo, getMemosManage, saveMainMemo, saveClubMemo, publishClubMemo, endClubMemo, uploadClubMemoImage, retryClubIpad } from '../lib/api'
+import { getLiveMemo, getMemosManage, saveMainMemo, saveClubMemo, publishClubMemo, endClubMemo, getClubMemoImagePlan, uploadClubMemoImage, retryClubIpad } from '../lib/api'
 import { arrangeMemo, arrangeNotes, descriptionLines, splitLabel, textTier } from '../lib/memoLayout'
 import { drawMemoImage, downloadCanvas, canvasToPng, IMAGE_WIDTH, IMAGE_HEIGHT } from '../lib/memoImage'
 import { fitMemoForPrint, MEMO_CSS } from '../lib/memoPrint'
 
 // Monthly club memo. Current is what staff read and print; Editor is where Main
-// (every club) and each club's own items are written and published. Every month
-// always exists in the selector, so there is nothing to create.
+// (every club, on its own dates) and each club's own notes (on theirs) are written
+// and published. Every month always exists in the selector, so there is nothing to
+// create.
 
-const STATE_LABELS = { not_started: 'Not started', draft: 'Draft', scheduled: 'Scheduled', live: 'Live', ended: 'Ended', replaced: 'Replaced' }
+const STATE_LABELS = { not_started: 'No notes', draft: 'Draft', scheduled: 'Scheduled', live: 'Live', ended: 'Ended', replaced: 'Replaced' }
 const STATE_COLORS = {
   not_started: 'bg-gray-100 text-gray-600 border-gray-200',
   draft: 'bg-yellow-50 text-yellow-700 border-yellow-200',
@@ -52,12 +53,16 @@ function fromLocalInput(value) {
   return value ? new Date(value).toISOString() : null
 }
 
-// Draws a club's image and sends it to the server, which updates the iPads. A
-// problem here must never undo the publish, so callers get a message back.
-async function sendIpadImage(edition, club, mainItems, clubItems) {
+// Draws everything a club will show from now on and sends it to the server, which
+// updates the iPads as dates arrive. A problem here must never undo the publish, so
+// callers get a message back.
+async function sendIpadImages(club) {
   try {
-    const { canvas } = await drawMemoImage({ month: edition.month, clubName: club.name, mainItems, clubItems })
-    await uploadClubMemoImage(edition.id, club.slug, await canvasToPng(canvas))
+    const { memos } = await getClubMemoImagePlan(club.slug)
+    for (const memo of memos) {
+      const { canvas } = await drawMemoImage({ month: memo.month, clubName: club.name, mainItems: memo.main_items, clubItems: memo.club_items })
+      await uploadClubMemoImage(club.slug, memo.key, await canvasToPng(canvas))
+    }
     return null
   } catch (err) {
     return `${club.name}: ${err.message}`
@@ -167,6 +172,44 @@ function CurrentMemo() {
   )
 }
 
+// Show From and Show Until, used by Main and by club notes.
+function useDates(row) {
+  const [startMode, setStartMode] = useState(row.starts_at ? 'date' : 'now')
+  const [startsAt, setStartsAt] = useState(toLocalInput(row.starts_at))
+  const [endMode, setEndMode] = useState(row.ends_at ? 'date' : 'next')
+  const [endsAt, setEndsAt] = useState(toLocalInput(row.ends_at))
+  return {
+    startMode, setStartMode, startsAt, setStartsAt, endMode, setEndMode, endsAt, setEndsAt,
+    values: () => ({
+      starts_at: startMode === 'date' ? fromLocalInput(startsAt) : null,
+      ends_at: endMode === 'date' ? fromLocalInput(endsAt) : null,
+    }),
+  }
+}
+
+function DateFields({ dates, nextLabel }) {
+  return (
+    <div className="grid sm:grid-cols-2 gap-4 mt-5">
+      <div>
+        <label className={LABEL}>Show From</label>
+        <select value={dates.startMode} onChange={e => dates.setStartMode(e.target.value)} className={`${INPUT} mb-2`}>
+          <option value="now">Now</option>
+          <option value="date">A specific date</option>
+        </select>
+        {dates.startMode === 'date' && <input type="datetime-local" value={dates.startsAt} onChange={e => dates.setStartsAt(e.target.value)} className={INPUT} />}
+      </div>
+      <div>
+        <label className={LABEL}>Show Until</label>
+        <select value={dates.endMode} onChange={e => dates.setEndMode(e.target.value)} className={`${INPUT} mb-2`}>
+          <option value="next">{nextLabel}</option>
+          <option value="date">A specific date</option>
+        </select>
+        {dates.endMode === 'date' && <input type="datetime-local" value={dates.endsAt} onChange={e => dates.setEndsAt(e.target.value)} className={INPUT} />}
+      </div>
+    </div>
+  )
+}
+
 function ItemsEditor({ items, onChange, emptyHint }) {
   const update = (i, field, value) => onChange(items.map((item, n) => (n === i ? { ...item, [field]: value } : item)))
   return (
@@ -191,7 +234,10 @@ function MainEditor({ edition, canEdit, clubs, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState('')
+  const dates = useDates(edition)
   const open = edition.status === 'ready'
+  const showing = open && edition.state !== 'ended'
+  const label = !open ? 'Publish' : edition.state === 'ended' ? 'Publish Again' : 'Save and Update'
 
   const save = async (extra, message) => {
     setBusy(true)
@@ -199,13 +245,11 @@ function MainEditor({ edition, canEdit, clubs, onChanged }) {
     setSaved('')
     try {
       await saveMainMemo(edition.month, { items, ...extra })
-      // Main is on every published club's image, so they all need redrawing.
+      // Main is on every club's image, so they all need redrawing.
       const problems = []
-      if (edition.id && edition.status === 'ready' && extra.ready !== false) {
+      if (open || extra.ready === true) {
         for (const c of clubs) {
-          const row = edition.club_memos[c.slug]
-          if (row?.status !== 'published') continue
-          const problem = await sendIpadImage(edition, c, items, row.items || [])
+          const problem = await sendIpadImages(c)
           if (problem) problems.push(problem)
         }
       }
@@ -223,17 +267,20 @@ function MainEditor({ edition, canEdit, clubs, onChanged }) {
     <>
       <div className={`${CARD} p-5`}>
         <h3 className="text-sm font-bold text-text-primary">Main: {monthLabel(edition.month)}</h3>
-        <p className="text-sm text-tile-sub mt-1 mb-4">Goes to every club. Each club then adds its own items and publishes.</p>
+        <div className="flex items-center gap-2 mb-1">
+          <StateBadge state={edition.state} />
+          {edition.starts_at && <span className="text-xs text-text-muted">{dateLabel(edition.starts_at)}{edition.ends_at ? ` to ${dateLabel(edition.ends_at)}` : ''}</span>}
+        </div>
+        <p className="text-sm text-tile-sub mt-1 mb-4">Shows at every club on these dates, whether or not the club has added notes.</p>
         {canEdit ? (
           <>
             <ItemsEditor items={items} onChange={setItems} emptyHint="Nothing written for this month yet." />
+            <DateFields dates={dates} nextLabel="The next main memo starts" />
             {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
             <div className="flex flex-wrap items-center gap-2 mt-4">
               <button type="button" disabled={busy} onClick={() => save({}, 'Saved')} className={BTN}>Save</button>
-              {open
-                ? <button type="button" disabled={busy} onClick={() => save({ ready: false }, 'Taken back from clubs')} className={BTN}>Take Back from Clubs</button>
-                : <button type="button" disabled={busy} onClick={() => save({ ready: true }, 'Published to clubs')} className={BTN_RED}>Publish to Clubs</button>}
-              <span className="text-xs text-text-muted">{open ? 'Published to clubs. Edits show on live memos right away.' : 'Clubs can\'t see this month yet.'}</span>
+              <button type="button" disabled={busy} onClick={() => save({ ready: true, ...dates.values() }, 'Published')} className={BTN_RED}>{label}</button>
+              {showing && <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Take down the ${monthLabel(edition.month)} main memo at every club now?`)) save({ ready: false }, 'Taken down') }} className={BTN}>Take Down</button>}
               {saved && <span className="text-xs text-green-600">{saved}</span>}
             </div>
           </>
@@ -245,7 +292,7 @@ function MainEditor({ edition, canEdit, clubs, onChanged }) {
       </div>
       {clubs.length > 1 && (
         <div className={`${CARD} p-5`}>
-          <h3 className="text-sm font-bold text-text-primary mb-3">Club Status</h3>
+          <h3 className="text-sm font-bold text-text-primary mb-3">Club Notes</h3>
           <div className="divide-y divide-border">
             {clubs.map(c => {
               const row = edition.club_memos[c.slug] || {}
@@ -336,10 +383,7 @@ function ClubEditor({ edition, club, onChanged }) {
   const memo = edition.club_memos[club.slug] || { state: 'not_started' }
   const published = memo.status === 'published'
   const [items, setItems] = useState(memo.items || [])
-  const [startMode, setStartMode] = useState(memo.starts_at ? 'date' : 'now')
-  const [startsAt, setStartsAt] = useState(toLocalInput(memo.starts_at))
-  const [endMode, setEndMode] = useState(memo.ends_at ? 'date' : 'next')
-  const [endsAt, setEndsAt] = useState(toLocalInput(memo.ends_at))
+  const dates = useDates(memo)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState('')
@@ -359,67 +403,45 @@ function ClubEditor({ edition, club, onChanged }) {
     }
   }
 
-  const clean = () => items.filter(i => i.title || i.description)
   const save = () => run(async () => {
-    await saveClubMemo(edition.id, club.slug, { items })
+    await saveClubMemo(edition.month, club.slug, { items })
     if (published) {
-      const problem = await sendIpadImage(edition, club, edition.items || [], clean())
+      const problem = await sendIpadImages(club)
       if (problem) setError(`Saved, but the iPad image didn't update. ${problem}`)
     }
   }, 'Saved')
   const publish = () => run(async () => {
-    await publishClubMemo(edition.id, club.slug, {
-      items,
-      starts_at: startMode === 'date' ? fromLocalInput(startsAt) : null,
-      ends_at: endMode === 'date' ? fromLocalInput(endsAt) : null,
-    })
-    const problem = await sendIpadImage(edition, club, edition.items || [], clean())
+    await publishClubMemo(edition.month, club.slug, { items, ...dates.values() })
+    const problem = await sendIpadImages(club)
     if (problem) setError(`Published, but the iPad image didn't update. ${problem}`)
   }, published ? 'Updated' : 'Published')
   const end = () => {
-    if (window.confirm(`Take down ${club.name}'s ${monthLabel(edition.month)} memo now?`)) {
-      run(() => endClubMemo(edition.id, club.slug), 'Taken down')
+    if (window.confirm(`Take down ${club.name}'s ${monthLabel(edition.month)} notes now?`)) {
+      run(async () => {
+        await endClubMemo(edition.month, club.slug)
+        const problem = await sendIpadImages(club)
+        if (problem) setError(`Taken down, but the iPad image didn't update. ${problem}`)
+      }, 'Taken down')
     }
-  }
-
-  if (edition.status !== 'ready') {
-    return <div className={`${CARD} p-6 text-sm text-text-muted`}>The main memo for {monthName(edition.month)} needs to be published to clubs first.</div>
   }
 
   return (
     <>
       <div className={`${CARD} p-5`}>
         <div className="flex items-center gap-2 mb-1">
-          <h3 className="text-sm font-bold text-text-primary">{club.name}: {monthLabel(edition.month)}</h3>
+          <h3 className="text-sm font-bold text-text-primary">{club.name} Notes: {monthLabel(edition.month)}</h3>
           <StateBadge state={memo.state} />
         </div>
-        <p className="text-sm text-tile-sub mb-4">Only {club.name} sees these, along with the main memo.</p>
-        <ItemsEditor items={items} onChange={setItems} emptyHint="No club items yet. You can publish with just the main memo." />
+        <p className="text-sm text-tile-sub mb-4">Only {club.name} sees these, added to the main memo. The main memo shows either way. Set an end date to keep notes up across months.</p>
+        <ItemsEditor items={items} onChange={setItems} emptyHint="No notes yet. The main memo shows without them." />
 
-        <div className="grid sm:grid-cols-2 gap-4 mt-5">
-          <div>
-            <label className={LABEL}>Show From</label>
-            <select value={startMode} onChange={e => setStartMode(e.target.value)} className={`${INPUT} mb-2`}>
-              <option value="now">Now</option>
-              <option value="date">A specific date</option>
-            </select>
-            {startMode === 'date' && <input type="datetime-local" value={startsAt} onChange={e => setStartsAt(e.target.value)} className={INPUT} />}
-          </div>
-          <div>
-            <label className={LABEL}>Show Until</label>
-            <select value={endMode} onChange={e => setEndMode(e.target.value)} className={`${INPUT} mb-2`}>
-              <option value="next">The next one is published</option>
-              <option value="date">A specific date</option>
-            </select>
-            {endMode === 'date' && <input type="datetime-local" value={endsAt} onChange={e => setEndsAt(e.target.value)} className={INPUT} />}
-          </div>
-        </div>
+        <DateFields dates={dates} nextLabel="A later month's main memo starts" />
 
         {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
         <div className="flex flex-wrap items-center gap-2 mt-4">
           <button type="button" disabled={busy} onClick={save} className={BTN}>Save</button>
           <button type="button" disabled={busy} onClick={publish} className={BTN_RED}>
-            {published ? 'Save and Update' : startMode === 'now' ? 'Publish and Show Now' : 'Publish on This Date'}
+            {published ? 'Save and Update' : dates.startMode === 'now' ? 'Publish and Show Now' : 'Publish on This Date'}
           </button>
           {published && memo.state !== 'ended' && <button type="button" disabled={busy} onClick={end} className={BTN}>End Now</button>}
           {saved && <span className="text-xs text-green-600">{saved}</span>}
