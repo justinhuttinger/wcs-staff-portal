@@ -166,7 +166,7 @@ function cleanNotes(value, existing) {
     if (!title && !description) continue
     const before = saved.get(item?.id)
     // Clearing a published note's start keeps it up rather than pulling it.
-    const starts_at = cleanDate(item?.starts_at) ?? (item?.starts_at ? undefined : (before?.published ? before.starts_at : null))
+    const starts_at = cleanDate(item?.starts_at) ?? (item?.starts_at ? undefined : (before?.published ? before.starts_at || null : null))
     const ends_at = cleanDate(item?.ends_at)
     if (starts_at === undefined || ends_at === undefined) return { error: `Invalid date on "${title || 'a note'}"` }
     if (starts_at && ends_at && new Date(ends_at) <= new Date(starts_at)) {
