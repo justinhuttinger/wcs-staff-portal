@@ -7,7 +7,8 @@
 // account. It waits for a new image or the Retry button.
 const { createHash } = require('node:crypto')
 const cron = require('node-cron')
-const { pickLiveMemo } = require('../../lib/memoRules')
+const { composeMemo } = require('../../lib/memoRules')
+const { loadEditions, loadNotes } = require('../memoData')
 const { createClient, isConfigured } = require('./client')
 
 const md5 = bytes => createHash('md5').update(bytes).digest('hex')
@@ -57,17 +58,16 @@ async function loadWork(supabaseAdmin) {
   if (error) throw error
   if (!clubs?.length) return []
 
-  const { data: rows, error: rowsErr } = await supabaseAdmin
-    .from('club_memos')
-    .select('id, club_slug, status, starts_at, ends_at, club_memo_images(md5)')
-    .in('club_slug', clubs.map(c => c.club_slug))
-    .eq('status', 'published')
-  if (rowsErr) throw rowsErr
+  const slugs = clubs.map(c => c.club_slug)
+  const editions = await loadEditions(supabaseAdmin)
+  const notes = await loadNotes(slugs, supabaseAdmin)
+  const { data: images, error: imagesErr } = await supabaseAdmin
+    .from('memo_club_images').select('club_slug, composition_key, md5').in('club_slug', slugs)
+  if (imagesErr) throw imagesErr
 
   return clubs.map((club) => {
-    const live = pickLiveMemo((rows || []).filter(r => r.club_slug === club.club_slug))
-    const embedded = live?.club_memo_images
-    const image = Array.isArray(embedded) ? embedded[0] || null : embedded || null
+    const live = composeMemo(editions, notes.filter(n => n.club_slug === club.club_slug))
+    const image = (live && (images || []).find(i => i.club_slug === club.club_slug && i.composition_key === live.key)) || null
     return { club, live, plan: planClub({ club, live, image }) }
   })
 }
@@ -89,7 +89,7 @@ async function saveNormalImage(supabaseAdmin, client, club) {
 async function loadBytes(supabaseAdmin, { club, live, plan }) {
   if (plan.action === 'push') {
     const { data, error } = await supabaseAdmin
-      .from('club_memo_images').select('image_base64').eq('club_memo_id', live.id).single()
+      .from('memo_club_images').select('image_base64').eq('club_slug', club.club_slug).eq('composition_key', live.key).single()
     if (error) throw error
     return { bytes: Buffer.from(data.image_base64, 'base64'), type: 'image/png' }
   }

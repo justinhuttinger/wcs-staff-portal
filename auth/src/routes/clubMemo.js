@@ -6,7 +6,8 @@
 const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const { clubByNumber } = require('../config/clubs')
-const { pickLiveMemo } = require('../lib/memoRules')
+const { loadEditions, loadNotes } = require('../services/memoData')
+const { composeMemo } = require('../lib/memoRules')
 
 const router = Router()
 
@@ -28,20 +29,13 @@ router.get('/', requireLauncherKey, async (req, res) => {
     if (enabledErr) throw enabledErr
     if (!enabled?.enabled) return res.json({ memo: null })
 
-    const { data, error } = await supabaseAdmin
-      .from('club_memos')
-      .select('id, status, items, starts_at, ends_at, memo_editions(month, items)')
-      .eq('club_slug', club.slug)
-      .eq('status', 'published')
-    if (error) throw error
-
-    const live = pickLiveMemo(data || [])
+    const live = composeMemo(await loadEditions(), await loadNotes([club.slug]))
     res.json({
       memo: live && {
-        month: live.memo_editions?.month,
+        month: live.month,
         club_name: club.name,
-        main_items: live.memo_editions?.items || [],
-        club_items: live.items || [],
+        main_items: live.main_items,
+        club_items: live.club_items,
       },
     })
   } catch (err) {
