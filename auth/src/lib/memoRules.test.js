@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert')
 const {
-  monthKey, pickLiveMemo, composeMemo, memoPlan, clubStatus, editionStatus, parseDates, canEditClub, cleanText,
+  monthKey, pickLiveMemo, composeMemo, memoPlan, fullMemoPlan, noteStatus, notesSummary, cleanNotes, clubStatus, editionStatus, parseDates, canEditClub, cleanText,
   cleanItems, itemsError, monthOptions, currentMonth,
 } = require('./memoRules')
 
@@ -100,7 +100,8 @@ test('the current month is Pacific, not UTC, at a month boundary', () => {
 })
 
 const ed = (id, month, starts_at, ends_at = null, status = 'ready') => ({ id, month, status, items: [{ title: id, description: 'x' }], starts_at, ends_at })
-const note = (id, edition_id, starts_at, ends_at = null) => ({ id, edition_id, status: 'published', items: [{ title: id, description: 'x' }], starts_at, ends_at })
+const item = (id, starts_at, ends_at = null) => ({ id, title: id, description: 'x', published: true, starts_at, ends_at })
+const note = (id, edition_id, starts_at, ends_at = null) => ({ id: `row-${id}`, edition_id, status: 'published', items: [item(id, starts_at, ends_at)] })
 const NOV = ed('nov', '2026-11-01', '2026-11-01T00:00:00Z')
 const DEC = ed('dec', '2026-12-01', '2026-12-01T00:00:00Z')
 
@@ -163,4 +164,76 @@ test('Main states', () => {
   assert.strictEqual(editionStatus(DEC, null, at), 'scheduled')
   assert.strictEqual(editionStatus(NOV, 'nov', at), 'live')
   assert.strictEqual(editionStatus(ed('oct', '2026-10-01', '2026-10-01T00:00:00Z'), 'nov', at), 'replaced')
+})
+
+test('each note in a month keeps its own dates', () => {
+  const row = { id: 'r', edition_id: 'nov', status: 'published', items: [
+    item('short', '2026-11-01T00:00:00Z', '2026-11-15T00:00:00Z'),
+    item('long', '2026-11-01T00:00:00Z', '2027-01-15T00:00:00Z'),
+    item('later', '2026-11-20T00:00:00Z'),
+  ] }
+  assert.deepStrictEqual(composeMemo([NOV], [row], new Date('2026-11-10T00:00:00Z')).note_ids, ['short', 'long'])
+  assert.deepStrictEqual(composeMemo([NOV], [row], new Date('2026-11-25T00:00:00Z')).note_ids, ['long', 'later'])
+  assert.deepStrictEqual(composeMemo([NOV, DEC], [row], new Date('2026-12-20T00:00:00Z')).note_ids, ['long'])
+})
+
+test('the plan follows each note, and only title and description reach the memo', () => {
+  const row = { id: 'r', edition_id: 'nov', status: 'published', items: [
+    item('a', '2026-11-01T00:00:00Z', '2026-11-15T00:00:00Z'),
+    item('b', '2026-11-01T00:00:00Z'),
+  ] }
+  const plan = memoPlan([NOV], [row], new Date('2026-11-10T00:00:00Z'))
+  assert.deepStrictEqual(plan.map(m => m.key), ['nov~a.b', 'nov~b'])
+  assert.deepStrictEqual(plan[1].club_items, [{ title: 'b', description: 'x' }])
+})
+
+test('an unpublished note does not show, even in a published row', () => {
+  const row = { id: 'r', edition_id: 'nov', status: 'published', items: [{ ...item('a', '2026-11-01T00:00:00Z'), published: false }] }
+  assert.deepStrictEqual(composeMemo([NOV], [row], new Date('2026-11-10T00:00:00Z')).note_ids, [])
+})
+
+test('note states', () => {
+  const at = new Date('2026-11-10T00:00:00Z')
+  const m = '2026-11-01'
+  assert.strictEqual(noteStatus({ published: false }, m, m, at), 'draft')
+  assert.strictEqual(noteStatus(item('a', '2026-12-01T00:00:00Z'), m, m, at), 'scheduled')
+  assert.strictEqual(noteStatus(item('a', '2026-11-01T00:00:00Z'), m, m, at), 'live')
+  assert.strictEqual(noteStatus(item('a', '2026-11-01T00:00:00Z', '2026-11-05T00:00:00Z'), m, m, at), 'ended')
+  assert.strictEqual(noteStatus(item('a', '2026-10-01T00:00:00Z'), '2026-10-01', m, at), 'replaced')
+  assert.strictEqual(notesSummary({ items: [] }, m, m, at), 'not_started')
+  assert.strictEqual(notesSummary({ items: [item('a', '2026-11-01T00:00:00Z'), { published: false }] }, m, m, at), 'live')
+})
+
+test('cleanNotes keeps saved ids and published flags and ignores made-up ones', () => {
+  const saved = [{ id: 'a', published: true }]
+  const { notes } = cleanNotes([
+    { id: 'a', title: 'T', description: 'D', state: 'live' },
+    { id: 'fake', title: 'New', description: 'D', published: true },
+    { title: '', description: '' },
+  ], saved)
+  assert.strictEqual(notes.length, 2)
+  assert.deepStrictEqual(Object.keys(notes[0]).sort(), ['description', 'ends_at', 'id', 'published', 'starts_at', 'title'])
+  assert.strictEqual(notes[0].id, 'a')
+  assert.strictEqual(notes[0].published, true)
+  assert.notStrictEqual(notes[1].id, 'fake')
+  assert.strictEqual(notes[1].published, false)
+})
+
+test('cleanNotes refuses bad dates', () => {
+  assert.match(cleanNotes([{ title: 'T', description: 'D', starts_at: 'nope' }]).error, /Invalid date/)
+  assert.match(cleanNotes([{ title: 'T', description: 'D', starts_at: '2026-11-02T00:00:00Z', ends_at: '2026-11-01T00:00:00Z' }]).error, /end date/)
+})
+
+test('the full plan can be longer than what gets drawn', () => {
+  const items = Array.from({ length: 20 }, (_, i) => item(`n${i}`, new Date(Date.UTC(2026, 11, i + 1)).toISOString()))
+  const row = { id: 'r', edition_id: 'nov', status: 'published', items }
+  const at = new Date('2026-11-10T00:00:00Z')
+  assert.strictEqual(memoPlan([NOV], [row], at).length, 12)
+  assert.ok(fullMemoPlan([NOV], [row], at).length > 12)
+})
+
+test('clearing a published note start keeps it up', () => {
+  const saved = [{ id: 'a', published: true, starts_at: '2026-11-01T00:00:00.000Z' }]
+  const { notes } = cleanNotes([{ id: 'a', title: 'T', description: 'D', starts_at: null }], saved)
+  assert.strictEqual(notes[0].starts_at, '2026-11-01T00:00:00.000Z')
 })

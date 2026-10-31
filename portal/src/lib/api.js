@@ -981,8 +981,8 @@ export async function uploadClubMemoImage(slug, key, blob) {
 export async function retryClubIpad(slug) {
   return api('/memos/clubs/' + slug + '/ipad-retry', { method: 'POST', body: '{}' })
 }
-export async function endClubMemo(id, slug) {
-  return api('/memos/editions/' + id + '/clubs/' + slug + '/end', { method: 'POST', body: '{}' })
+export async function endClubNote(month, slug, noteId) {
+  return api('/memos/editions/' + month + '/clubs/' + slug + '/end', { method: 'POST', body: JSON.stringify({ note_id: noteId }) })
 }
 
 // GM Event Calendar — events-only, club-scoped view of the Marketing Tracker
