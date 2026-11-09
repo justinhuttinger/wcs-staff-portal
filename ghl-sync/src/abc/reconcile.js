@@ -8,6 +8,7 @@ const { isEligibleCandidate, processReferralReward } = require('./referralReward
 const { fetchMemberInvoices, adjustInvoice, addMemberNote } = require('./client');
 const { MEMBER_DETAIL_FIELD_KEYS, desiredMemberDetails, memberDetailUpdates, dateOfBirthUpdate } = require('./memberDetailFields');
 const { PT_FIELD_KEYS, desiredPtFields, ptFieldUpdates, loadPtSummaries, ptSummaryFor, ptOnlyContact } = require('./ptFields');
+const { allowSmallCache, maxCreatesPerRun } = require('./createGuard');
 
 const DRY_RUN = (process.env.DRY_RUN || 'true') === 'true';
 
@@ -160,10 +161,19 @@ async function reconcileLocation(location, runId) {
   // create new contacts this run. The match indexes built below would be empty
   // or near-empty, causing the create branch to fire for hundreds of real GHL
   // contacts that simply weren't in the cache yet.
-  const createsDisabled = locContacts.length < MIN_CACHED_CONTACTS_FOR_CREATES;
+  // A new club listed in ABC_RECONCILE_ALLOW_SMALL_CACHE skips this floor
+  // (see createGuard.js); GHL's duplicate check below still runs per create.
+  const smallCache = locContacts.length < MIN_CACHED_CONTACTS_FOR_CREATES;
+  const smallCacheAllowed = smallCache && allowSmallCache(location);
+  const createsDisabled = smallCache && !smallCacheAllowed;
   if (createsDisabled) {
     console.warn(`[Reconcile] ${locationName}: only ${locContacts.length} cached contacts (< ${MIN_CACHED_CONTACTS_FOR_CREATES}) — creates DISABLED for this run`);
+  } else if (smallCacheAllowed) {
+    console.warn(`[Reconcile] ${locationName}: only ${locContacts.length} cached contacts, creates ALLOWED by ABC_RECONCILE_ALLOW_SMALL_CACHE`);
   }
+  const createCap = maxCreatesPerRun();
+  let createAttempts = 0;
+  let createCapLogged = false;
 
   // 3. Build lookup indexes for GHL contacts (shared with lapsedTaggingJob.js)
   const { data: fieldDefs } = await supabase
@@ -359,6 +369,25 @@ async function reconcileLocation(location, runId) {
         });
         continue;
       }
+
+      // Per-run cap: leave the rest for the next cycle so one club's bootstrap
+      // can't hold the ABC sync lock for every other club.
+      if (createAttempts >= createCap) {
+        if (!createCapLogged) {
+          console.warn(`[Reconcile] ${locationName}: create cap reached (${createCap}) — remaining new contacts wait for the next run`);
+          createCapLogged = true;
+        }
+        unmatched++;
+        logEntries.push({
+          run_id: runId, club_number: clubNumber, club_name: locationName, dry_run: DRY_RUN,
+          ghl_contact_id: null, ghl_contact_name: null, ghl_contact_email: null,
+          abc_member_id: abc.member_id, action: 'no_match',
+          detail: { abc_name: abcName, abc_email: abc.email, reason: 'create_cap_reached', cap: createCap },
+          applied: false, error: null,
+        });
+        continue;
+      }
+      createAttempts++;
 
       // Ask GHL whether a contact with this email/phone already exists. The
       // Supabase cache (`ghl_contacts_v2`) is eventually consistent, so on its
