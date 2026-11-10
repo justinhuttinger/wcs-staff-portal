@@ -66,6 +66,38 @@ function parseHeaderMeta(textbox16) {
 
 const { parse: parseSync } = require('csv-parse/sync')
 
+function isDbxLayout(rec) {
+  return rec && 'Textbox1' in rec && 'location_num' in rec && 'date_key' in rec
+}
+
+// DBX has no separate payment vs. total column: total_amount is the payment,
+// and it sums to the header's Total Revenue to the penny. Text the original
+// layout sends in capitals (payment type, profit center) is upper-cased so the
+// cross-club groupings in the reports line up.
+function fromDbx(rec) {
+  const upper = (v) => (v == null ? v : String(v).trim().toUpperCase())
+  return {
+    Textbox16: rec.Textbox1,
+    CLUB_NUMBER: rec.location_num,
+    DATE_KEY: rec.date_key,
+    PAYMENT_AMOUNT: rec.total_amount,
+    TOTAL_AMOUNT3: rec.total_amount,
+    TAX_AMOUNT: rec.tax_amount,
+    PROFIT_CENTER: upper(rec.profit_center),
+    PAYMENT_TYPE: upper(rec.payment_method),
+    MEMBER_NUMBER: rec.member_number,
+    AGREEMENT_NUMBER: rec.agreement_number,
+    FIRST_NAME: rec.first_name,
+    LAST_NAME: rec.last_name,
+    BILLING_TYPE: rec.billing_type,
+    MEMBERSHIP_TYPE_ABC_CODE: rec.membership_type,
+    CATALOG_ITEM: rec.catalog_item,
+    PAYMENT_CODE_DESCRIPTION: rec.payment_description,
+    COLLECTED_METHOD: rec.collected_method,
+    RECEIPT_NUMBER: rec.receipt_number,
+  }
+}
+
 function parseRevenueCsv(buffer) {
   const text = buffer.toString('utf8').replace(/\r\n/g, '\n')
 
@@ -95,6 +127,13 @@ function parseRevenueCsv(buffer) {
   const rows = []
   const skipped = { unknown_club: 0, missing_date: 0, missing_amount: 0, bad_shape: 0 }
   const errors = []
+
+  // ABC exports this report in two layouts. The original one (UPPERCASE
+  // columns, header text in Textbox16) is what the long-standing clubs send.
+  // Accounts set up later get the "(DBX)" version:
+  // lowercase columns with different names and the header text in Textbox1.
+  // Translate DBX rows into the original shape so everything below is shared.
+  if (records.length && isDbxLayout(records[0])) records = records.map(fromDbx)
 
   records.forEach((rec, idx) => {
     // First row that has a non-empty Textbox16 carries the period + total
@@ -173,4 +212,5 @@ module.exports = {
   parseHeaderMeta,
   parseRevenueCsv,
   normalizeClub,
+  isDbxLayout,
 }
