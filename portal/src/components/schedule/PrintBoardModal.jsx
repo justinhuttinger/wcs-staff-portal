@@ -36,10 +36,11 @@ function toISO(d) {
 // different route and needs its slug in the query; Group X is the no-facility
 // case. Everything else -- the pinned week, the self-print flag -- is identical,
 // which is the point of both boards sharing one renderer.
-function boardUrl({ clubSlug, facilitySlug, startISO, forPrint }) {
+function boardUrl({ clubSlug, facilitySlug, areaKey, startISO, forPrint }) {
   const base = facilitySlug ? '/public/facility/board' : '/public/group-x/board'
   return `${API_URL}${base}?club=${encodeURIComponent(clubSlug)}`
     + (facilitySlug ? `&facility=${encodeURIComponent(facilitySlug)}` : '')
+    + (areaKey ? `&area=${encodeURIComponent(areaKey)}` : '')
     + `&start=${encodeURIComponent(startISO)}${forPrint ? '&print=1' : ''}`
 }
 
@@ -48,11 +49,17 @@ export default function PrintBoardModal({ club, facility, onClose }) {
   // week ahead. "This week" is one click away for a reprint.
   const [monday, setMonday] = useState(() => addDays(startOfPrintWeek(new Date()), 7))
 
+  // A club whose Group X board is split by area (Group X / Ultimate) prints
+  // one sheet per area, one at a time. Others have no areas and print it all.
+  const areas = !facility && Array.isArray(club.areas) && club.areas.length > 1 ? club.areas : null
+  const [areaKey, setAreaKey] = useState(() => (areas ? areas[0].key : null))
+  const area = areas ? areas.find(a => a.key === areaKey) : null
+
   const thisMonday = useMemo(() => startOfPrintWeek(new Date()), [])
   const startISO = toISO(monday)
-  const label = facility ? (facility.label || 'facility') : 'class'
+  const label = facility ? (facility.label || 'facility') : area ? area.label : 'class'
   const urlFor = forPrint => boardUrl({
-    clubSlug: club.slug, facilitySlug: facility ? facility.slug : null, startISO, forPrint,
+    clubSlug: club.slug, facilitySlug: facility ? facility.slug : null, areaKey, startISO, forPrint,
   })
   const isThisWeek = startISO === toISO(thisMonday)
   const isNextWeek = startISO === toISO(addDays(thisMonday, 7))
@@ -80,12 +87,30 @@ export default function PrintBoardModal({ club, facility, onClose }) {
         onClick={e => e.stopPropagation()}
       >
         <div className="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
-          <h3 className="font-semibold text-text-primary">Print the {label.toLowerCase()} board</h3>
+          <h3 className="font-semibold text-text-primary">Print the {area ? label : label.toLowerCase()} board</h3>
           <button type="button" onClick={onClose}
             className="text-text-muted hover:text-text-primary text-xl leading-none">&times;</button>
         </div>
 
         <div className="px-5 py-4 border-b border-border shrink-0 space-y-3">
+          {areas && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-text-muted w-20">Board</span>
+              {areas.map(a => (
+                <button
+                  key={a.key}
+                  type="button"
+                  onClick={() => setAreaKey(a.key)}
+                  aria-pressed={a.key === areaKey}
+                  className={a.key === areaKey
+                    ? 'px-3 py-1.5 text-sm rounded-lg border border-wcs-red bg-wcs-red text-white font-medium'
+                    : stepClass}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-text-muted w-20">Week</span>
             <button type="button" className={stepClass} onClick={() => setMonday(addDays(monday, -7))}>Prev</button>
@@ -119,7 +144,7 @@ export default function PrintBoardModal({ club, facility, onClose }) {
             printing is handled by the page in its own window. */}
         <div className="flex-1 overflow-auto bg-bg p-5">
           <iframe
-            key={`${club.slug}-${facility ? facility.slug : 'groupx'}-${startISO}`}
+            key={`${club.slug}-${facility ? facility.slug : (areaKey || 'groupx')}-${startISO}`}
             src={urlFor(false)}
             title={`${club.name} ${label} board preview`}
             className="w-full bg-white rounded-lg border border-border shadow-lg"

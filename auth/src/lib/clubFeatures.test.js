@@ -59,3 +59,11 @@ test('features are independent of each other', () => {
   assert.strictEqual(enabledIn(map, '30935', 'courts'), true)
   assert.strictEqual(enabledIn(map, '30935', 'groupx'), false)
 })
+
+test('the board split is opt-in: a missing row means OFF', () => {
+  const { GROUP_X_AREAS } = require('./clubFeatures')
+  assert.strictEqual(enabledIn({}, '30935', GROUP_X_AREAS), false)
+  assert.strictEqual(enabledIn({ [`30935:${GROUP_X_AREAS}`]: true }, '30935', GROUP_X_AREAS), true)
+  // Everything else keeps the enabled-by-default rule.
+  assert.strictEqual(enabledIn({}, '30935', 'groupx'), true)
+})

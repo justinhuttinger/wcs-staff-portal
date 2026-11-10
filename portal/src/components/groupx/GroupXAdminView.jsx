@@ -103,9 +103,9 @@ export default function GroupXAdminView() {
       {tab === 'history' && <GroupXReport clubs={clubs} />}
       {tab === 'clubs' && (
         <ClubFeatureGrid
-          features={['groupx']}
+          features={['groupx', 'groupx_areas']}
           title="Which clubs run Group X"
-          blurb="Every club runs it today. Switching one off hides the Group X tile for its staff and makes its board 404 instead of showing an empty week. Nothing is deleted - classes already on the ABC calendar stay, and come back if you switch it on again."
+          blurb="Every club runs it today. Switching one off hides the Group X tile for its staff and makes its board 404 instead of showing an empty week. Nothing is deleted - classes already on the ABC calendar stay, and come back if you switch it on again. Separate Ultimate board splits that club's board in two by ABC class category: classes in the Ultimate category get their own board, print and TV link, and the website shows a Group X / Ultimate switch."
         />
       )}
     </div>

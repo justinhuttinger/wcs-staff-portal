@@ -259,3 +259,12 @@ test('abcMutate reports a timeout distinctly from a connection failure', async (
   assert.strictEqual(result.http, 0)
   assert.match(result.error, /timed out/)
 })
+
+test('_shapeClassType keeps the ABC custom category names', () => {
+  const t = _shapeClassType({
+    eventTypeId: 'x', name: 'Ultimate Workout', duration: '60',
+    customCategories: [{ categoryId: 'a1', categoryName: 'Ultimate' }],
+  })
+  assert.deepStrictEqual(t.categories, ['Ultimate'])
+  assert.deepStrictEqual(_shapeClassType({ eventTypeId: 'y', name: 'Yoga' }).categories, [])
+})

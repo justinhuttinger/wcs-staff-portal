@@ -43,6 +43,7 @@ const { requireRole, roleLevel } = require('../middleware/role')
 const { requireTile } = require('../middleware/tile')
 const { allowedClubsFor } = require('../lib/groupXScope')
 const clubFeatures = require('../lib/clubFeatures')
+const { AREAS } = require('../lib/groupXAreas')
 
 const router = Router()
 router.use(authenticate)
@@ -172,7 +173,20 @@ function fail(res, err, where) {
 
 // Only the caller's own clubs. The UI builds its club pills straight off this,
 // so scoping here scopes the whole screen.
-router.get('/clubs', (req, res) => res.json({ clubs: req.gxClubs }))
+// A club with its board split by area (lib/groupXAreas) carries `areas`, so
+// the portal can offer a print and a TV link per area. Others carry none.
+router.get('/clubs', async (req, res) => {
+  try {
+    const map = await clubFeatures.loadMap()
+    res.json({
+      clubs: (req.gxClubs || []).map(c =>
+        clubFeatures.enabledIn(map, c.clubNumber, clubFeatures.GROUP_X_AREAS) ? { ...c, areas: AREAS } : c),
+    })
+  } catch (err) {
+    console.error('[groupX] /clubs failed:', err.message)
+    res.json({ clubs: req.gxClubs })
+  }
+})
 
 // POST /group-x/refresh-staff?club_number=
 // Instructors and class types are cached for an hour. Onboarding a new

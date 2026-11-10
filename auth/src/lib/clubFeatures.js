@@ -34,10 +34,20 @@ function invalidate() {
   cache.del(KEY)
 }
 
+// Every feature key that can be toggled. Facilities come from the allowlist;
+// groupx is the one that is not a facility.
+const GROUP_X = 'groupx'
+// Split one club's Group X board into its Group X and Ultimate areas (see
+// lib/groupXAreas.js). Unlike everything else here this is an opt-in for one
+// club's way of running classes, not a fact every club has, so a missing row
+// means OFF.
+const GROUP_X_AREAS = 'groupx_areas'
+const DEFAULT_OFF = new Set([GROUP_X_AREAS])
+
 // Pure, so the fallback rule is testable without a database.
 function enabledIn(map, clubNumber, feature) {
   const v = (map || {})[`${clubNumber}:${feature}`]
-  return v === undefined ? true : v
+  return v === undefined ? !DEFAULT_OFF.has(String(feature)) : v
 }
 
 async function isEnabled(clubNumber, feature) {
@@ -55,8 +65,4 @@ function clubsWith(map, clubs, feature) {
   return (clubs || []).filter(c => enabledIn(map, String(c.clubNumber), feature))
 }
 
-// Every feature key that can be toggled. Facilities come from the allowlist;
-// groupx is the one that is not a facility.
-const GROUP_X = 'groupx'
-
-module.exports = { loadMap, invalidate, isEnabled, enabledIn, facilitiesFor, clubsWith, GROUP_X }
+module.exports = { loadMap, invalidate, isEnabled, enabledIn, facilitiesFor, clubsWith, GROUP_X, GROUP_X_AREAS }
