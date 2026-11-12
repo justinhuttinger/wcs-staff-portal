@@ -205,6 +205,11 @@ function TestSendPanel({ locationSlug, locationName, label, text, mediaUrl, onCl
               <br />
               Check the handset, not the workflow preview.
             </p>
+            {sent.unresolved?.includes('contact.id') && (
+              <p className="text-xs text-amber-600 text-center max-w-xs">
+                No contact at {locationName} has this phone, so links in this test that need {'{{contact.id}}'} won't open for anyone.
+              </p>
+            )}
           </div>
         ) : (
         <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
@@ -320,9 +325,14 @@ function TestSendPanel({ locationSlug, locationName, label, text, mediaUrl, onCl
                 {preview.chars} chars · {preview.segments} segment{preview.segments === 1 ? '' : 's'} · {preview.encoding}
               </p>
             )}
-            {preview?.unresolved?.length > 0 && (
+            {preview?.unresolved?.filter(u => u !== 'contact.id').length > 0 && (
               <p className="text-[11px] text-amber-600 mt-1">
-                Empty or unresolved: {preview.unresolved.map(u => `{{${u}}}`).join(', ')} — a member missing these gets a gap where the value should be.
+                Empty or unresolved: {preview.unresolved.filter(u => u !== 'contact.id').map(u => `{{${u}}}`).join(', ')} — a member missing these gets a gap where the value should be.
+              </p>
+            )}
+            {preview?.unresolved?.includes('contact.id') && (
+              <p className="text-[11px] text-text-muted mt-1">
+                {'{{contact.id}}'} is filled when the test sends, with the contact that has the test phone at this club, so personal links in the test open for that person.
               </p>
             )}
             {preview?.hidden?.length > 0 && (
