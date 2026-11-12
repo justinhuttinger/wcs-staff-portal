@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gym Tour</title>
+<style>
+  :root {
+    --ink: #111213;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --fill: #f3f4f6;
+    --fill-2: #9ca3af;
+    --danger: #b42318;
+    --ok: #2f7d4f;
+    --accent: #c8102e;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: #fff; }
+  body {
+    margin: 0; color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { padding: 28px 20px 60px; }
+  .shell {
+    max-width: 1120px; margin: 0 auto;
+    border: 1px solid var(--line); border-radius: 14px; background: #fff;
+    display: grid; grid-template-columns: 330px 1fr 268px;
+    min-height: 620px; overflow: hidden;
+  }
+  .pane { padding: 26px 28px; }
+  .pane-left { border-right: 1px solid var(--line); }
+  .pane-right { padding: 26px 24px 26px 8px; }
+
+  /* ---- left ---- */
+  .logo { width: 92px; height: 92px; display: block; margin-bottom: 18px; }
+  .eyebrow { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  h1 { font-size: 27px; line-height: 1.15; margin: 0 0 18px; letter-spacing: -0.02em; color: var(--ink); }
+  .meta { display: flex; align-items: center; gap: 11px; margin-bottom: 13px; font-size: 14px; }
+  .meta svg { flex: none; color: var(--ink); }
+  .meta.pending { color: var(--muted); }
+  .blurb { margin-top: 22px; font-size: 14px; color: var(--muted); }
+  .blurb strong { color: var(--text); }
+  .blurb em { font-style: italic; }
+  /* ---- center ---- */
+  h2 { font-size: 19px; margin: 0 0 22px; color: var(--ink); font-weight: 600; letter-spacing: -0.01em; }
+  .month-bar { display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 18px; }
+  .month-label { font-size: 16px; min-width: 168px; text-align: center; }
+  .nav {
+    width: 38px; height: 38px; border-radius: 50%; border: 0; background: transparent;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink);
+  }
+  .nav:hover:not(:disabled) { background: var(--fill); }
+  .nav.filled { background: var(--fill); }
+  .nav:disabled { color: #d1d5db; cursor: default; }
+  .dow, .grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .dow div { text-align: center; font-size: 13px; color: var(--muted); padding-bottom: 10px; }
+  .grid { row-gap: 6px; }
+  .cell { display: flex; flex-direction: column; align-items: center; }
+  .date {
+    width: 42px; height: 42px; border-radius: 50%; border: 0; background: transparent;
+    font: inherit; font-size: 15px; color: #c8ccd2; cursor: default;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .date.open { background: var(--fill); color: var(--text); cursor: pointer; }
+  .date.open:hover { background: #e6e8eb; }
+  .date.sel { background: var(--ink); color: #fff; }
+  .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--ink); margin-top: 3px; }
+  .dot.hidden { visibility: hidden; }
+  .tz { margin-top: 30px; }
+  .tz-label { font-size: 15px; color: var(--ink); margin-bottom: 8px; }
+  .tz-row { display: flex; align-items: center; gap: 9px; }
+  .tz-row select {
+    appearance: none; border: 0; background: transparent; font: inherit; color: var(--text);
+    padding: 2px 22px 2px 0; cursor: pointer;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat: no-repeat; background-position: right center;
+  }
+
+  /* ---- right (times) ---- */
+  .times { display: flex; flex-direction: column; gap: 11px; max-height: 560px; overflow-y: auto; padding-right: 6px; }
+  .times::-webkit-scrollbar { width: 7px; }
+  .times::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 4px; }
+  .time {
+    border: 1px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink);
+    padding: 13px 8px; font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; width: 100%;
+  }
+  .time:hover { background: #fafafa; }
+  .time-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .time-pair .chosen {
+    background: var(--fill-2); color: #fff; border: 0; border-radius: 8px;
+    padding: 13px 8px; font: inherit; font-size: 15px; font-weight: 500; text-align: center;
+  }
+  .time-pair .confirm {
+    background: var(--ink); color: #fff; border: 0; border-radius: 8px;
+    padding: 13px 8px; font: inherit; font-size: 15px; font-weight: 500; cursor: pointer;
+  }
+  .time-pair .confirm:hover { background: #000; }
+
+  /* ---- form step ---- */
+  .form-pane { grid-column: 2 / span 2; padding: 26px 28px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field select, .field textarea {
+    width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+    font: inherit; color: var(--text); background: #fff; outline: none;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--ink); }
+  .field textarea { min-height: 74px; resize: vertical; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .who {
+    border: 1px solid var(--line); border-radius: 10px; background: var(--fill);
+    padding: 12px 14px; font-size: 14px; margin-bottom: 18px;
+  }
+  .who b { color: var(--ink); }
+  .who .hint { color: var(--muted); font-size: 13px; display: block; margin-top: 3px; }
+  .linked { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  .linked .btn.link { padding: 0 4px; font-size: 13px; }
+  .row-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+  .btn { background: var(--ink); color: #fff; border: 0; border-radius: 8px; padding: 12px 22px; font: inherit; font-weight: 600; cursor: pointer; }
+  .btn:hover:not(:disabled) { background: #000; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.link { background: transparent; color: var(--muted); font-weight: 500; padding: 12px 4px; }
+  .btn.link:hover { color: var(--ink); background: transparent; }
+  .err { color: var(--danger); font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .hide { display: none !important; }
+  .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--line); border-top-color: var(--ink); border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  dl.summary { display: grid; grid-template-columns: auto 1fr; gap: 7px 18px; margin: 0 0 18px; font-size: 14px; }
+  dl.summary dt { color: var(--muted); }
+  dl.summary dd { margin: 0; }
+  code { background: var(--fill); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  /* ---- confirmation ------------------------------------------------------
+     Member-facing, so it reads as a moment rather than a receipt: no ids, no
+     field-write status, just who and when. */
+  .done-wrap { max-width: 460px; margin: 8px auto; text-align: center; padding: 18px 0 8px; }
+  .done-mark {
+    width: 74px; height: 74px; border-radius: 50%; margin: 0 auto 20px;
+    background: #eaf6ee; color: var(--ok, #2f7d4f);
+    display: flex; align-items: center; justify-content: center;
+    animation: pop .42s cubic-bezier(.2,.9,.3,1.4) both;
+  }
+  /* Ring that expands and fades once, like a single quiet cheer. */
+  .done-mark::after {
+    content: ''; position: absolute; width: 74px; height: 74px; border-radius: 50%;
+    border: 2px solid var(--ok, #2f7d4f); animation: ring .9s ease-out .18s both;
+  }
+  .done-mark { position: relative; }
+  .done-tick { stroke-dasharray: 48; stroke-dashoffset: 48; animation: draw .38s ease-out .26s both; }
+  @keyframes pop { from { transform: scale(.4); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+  @keyframes ring { from { transform: scale(1); opacity: .55 } to { transform: scale(1.85); opacity: 0 } }
+  @keyframes draw { to { stroke-dashoffset: 0 } }
+  @media (prefers-reduced-motion: reduce) {
+    .done-mark, .done-mark::after, .done-tick { animation: none; stroke-dashoffset: 0; }
+    .done-mark::after { display: none; }
+  }
+  .done-head {
+    font-size: 25px; font-weight: 700; color: var(--ink); margin: 0 0 10px;
+    letter-spacing: -0.02em;
+  }
+  .done-line { font-size: 17px; line-height: 1.5; color: var(--text); margin: 0 0 14px; }
+  .done-line b { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .done-sub { font-size: 14px; color: var(--muted); margin: 0 0 22px; }
+  .ghost-btn {
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+    font-weight: 500; padding: 10px 18px; width: auto;
+  }
+  .ghost-btn:hover { background: var(--fill); color: var(--text); }
+  body.compact .done-wrap { padding: 6px 0; }
+  body.compact .done-head { font-size: 21px; }
+  body.compact .done-line { font-size: 16px; }
+
+  /* ---- compact / embedded ------------------------------------------------
+     The three-pane layout assumes a full browser window. In an iframe it
+     stacks into a very tall column and the host page has to scroll for ages.
+     Embedded, the page becomes a single narrow column: a slim header instead
+     of the marketing panel, one week of dates instead of a month grid, and
+     times as a wrapping grid instead of a tall list. Combined with the height
+     message it posts, the frame ends up roughly one screen with no inner
+     scrollbar. */
+  body.compact .page { padding: 0; }
+  body.compact .shell {
+    display: block; max-width: none; border: 0; border-radius: 0; min-height: 0;
+  }
+  body.compact .pane { padding: 14px 16px; }
+  body.compact .pane-left { border-right: 0; padding-bottom: 0; }
+  body.compact .pane-right { padding: 0 16px 16px; }
+  body.compact .logo,
+  body.compact .eyebrow,
+  body.compact .blurb,
+  body.compact .tz,
+  body.compact h1 { display: none; }
+  body.compact .month-bar,
+  body.compact .dow,
+  body.compact .grid { display: none; }
+  body.compact h2 { font-size: 15px; margin: 0 0 12px; }
+  /* Header line: title, duration, chosen time, trainer picker */
+  body.compact .meta { margin-bottom: 8px; font-size: 14px; }
+  body.compact .compact-title { display: block; }
+  .compact-title {
+    display: none; font-size: 17px; font-weight: 600; color: var(--ink);
+    letter-spacing: -0.01em; margin-bottom: 10px;
+  }
+  body.compact .times { max-height: none; overflow: visible; padding-right: 0; }
+  /* Times as a wrapping grid — a vertical list is what made the frame tall. */
+  body.compact .times {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px;
+  }
+  body.compact .time { padding: 11px 4px; font-size: 14px; }
+  body.compact .time-pair { grid-column: 1 / -1; }
+  /* Compact: the chosen time stays where it is (bold red) and Select sits under
+     the whole grid. Splicing a two-button row into the middle of the grid
+     shoved every later time down and read as a layout glitch. */
+  body.compact .time.sel,
+  body.compact .time.sel:hover {
+    border: 1px solid var(--accent); color: #fff; font-weight: 700;
+    background: var(--accent);
+  }
+  body.compact .confirm-bottom {
+    grid-column: 1 / -1; margin-top: 4px;
+    background: var(--ink); color: #fff; border: 0; border-radius: 8px;
+    padding: 13px 8px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  body.compact .confirm-bottom:hover { background: #000; }
+  body.compact .form-pane { padding: 14px 16px; }
+  body.compact .two { grid-template-columns: 1fr; gap: 0; }
+
+  /* Week strip: seven day chips with arrows, replacing the month grid. */
+  .week { display: none; align-items: center; gap: 6px; margin-bottom: 14px; }
+  body.compact .week { display: flex; }
+  .week-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; flex: 1; }
+  .wd {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff;
+    padding: 7px 2px; font: inherit; cursor: pointer; color: var(--text);
+  }
+  .wd .dow-s { font-size: 11px; color: var(--muted); }
+  .wd .num { font-size: 15px; font-weight: 600; }
+  .wd:hover:not(:disabled) { background: var(--fill); }
+  .wd:disabled { color: #c8ccd2; border-color: #f0f1f3; cursor: default; }
+  .wd:disabled .dow-s { color: #d5d8dd; }
+  .wd[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .wd[aria-pressed="true"] .dow-s { color: #cfd3d9; }
+  .week .nav { width: 30px; height: 30px; flex: none; }
+
+  /* ---- location picker (shown when no location is in the path) ---- */
+  .panel { max-width: 380px; margin: 60px auto; }
+  .panel h2 { margin-bottom: 16px; }
+  .loclink {
+    display: block; border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 9px; color: var(--ink); text-decoration: none; font-weight: 500;
+  }
+  .loclink:hover { background: var(--fill); }
+
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    .pane-left { border-right: 0; border-bottom: 1px solid var(--line); }
+    .pane-right { padding: 0 28px 26px; }
+    .times { max-height: none; }
+    .form-pane { grid-column: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Reached without a location: hand over the per-location links. -->
+  <div class="panel hide" id="picker">
+    <h2>Pick a location</h2>
+    <p class="muted" style="margin-top:-8px">Each location has its own tour link.</p>
+    <div id="links"></div>
+  </div>
+
+  <div class="shell hide" id="shell">
+    <!-- LEFT -->
+    <div class="pane pane-left">
+      <img class="logo" id="logo" alt="West Coast Strength">
+      <div class="eyebrow">West Coast Strength</div>
+      <h1>Gym Tour</h1>
+
+      <div class="meta">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span id="duration">15 min</span>
+      </div>
+      <div class="meta pending" id="when-row">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+        <span id="when">Select a date and time</span>
+      </div>
+      <div class="meta">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-4.5-7-10a7 7 0 1114 0c0 5.5-7 10-7 10z"/><circle cx="12" cy="11" r="2.5"/></svg>
+        <span id="location-name">-</span>
+      </div>
+
+      <p class="blurb">
+        <strong>Come see the gym.</strong> We'll walk you through the club, show you the equipment
+        and amenities, and answer any questions about memberships. Pick a time that works for you.
+      </p>
+    </div>
+
+    <!-- CENTER: calendar -->
+    <div class="pane" id="pane-cal">
+      <div class="compact-title" id="compact-title">Book your tour</div>
+      <h2>Select Date &amp; Time</h2>
+
+      <!-- Compact only: one week at a time. -->
+      <div class="week" id="week">
+        <button class="nav" id="week-prev" aria-label="Previous week">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="week-days" id="week-days"></div>
+        <button class="nav" id="week-next" aria-label="Next week">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+
+      <div class="month-bar">
+        <button class="nav" id="prev" aria-label="Previous month">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <div class="month-label" id="month-label">-</div>
+        <button class="nav filled" id="next" aria-label="Next month">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+      <div class="dow"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>
+      <div class="grid" id="grid"></div>
+      <div class="tz">
+        <div class="tz-label">Time zone</div>
+        <div class="tz-row">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"/></svg>
+          <select id="tz">
+            <option value="America/Los_Angeles">GMT-07:00 America/Los_Angeles (PDT)</option>
+            <option value="America/Denver">GMT-06:00 America/Denver (MDT)</option>
+            <option value="America/Chicago">GMT-05:00 America/Chicago (CDT)</option>
+            <option value="America/New_York">GMT-04:00 America/New_York (EDT)</option>
+          </select>
+        </div>
+      </div>
+      <div class="err hide" id="cal-err"></div>
+    </div>
+
+    <!-- RIGHT: times -->
+    <div class="pane pane-right" id="pane-times">
+      <div class="times" id="times"><span class="muted">Pick a location to see availability.</span></div>
+    </div>
+
+    <!-- FORM STEP -->
+    <div class="form-pane hide" id="pane-form">
+      <h2>Your details</h2>
+      <div class="who" id="who"></div>
+      <!-- Personal ?c= link: who is booking comes from GHL, not these fields. -->
+      <div class="linked hide" id="linked">
+        <span>Booking for <b id="linked-name"></b></span>
+        <button class="btn link" id="not-you" type="button">Not you?</button>
+      </div>
+      <div id="contact-fields">
+        <div class="two">
+          <div class="field"><label for="firstName">First name</label><input id="firstName" autocomplete="given-name"></div>
+          <div class="field"><label for="lastName">Last name</label><input id="lastName" autocomplete="family-name"></div>
+        </div>
+        <div class="two">
+          <div class="field"><label for="phone">Phone</label><input id="phone" type="tel" autocomplete="tel"></div>
+          <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email"></div>
+        </div>
+      </div>
+      <div class="row-actions">
+        <button class="btn" id="book" disabled>Book Tour</button>
+        <button class="btn link" id="back">Back to times</button>
+        <span class="muted" id="book-state"></span>
+      </div>
+      <div class="err hide" id="book-err"></div>
+    </div>
+
+    <!-- DONE STEP -->
+    <div class="form-pane hide" id="pane-done">
+      <div class="done-wrap">
+        <div class="done-mark" aria-hidden="true">
+          <svg viewBox="0 0 52 52" width="38" height="38">
+            <path class="done-tick" d="M14 27l8 8 16-18" fill="none" stroke="currentColor"
+                  stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h2 class="done-head">You're booked!</h2>
+        <p class="done-line" id="done-line"></p>
+        <p class="done-sub" id="done-sub">We've sent you a confirmation. See you then!</p>
+        <button class="btn ghost-btn" id="again">Book another</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict'
+  var API = '{{WIDGET_BASE}}'
+
+  // Compact (framed) mode, same rules as the Day One page.
+  var qp = new URLSearchParams(window.location.search)
+  var COMPACT = qp.get('embed') === '1' ||
+    (qp.get('embed') !== '0' && window.parent !== window)
+  if (COMPACT) document.body.classList.add('compact')
+
+  var S = {
+    location: '{{WIDGET_LOCATION}}',
+    date: '', startTime: '', cfg: null, days: {}, view: null,
+    tz: 'America/Los_Angeles', linked: null,
+  }
+  var $ = function (id) { return document.getElementById(id) }
+  $('logo').src = API + '/logo.png'
+  function show(el, on) { el.classList.toggle('hide', !on) }
+  function fail(el, msg) { el.textContent = msg || ''; show(el, !!msg) }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') }
+
+  function api(path, opts) {
+    opts = opts || {}
+    return fetch(API + path, {
+      method: opts.method || 'GET',
+      headers: opts.body ? { 'Content-Type': 'application/json' } : {},
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    }).then(function (r) {
+      return r.json().catch(function () { return {} }).then(function (b) {
+        if (!r.ok) throw new Error(b.error || ('HTTP ' + r.status))
+        return b
+      })
+    })
+  }
+
+  // --- formatting (in the SELECTED zone) -----------------------------------
+  function fmtTime(iso) {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: S.tz,
+    }).format(new Date(iso))
+  }
+  function fmtTimeNice(iso) {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZone: S.tz,
+    }).format(new Date(iso))
+  }
+  function fmtLongDate(key) {
+    var p = key.split('-')
+    return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  }
+  function fmtDayName(iso) {
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', timeZone: S.tz,
+    }).format(new Date(iso))
+  }
+  function minutes() { return (S.cfg && S.cfg.calendar && S.cfg.calendar.minutes) || 15 }
+  function endOf(iso) { return new Date(new Date(iso).getTime() + minutes() * 60000).toISOString() }
+  function dateKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0')
+  }
+
+  // --- start --------------------------------------------------------------
+  function start() {
+    if (S.location) {
+      show($('shell'), true)
+      return loadConfig()
+    }
+    api('/api/locations')
+      .then(function (d) { offerLinks(d.locations) })
+      .catch(function (e) { fail($('cal-err'), e.message) })
+  }
+
+  function offerLinks(locations) {
+    show($('picker'), true)
+    $('links').innerHTML = locations.map(function (l) {
+      return '<a class="loclink" href="' + esc(API + '/' + l.slug) + '">' + esc(l.name) + '</a>'
+    }).join('')
+  }
+
+  function loadConfig() {
+    $('times').innerHTML = '<span class="muted"><span class="spin"></span> Loading…</span>'
+    api('/api/config?location=' + encodeURIComponent(S.location)).then(function (cfg) {
+      S.cfg = cfg
+      $('location-name').textContent = cfg.location.name
+      $('compact-title').textContent = 'Gym Tour at ' + cfg.location.name
+      document.title = 'Gym Tour - ' + cfg.location.name
+      $('duration').textContent = cfg.calendar.minutes + ' min'
+      loadSlots()
+    }).catch(function (e) {
+      fail($('cal-err'), e.message)
+      $('times').innerHTML = ''
+    })
+  }
+
+  $('tz').addEventListener('change', function () { S.tz = this.value; loadSlots() })
+
+  // --- slots + calendar ---------------------------------------------------
+  function loadSlots() {
+    if (!S.location) return
+    fail($('cal-err'), '')
+    $('times').innerHTML = '<span class="muted"><span class="spin"></span> Loading…</span>'
+    api('/api/slots?location=' + encodeURIComponent(S.location) +
+        '&days=31&timezone=' + encodeURIComponent(S.tz)).then(function (d) {
+      S.days = d.days || {}
+      var keys = Object.keys(S.days).sort()
+      if (!S.date || !S.days[S.date]) S.date = keys[0] || ''
+      var anchor = S.date ? fromKey(S.date) : new Date()
+      S.view = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
+      S.weekStart = startOfWeek(S.date ? fromKey(S.date) : new Date())
+      renderMonth(); renderWeek(); renderTimes()
+    }).catch(function (e) {
+      fail($('cal-err'), e.message)
+      $('times').innerHTML = ''
+    })
+  }
+
+  function fromKey(k) {
+    var p = k.split('-')
+    return new Date(+p[0], +p[1] - 1, +p[2])
+  }
+  function startOfWeek(d) {
+    var x = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    x.setDate(x.getDate() - x.getDay())
+    return x
+  }
+  function addDays(d, n) {
+    var x = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    x.setDate(x.getDate() + n)
+    return x
+  }
+
+  var DOW_S = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+  function renderWeek() {
+    if (!COMPACT || !S.weekStart) return
+    var html = ''
+    for (var i = 0; i < 7; i++) {
+      var d = addDays(S.weekStart, i)
+      var key = dateKey(d)
+      var open = !!S.days[key]
+      html += '<button class="wd" data-key="' + key + '"' + (open ? '' : ' disabled') +
+        ' aria-pressed="' + (key === S.date) + '">' +
+        '<span class="dow-s">' + DOW_S[d.getDay()] + '</span>' +
+        '<span class="num">' + d.getDate() + '</span></button>'
+    }
+    $('week-days').innerHTML = html
+    Array.prototype.forEach.call($('week-days').querySelectorAll('.wd'), function (b) {
+      if (b.disabled) return
+      b.addEventListener('click', function () {
+        S.date = b.getAttribute('data-key')
+        S.startTime = ''
+        renderWeek(); renderTimes(); updateWhen()
+      })
+    })
+    var keys = Object.keys(S.days).sort()
+    var first = keys.length ? startOfWeek(fromKey(keys[0])) : null
+    var last = keys.length ? startOfWeek(fromKey(keys[keys.length - 1])) : null
+    $('week-prev').disabled = !first || S.weekStart <= first
+    $('week-next').disabled = !last || S.weekStart >= last
+  }
+  $('week-prev').addEventListener('click', function () { S.weekStart = addDays(S.weekStart, -7); renderWeek() })
+  $('week-next').addEventListener('click', function () { S.weekStart = addDays(S.weekStart, 7); renderWeek() })
+
+  function renderMonth() {
+    if (!S.view) return
+    $('month-label').textContent = S.view.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    var y = S.view.getFullYear(), m = S.view.getMonth()
+    var first = new Date(y, m, 1).getDay()
+    var count = new Date(y, m + 1, 0).getDate()
+    var todayKey = dateKey(new Date())
+    var html = ''
+    for (var i = 0; i < first; i++) html += '<div class="cell"></div>'
+    for (var d = 1; d <= count; d++) {
+      var key = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0')
+      var open = !!S.days[key]
+      var cls = 'date' + (open ? ' open' : '') + (key === S.date ? ' sel' : '')
+      html += '<div class="cell"><button class="' + cls + '" data-key="' + key + '"' +
+        (open ? '' : ' disabled') + '>' + d + '</button>' +
+        '<span class="dot' + (key === todayKey ? '' : ' hidden') + '"></span></div>'
+    }
+    $('grid').innerHTML = html
+    Array.prototype.forEach.call($('grid').querySelectorAll('.date.open'), function (b) {
+      b.addEventListener('click', function () {
+        S.date = b.getAttribute('data-key'); S.startTime = ''
+        renderMonth(); renderTimes(); updateWhen()
+      })
+    })
+    var keys = Object.keys(S.days).sort()
+    var minM = keys.length ? keys[0].slice(0, 7) : null
+    var maxM = keys.length ? keys[keys.length - 1].slice(0, 7) : null
+    var viewM = y + '-' + String(m + 1).padStart(2, '0')
+    $('prev').disabled = !minM || viewM <= minM
+    $('next').disabled = !maxM || viewM >= maxM
+  }
+  $('prev').addEventListener('click', function () {
+    S.view = new Date(S.view.getFullYear(), S.view.getMonth() - 1, 1); renderMonth()
+  })
+  $('next').addEventListener('click', function () {
+    S.view = new Date(S.view.getFullYear(), S.view.getMonth() + 1, 1); renderMonth()
+  })
+
+  function renderTimes() {
+    var list = (S.date && S.days[S.date]) || []
+    if (!list.length) {
+      $('times').innerHTML = '<span class="muted">No open times.</span>'
+      return
+    }
+    if (COMPACT) {
+      $('times').innerHTML = list.map(function (iso) {
+        var on = iso === S.startTime
+        return '<button class="time' + (on ? ' sel' : '') + '" data-iso="' + iso + '"' +
+          ' aria-pressed="' + on + '">' + fmtTime(iso) + '</button>'
+      }).join('') +
+        (S.startTime && list.indexOf(S.startTime) !== -1
+          ? '<button class="confirm confirm-bottom">Select</button>' : '')
+    } else $('times').innerHTML = list.map(function (iso) {
+      if (iso === S.startTime) {
+        return '<div class="time-pair"><div class="chosen">' + fmtTime(iso) + '</div>' +
+          '<button class="confirm" data-iso="' + iso + '">Select</button></div>'
+      }
+      return '<button class="time" data-iso="' + iso + '">' + fmtTime(iso) + '</button>'
+    }).join('')
+    Array.prototype.forEach.call($('times').querySelectorAll('.time'), function (b) {
+      b.addEventListener('click', function () {
+        S.startTime = b.getAttribute('data-iso'); renderTimes(); updateWhen()
+      })
+    })
+    var confirm = $('times').querySelector('.confirm')
+    if (confirm) confirm.addEventListener('click', goToForm)
+  }
+
+  function updateWhen() {
+    if (!S.startTime) {
+      $('when').textContent = 'Select a date and time'
+      $('when-row').classList.add('pending')
+      return
+    }
+    $('when-row').classList.remove('pending')
+    $('when').textContent = fmtTime(S.startTime) + ' - ' + fmtTime(endOf(S.startTime)) +
+      ', ' + fmtLongDate(S.date)
+  }
+
+  // --- form step ----------------------------------------------------------
+  function goToForm() {
+    show($('pane-cal'), false); show($('pane-times'), false)
+    show($('pane-form'), true)
+    $('who').innerHTML = 'Gym Tour at <b>' + esc(fmtTimeNice(S.startTime)) + '</b> on <b>' +
+      esc(fmtDayName(S.startTime)) + '</b>'
+    fail($('book-err'), '')
+    syncBook()
+  }
+  $('back').addEventListener('click', function () {
+    show($('pane-form'), false)
+    show($('pane-cal'), true); show($('pane-times'), true)
+  })
+
+  function typedOk() {
+    return $('firstName').value.trim() && $('lastName').value.trim() &&
+      $('phone').value.trim() && /^\S+@\S+\.\S+$/.test($('email').value.trim())
+  }
+  function syncBook() {
+    $('book').disabled = !(S.startTime && (S.linked || typedOk()))
+  }
+
+  // Personal link from a GHL text: /tour/<slug>?c={{contact.id}}. The server
+  // books that contact as-is and only tells the page a first name + last
+  // initial. "Not you?" drops the link for the rest of the visit: the blank
+  // form shows and the booking uses what is typed.
+  var LINK_ID = (qp.get('c') || '').trim()
+  function setLinked(who) {
+    S.linked = who
+    if (who) $('linked-name').textContent = who.firstName + (who.lastInitial ? ' ' + who.lastInitial + '.' : '')
+    show($('linked'), !!who)
+    show($('contact-fields'), !who)
+    syncBook()
+  }
+  $('not-you').addEventListener('click', function () {
+    setLinked(null)
+    $('firstName').focus()
+  })
+  if (LINK_ID && S.location) {
+    api('/api/prefill?location=' + encodeURIComponent(S.location) + '&c=' + encodeURIComponent(LINK_ID))
+      .then(function (d) { if (d.firstName) setLinked(d) })
+      .catch(function () {})
+  }
+  ;['firstName', 'lastName', 'phone', 'email'].forEach(function (id) {
+    $(id).addEventListener('input', syncBook)
+  })
+
+  // Prefill typed fields from the link (?firstName=&lastName=&email=&phone=,
+  // GHL-style first_name etc. also accepted). Only fills empty fields.
+  ;[['firstName', 'first_name'], ['lastName', 'last_name'], ['email', 'email'], ['phone', 'phone']].forEach(function (k) {
+    var v = qp.get(k[0]) || qp.get(k[1])
+    if (v && !$(k[0]).value) $(k[0]).value = v.trim()
+  })
+  syncBook()
+
+  $('book').addEventListener('click', function () {
+    fail($('book-err'), '')
+    $('book').disabled = true
+    $('book-state').innerHTML = '<span class="spin"></span> Booking…'
+    api('/api/book', { method: 'POST', body: {
+      location: S.location,
+      startTime: S.startTime,
+      contactId: S.linked ? LINK_ID : undefined,
+      firstName: S.linked ? undefined : $('firstName').value.trim(),
+      lastName: S.linked ? undefined : $('lastName').value.trim(),
+      email: S.linked ? undefined : $('email').value.trim(),
+      phone: S.linked ? undefined : $('phone').value.trim(),
+    }}).then(function (r) {
+      var first = S.linked ? S.linked.firstName : (($('firstName').value.trim().split(/\s+/)[0]) || '')
+      $('done-line').innerHTML =
+        (first ? 'Thanks, ' + esc(first) + '! ' : 'Thank you! ') +
+        'Your gym tour is booked for <b>' + esc(fmtTimeNice(r.startTime)) + '</b> on <b>' +
+        esc(fmtDayName(r.startTime)) + '</b>.'
+      $('book-state').textContent = ''
+      show($('pane-form'), false); show($('pane-done'), true)
+    }).catch(function (e) {
+      $('book-state').textContent = ''
+      // GHL no longer has the linked contact (merged, deleted): ask for their
+      // details instead of an error they can't fix.
+      if (S.linked && e.message === 'contact_not_found') {
+        setLinked(null)
+        fail($('book-err'), 'Please enter your details to finish booking.')
+        return
+      }
+      fail($('book-err'), e.message)
+      syncBook()
+    })
+  })
+
+  $('again').addEventListener('click', function () {
+    show($('pane-done'), false); show($('pane-cal'), true); show($('pane-times'), true)
+    S.startTime = ''
+    ;['firstName', 'lastName', 'email', 'phone'].forEach(function (id) { $(id).value = '' })
+    $('book-state').textContent = ''
+    updateWhen(); loadSlots()
+  })
+
+  // --- tell the host page how tall we are (same message as Day One) --------
+  if (window.parent !== window) {
+    var lastHeight = 0
+    var postHeight = function () {
+      var h = Math.max(
+        document.body ? document.body.scrollHeight : 0,
+        document.documentElement ? document.documentElement.scrollHeight : 0)
+      if (!h || Math.abs(h - lastHeight) < 2) return
+      lastHeight = h
+      window.parent.postMessage({ type: 'wcs-dayone-height', height: h }, '*')
+    }
+    window.addEventListener('load', postHeight)
+    window.addEventListener('resize', postHeight)
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(postHeight).observe(document.documentElement)
+    } else {
+      setInterval(postHeight, 500)
+    }
+  }
+
+  start()
+})()
+</script>
+</body>
+</html>
