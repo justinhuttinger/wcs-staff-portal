@@ -25,11 +25,11 @@ router.get('/', requireLauncherKey, async (req, res) => {
     if (!club) return res.status(400).json({ error: 'Unknown club' })
 
     const { data: enabled, error: enabledErr } = await supabaseAdmin
-      .from('memo_clubs').select('enabled').eq('club_slug', club.slug).maybeSingle()
+      .from('memo_clubs').select('enabled, notes_only').eq('club_slug', club.slug).maybeSingle()
     if (enabledErr) throw enabledErr
     if (!enabled?.enabled) return res.json({ memo: null })
 
-    const live = composeMemo(await loadEditions(), await loadNotes([club.slug]))
+    const live = composeMemo(await loadEditions(), await loadNotes([club.slug]), new Date(), { notesOnly: enabled.notes_only === true })
     res.json({
       memo: live && {
         month: live.month,

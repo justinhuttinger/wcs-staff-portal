@@ -56,10 +56,12 @@ function notesSummary(row, month, newestMonth, now = new Date()) {
 
 // What a club shows at a moment: the live Main plus every one of its notes in date.
 // notes = one club's rows, each holding that month's notes in items.
-function composeMemo(editions, notes, now = new Date()) {
+// notesOnly (memo_clubs.notes_only): the club shows its own notes and never Main,
+// so a later Main doesn't replace them either.
+function composeMemo(editions, notes, now = new Date(), { notesOnly = false } = {}) {
   const monthById = new Map((editions || []).map(e => [e.id, e.month]))
-  const edition = pickLiveMemo(editions, now)
-  const newestMonth = newestMainMonth(editions, now)
+  const edition = notesOnly ? null : pickLiveMemo(editions, now)
+  const newestMonth = notesOnly ? '' : newestMainMonth(editions, now)
   const live = (notes || [])
     .filter(row => row.status === 'published')
     .map(row => ({ month: monthById.get(row.edition_id) || '', items: row.items || [] }))
@@ -79,7 +81,7 @@ function composeMemo(editions, notes, now = new Date()) {
 
 // Everything a club will show from now on, one entry per change. The browser draws
 // each ahead of time, so a date can change the iPads with nobody signed in.
-function fullMemoPlan(editions, notes, now = new Date()) {
+function fullMemoPlan(editions, notes, now = new Date(), opts = {}) {
   const t = now.getTime()
   const times = new Set([t])
   const dated = [...(editions || []), ...(notes || []).flatMap(row => row.items || [])]
@@ -91,14 +93,14 @@ function fullMemoPlan(editions, notes, now = new Date()) {
   }
   const plan = new Map()
   for (const time of [...times].sort((a, b) => a - b)) {
-    const memo = composeMemo(editions, notes, new Date(time))
+    const memo = composeMemo(editions, notes, new Date(time), opts)
     if (memo && !plan.has(memo.key)) plan.set(memo.key, memo)
   }
   return [...plan.values()]
 }
 
-function memoPlan(editions, notes, now = new Date()) {
-  return fullMemoPlan(editions, notes, now).slice(0, MAX_PLANNED_IMAGES)
+function memoPlan(editions, notes, now = new Date(), opts = {}) {
+  return fullMemoPlan(editions, notes, now, opts).slice(0, MAX_PLANNED_IMAGES)
 }
 
 function clubStatus(row, liveIds, now = new Date()) {

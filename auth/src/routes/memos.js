@@ -35,10 +35,10 @@ async function clubScope(staff) {
 }
 
 async function enabledClubs() {
-  const { data, error } = await supabaseAdmin.from('memo_clubs').select('club_slug').eq('enabled', true)
+  const { data, error } = await supabaseAdmin.from('memo_clubs').select('club_slug, notes_only').eq('enabled', true)
   if (error) throw error
-  const on = new Set((data || []).map(r => r.club_slug))
-  return CLUBS.filter(c => on.has(c.slug)).map(c => ({ slug: c.slug, name: c.name }))
+  const on = new Map((data || []).map(r => [r.club_slug, r.notes_only === true]))
+  return CLUBS.filter(c => on.has(c.slug)).map(c => ({ slug: c.slug, name: c.name, notes_only: on.get(c.slug) }))
 }
 
 async function canEditCompany(staff) {
@@ -101,11 +101,13 @@ async function loadImageContext(req, res, next) {
       if (!isManagerPlus(req.staff)) return res.status(403).json({ error: 'Not allowed' })
       if (!canEditClub(await clubScope(req.staff), req.params.slug)) return res.status(403).json({ error: 'That club is not one of yours' })
     }
-    if (!(await enabledClubs()).some(c => c.slug === req.params.slug)) return res.status(404).json({ error: 'Club not found' })
+    const club = (await enabledClubs()).find(c => c.slug === req.params.slug)
+    if (!club) return res.status(404).json({ error: 'Club not found' })
     const editions = await loadEditions()
     const notes = await loadNotes([req.params.slug])
-    req.plan = memoPlan(editions, notes)
-    req.planTotal = fullMemoPlan(editions, notes).length
+    const opts = { notesOnly: club.notes_only }
+    req.plan = memoPlan(editions, notes, new Date(), opts)
+    req.planTotal = fullMemoPlan(editions, notes, new Date(), opts).length
     next()
   } catch (err) {
     console.error('[Memos] image context error:', err.message)
@@ -134,7 +136,7 @@ router.get('/live', async (req, res) => {
     const club = clubs.find(c => c.slug === req.query.club) || clubs[0] || null
     if (!club) return res.json({ clubs: [], club: null, memo: null })
 
-    const live = composeMemo(await loadEditions(), await loadNotes([club.slug]))
+    const live = composeMemo(await loadEditions(), await loadNotes([club.slug]), new Date(), { notesOnly: club.notes_only })
     res.json({
       clubs,
       club,
@@ -172,7 +174,7 @@ router.get('/manage', async (req, res) => {
     if (rowsErr) throw rowsErr
 
     const now = new Date()
-    const newestMonth = newestMainMonth(editions, now)
+    const newestMainMonthAll = newestMainMonth(editions, now)
     const monthById = new Map((editions || []).map(e => [e.id, e.month]))
     const liveMainId = pickLiveMemo(editions, now)?.id || null
     const byMonth = new Map((editions || []).map(e => [e.month, e]))
@@ -203,6 +205,8 @@ router.get('/manage', async (req, res) => {
           state: editionStatus(e, liveMainId, now),
           items: company || e.status === 'ready' ? e.items || [] : [],
           club_memos: Object.fromEntries(slugs.map(slug => {
+            // A notes-only club never shows Main, so a later Main replaces nothing there.
+            const newestMonth = clubs.find(c => c.slug === slug)?.notes_only ? '' : newestMainMonthAll
             const row = (rows || []).find(r => e.id && r.edition_id === e.id && r.club_slug === slug) || null
             // Notes from earlier months whose end date reaches into this one.
             const carried = (rows || [])
