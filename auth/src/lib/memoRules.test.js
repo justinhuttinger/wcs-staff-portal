@@ -237,3 +237,27 @@ test('clearing a published note start keeps it up', () => {
   const { notes } = cleanNotes([{ id: 'a', title: 'T', description: 'D', starts_at: null }], saved)
   assert.strictEqual(notes[0].starts_at, '2026-11-01T00:00:00.000Z')
 })
+
+test('a notes-only club never shows Main, only its own notes', () => {
+  const at = new Date('2026-11-10T00:00:00Z')
+  const opts = { notesOnly: true }
+  assert.strictEqual(composeMemo([NOV], [], at, opts), null)
+  const memo = composeMemo([NOV], [note('a', 'nov', '2026-11-05T00:00:00Z')], at, opts)
+  assert.strictEqual(memo.month, '2026-11-01')
+  assert.deepStrictEqual(memo.main_items, [])
+  assert.deepStrictEqual(memo.note_ids, ['a'])
+})
+
+test('a later Main does not replace a notes-only club\'s open-ended notes', () => {
+  const notes = [note('a', 'nov', '2026-11-05T00:00:00Z')]
+  const memo = composeMemo([NOV, DEC], notes, new Date('2026-12-02T00:00:00Z'), { notesOnly: true })
+  assert.deepStrictEqual(memo.note_ids, ['a'])
+  assert.deepStrictEqual(memo.main_items, [])
+})
+
+test('the iPad plan for a notes-only club leaves Main out', () => {
+  const notes = [note('a', 'nov', '2026-11-05T00:00:00Z')]
+  const plan = memoPlan([NOV, DEC], notes, new Date('2026-11-10T00:00:00Z'), { notesOnly: true })
+  assert.ok(plan.length >= 1)
+  assert.ok(plan.every(m => m.main_items.length === 0))
+})

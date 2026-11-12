@@ -52,7 +52,7 @@ let running = false
 async function loadWork(supabaseAdmin) {
   const { data: clubs, error } = await supabaseAdmin
     .from('memo_clubs')
-    .select('club_slug, ipad_target, ipad_status, ipad_failed_md5, ipad_pushed_md5, normal_saved_at, normal_image_md5')
+    .select('club_slug, notes_only, ipad_target, ipad_status, ipad_failed_md5, ipad_pushed_md5, normal_saved_at, normal_image_md5')
     .eq('enabled', true)
     .not('ipad_target', 'is', null)
   if (error) throw error
@@ -66,7 +66,7 @@ async function loadWork(supabaseAdmin) {
   if (imagesErr) throw imagesErr
 
   return clubs.map((club) => {
-    const live = composeMemo(editions, notes.filter(n => n.club_slug === club.club_slug))
+    const live = composeMemo(editions, notes.filter(n => n.club_slug === club.club_slug), new Date(), { notesOnly: club.notes_only === true })
     const image = (live && (images || []).find(i => i.club_slug === club.club_slug && i.composition_key === live.key)) || null
     return { club, live, plan: planClub({ club, live, image }) }
   })
