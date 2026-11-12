@@ -125,6 +125,8 @@ app.use('/dayone', require('./routes/dayOneBooking'))
 // "Meet with Justin" — a calendar GROUP in the corporate sub-account, so the
 // visitor picks a meeting length before a time.
 app.use('/meetjustin', require('./routes/meetBooking'))
+// Gym Tour booking (book.westcoaststrength.com/tour/salem). Public, like /dayone.
+app.use('/tour', require('./routes/tourBooking'))
 app.use('/public/group-x', require('./routes/publicGroupX'))
 // Login-free per-club headcount logging. Deliberately NOT under /public/group-x,
 // whose GET-only CORS above would block this route's PUT preflight.

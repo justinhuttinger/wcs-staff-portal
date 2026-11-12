@@ -34,6 +34,7 @@ const {
   extraTrainerRoster, getExtraDayOneCalendars,
   resolveBookingCalendar, clearExtraCalendarCache, trainerKey,
 } = require('../lib/ghlBooking')
+const { linkedContact, publicName } = require('../lib/ghlContactLink')
 
 const router = Router()
 
@@ -476,26 +477,7 @@ router.get('/api/slot-trainers', readLimiter, async (req, res) => {
 // ---------------------------------------------------------------------------
 // Personal booking links: /dayone/<slug>?c={{contact.id}} from a GHL text.
 // ---------------------------------------------------------------------------
-// The person is already a GHL contact, so the page skips name / email / phone
-// and books that contact directly (no upsert, so no chance of a duplicate). The
-// id is unsigned, so the page only ever gets a first name + last initial; the
-// contact must belong to this club's GHL location or it counts as not found and
-// the page shows the normal form.
-async function linkedContact(loc, rawId) {
-  const id = String(rawId || '').trim()
-  if (!/^[A-Za-z0-9]{6,64}$/.test(id)) return null
-  let contact
-  try {
-    contact = (await ghlFetch(`/contacts/${id}`, loc.apiKey))?.contact
-  } catch (e) {
-    // 403 = another club's contact (this key can't see it); same as not found.
-    if (/GHL API error (400|403|404)/.test(e.message)) return null
-    throw e
-  }
-  if (!contact?.id || contact.locationId !== loc.id) return null
-  if (!String(contact.firstName || '').trim()) return null
-  return contact
-}
+// The lookup is shared with the Gym Tour page; see lib/ghlContactLink.
 
 router.get('/api/prefill', readLimiter, async (req, res) => {
   res.set('Cache-Control', 'no-store')
@@ -503,10 +485,7 @@ router.get('/api/prefill', readLimiter, async (req, res) => {
   try {
     const contact = loc ? await linkedContact(loc, req.query.c) : null
     if (!contact) return res.status(404).json({ error: 'Link not recognized' })
-    res.json({
-      firstName: String(contact.firstName).trim(),
-      lastInitial: String(contact.lastName || '').trim().charAt(0).toUpperCase(),
-    })
+    res.json(publicName(contact))
   } catch (e) {
     console.error('[DayOneWidget] prefill failed:', e.message)
     res.status(502).json({ error: 'Could not look you up' })
