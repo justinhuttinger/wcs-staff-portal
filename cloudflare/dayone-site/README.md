@@ -21,6 +21,7 @@ Same approach as `join.westcoaststrength.com` (the online-join worker).
 | `book.westcoaststrength.com/dayone/` | location list |
 | `book.westcoaststrength.com/meetjustin/` | Meet with Justin (pick a length, then a time) |
 | `book.westcoaststrength.com/tour/salem` | Gym Tour booking (`?c={{contact.id}}` = personal link) |
+| `book.westcoaststrength.com/insurance/salem` | Front desk insurance check (programs per club: portal Admin -> Insurance Programs) |
 | `book.westcoaststrength.com/` | redirects to `/dayone/` |
 
 Any club slug works: `salem`, `keizer`, `eugene`, `springfield`, `clackamas`,

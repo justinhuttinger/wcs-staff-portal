@@ -2387,6 +2387,15 @@ export async function saveAppSettings(settings) {
   return api('/config/app-settings', { method: 'PUT', body: JSON.stringify({ settings }) })
 }
 
+// Insurance check page: which programs each club shows (admin only).
+export async function getInsurancePrograms() {
+  return api('/insurance/api/admin')
+}
+
+export async function saveInsurancePrograms(clubs) {
+  return api('/insurance/api/admin', { method: 'PUT', body: JSON.stringify({ clubs }) })
+}
+
 // Custom Fields
 export async function getCustomFields(location) {
   const qs = location ? '?location=' + location : ''
