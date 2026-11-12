@@ -1,0 +1,110 @@
+# Release workflow for WCS ABC (the ABC-only flavor of the launcher).
+#
+# Triggered by pushing a tag of the form `abc-v0.0.22`, or run by hand. Builds
+# the Windows installer SIGNED with Azure Trusted Signing (same secrets and
+# variables as release.yml) and uploads it to the R2 bucket behind
+# downloads.westcoaststrength.com/abc, which the "WCS ABC Updater" task and the
+# Action1 install script read from.
+#
+# Why this exists: WCS ABC used to be built by hand on a PC without the signing
+# credentials, so its installers were unsigned and Windows Smart App Control
+# blocks them outright ("An Application Control policy has blocked this file").
+#
+# Before tagging: bump extraMetadata.version in launcher/electron-builder.abc.yml.
+# The tag is only a trigger; the version comes from that file.
+#
+# Extra secret (on top of release.yml's):
+#   ABC_DISPLAY_FONT_B64  - base64 of ProhibitionTest-Regular.otf. The button
+#                           font is a trial font kept out of the repo (see
+#                           launcher/.gitignore); build.js refuses to build WCS
+#                           ABC without it.
+
+name: Release WCS ABC
+
+on:
+  push:
+    tags:
+      - 'abc-v*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: launcher/package-lock.json
+
+      - name: Install launcher dependencies
+        working-directory: launcher
+        run: npm ci
+
+      - name: Restore the button font
+        working-directory: launcher
+        shell: bash
+        env:
+          FONT_B64: ${{ secrets.ABC_DISPLAY_FONT_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FONT_B64" ]; then
+            echo "ABC_DISPLAY_FONT_B64 secret is not set" >&2
+            exit 1
+          fi
+          mkdir -p assets/fonts
+          printf '%s' "$FONT_B64" | base64 -d > assets/fonts/ProhibitionTest-Regular.otf
+
+      # build.js turns signing on when all six AZURE_* values are present, and
+      # fails if only some are. --publish never: the files go to R2 below, and
+      # the generic feed's abc.yml is still written to dist/.
+      - name: Build WCS ABC installer (signed)
+        working-directory: launcher
+        env:
+          AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: npm run dist:abc
+
+      # Never publish an installer Smart App Control would block.
+      - name: Verify the installer is signed
+        working-directory: launcher/dist
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Filter 'WCS-ABC-Setup-*.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'No WCS ABC installer in dist/' }
+          $sig = Get-AuthenticodeSignature $exe.FullName
+          Write-Output "$($exe.Name): $($sig.Status) / $($sig.SignerCertificate.Subject)"
+          if ($sig.Status -ne 'Valid') { throw "Installer signature is $($sig.Status)" }
+
+      # Installer + blockmap first, abc.yml LAST: the feed must never point at
+      # a file that isn't uploaded yet.
+      - name: Upload build to R2
+        working-directory: launcher/dist
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_PREFIX: wcs-launcher-downloads/abc
+        run: |
+          set -euo pipefail
+          put() {
+            echo "-> $R2_PREFIX/$1"
+            npx --yes wrangler@4 r2 object put "$R2_PREFIX/$1" --file "$1" --content-type "$2" --remote
+          }
+          shopt -s nullglob
+          ls -la
+          [ -f abc.yml ] || { echo "abc.yml was not generated" >&2; exit 1; }
+          for f in WCS-ABC-Setup-*.exe WCS-ABC-Setup-*.exe.blockmap; do put "$f" application/octet-stream; done
+          put abc.yml 'text/yaml; charset=utf-8'
