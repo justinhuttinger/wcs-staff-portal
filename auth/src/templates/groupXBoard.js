@@ -75,7 +75,7 @@ function escapeHtml(s) {
 // Shared by the Group X board and the facility (courts / pool) boards. The
 // only differences are the heading, the eyebrow and which endpoint it polls, so
 // they are parameters rather than a forked copy of 300 lines of CSS.
-function renderBoardHtml({ clubSlug, clubName, brand, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag, layout, embed, emptyLabel, startDate, autoPrint }) {
+function renderBoardHtml({ clubSlug, clubName, brand, safePercent, boardTitle, eyebrowLabel, scheduleUrl, showDurationTag, layout, embed, emptyLabel, startDate, autoPrint, area, areaTabs }) {
   const title = boardTitle || 'Class Schedule'
   const eyebrow = eyebrowLabel || 'Group X'
   const feed = scheduleUrl || '/public/group-x/schedule'
@@ -107,6 +107,15 @@ function renderBoardHtml({ clubSlug, clubName, brand, safePercent, boardTitle, e
   // "JUL 31 - AUG 6" is the one thing the surrounding page can't say for the
   // board, since the board picks the week off the client clock.
   const isEmbed = embed === true
+  // A club whose schedule is split by area (lib/groupXAreas). `area` narrows the
+  // feed; `areaTabs` additionally draws a switch between areas, for the
+  // website iframe, where one frame has to carry both schedules.
+  const tabs = Array.isArray(areaTabs) && areaTabs.length > 1 ? areaTabs : null
+  const tabsHtml = tabs
+    ? '    <nav class="areas" aria-label="Schedule">' + tabs.map(t =>
+        `<button type="button" class="areas__tab" data-area="${escapeHtml(t.key)}" aria-pressed="${t.key === area ? 'true' : 'false'}">${escapeHtml(t.label)}</button>`
+      ).join('') + '</nav>\n'
+    : ''
   const b = BOARD_BRANDS[brand] || BOARD_BRANDS.wcs
   return `<!doctype html>
 <html lang="en">
@@ -213,6 +222,17 @@ ${WCS_DISPLAY_FACE}
      from any distance, and it is the one label that says WHICH week the board
      is showing -- the least useful thing on the board to make people squint at.
      The clock beside it stays red, so the two still read as different things. */
+  /* Area switch (Group X / Ultimate) on a split club's untargeted board. */
+  .areas { display: flex; gap: .4em; align-self: flex-end; }
+  .areas__tab {
+    font-family: var(--font-display); text-transform: uppercase;
+    font-size: clamp(1rem, .7rem + 1.2vw, 1.8rem); line-height: 1;
+    padding: .3em .6em .2em;
+    border: 2px solid var(--color-accent); border-radius: 999px;
+    background: transparent; color: var(--color-text); cursor: pointer;
+  }
+  .areas__tab[aria-pressed="true"] { background: var(--color-accent); color: #fff; }
+  .areas__tab:focus-visible { outline: 3px solid var(--color-text); outline-offset: 2px; }
   .range {
     margin-left: auto;
     font-family: var(--font-display); text-transform: uppercase;
@@ -564,6 +584,7 @@ ${WCS_DISPLAY_FACE}
      body would overflow and bring the second page back. */
   @media print {
     @page { size: 11in 8.5in; margin: 0; }
+    .areas { display: none !important; }
 
     html { height: auto; overflow: hidden; }
     body {
@@ -682,10 +703,10 @@ ${isEmbed ? `
   <header class="head">
     <img class="head__logo" src="${b.logo}" alt="${escapeHtml(b.name)}" />
 ${isEmbed ? '' : `    <div class="head__titles">
-      <span class="eyebrow">${escapeHtml(clubName)} · ${escapeHtml(eyebrow)}</span>
-      <h1 class="title mark">${escapeHtml(title)}</h1>
+      <span class="eyebrow">${escapeHtml(clubName)} · <span id="eyebrowArea">${escapeHtml(eyebrow)}</span></span>
+      <h1 class="title mark" id="boardTitle">${escapeHtml(title)}</h1>
     </div>
-`}    <div class="range" id="range"></div>
+`}${tabsHtml}    <div class="range" id="range"></div>
     <div class="now" id="now"></div>
   </header>
 
@@ -720,6 +741,9 @@ ${isEmbed ? '' : `    <div class="head__titles">
   // prints itself, so there is no second rendering to drift from this one.
   var AUTO_PRINT = ${autoPrint ? 'true' : 'false'};
   var EMPTY = ${JSON.stringify(empty)};
+  // Split clubs only: which area the feed is narrowed to ('' = everything).
+  var AREA = ${JSON.stringify(area || '')};
+  var AREA_LABELS = ${JSON.stringify(Object.fromEntries((tabs || []).map(t => [t.key, t.label])))};
   var COLLARS = ${JSON.stringify(COLLARS)};
   var REFRESH_MS = 5 * 60 * 1000;
   var weekEl = document.getElementById('week');
@@ -951,13 +975,17 @@ ${isEmbed ? '' : `    <div class="head__titles">
     // ?facility=pool), so pick the separator rather than always using '?'.
     var sep = FEED.indexOf('?') === -1 ? '?' : '&';
     var url = FEED + sep + 'club=' + encodeURIComponent(CLUB)
-      + '&week=' + encodeURIComponent(START || pacificToday());
+      + '&week=' + encodeURIComponent(START || pacificToday())
+      + (AREA ? '&area=' + encodeURIComponent(AREA) : '');
+    var asked = AREA;
     fetch(url, { cache: 'no-store' })
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       })
       .then(function (data) {
+        // A slow answer for the area the reader just switched away from.
+        if (asked !== AREA) return;
         lastGood = data;
         render(data);
         setStatus('Updated ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), false);
@@ -1084,6 +1112,26 @@ ${isEmbed ? `
   }
   postHeight();
 ` : ''}
+  // Area switch. Swaps the heading in place and reloads; the last good render
+  // stays up until the other area's week arrives.
+  var areaTabs = document.querySelectorAll('.areas__tab');
+  for (var t = 0; t < areaTabs.length; t++) {
+    areaTabs[t].addEventListener('click', function () {
+      var next = this.getAttribute('data-area');
+      if (!next || next === AREA) return;
+      AREA = next;
+      for (var j = 0; j < areaTabs.length; j++) {
+        areaTabs[j].setAttribute('aria-pressed', areaTabs[j] === this ? 'true' : 'false');
+      }
+      var label = AREA_LABELS[AREA] || '';
+      var titleEl = document.getElementById('boardTitle');
+      var eyebrowEl = document.getElementById('eyebrowArea');
+      if (titleEl && label) titleEl.textContent = label + ' Schedule';
+      if (eyebrowEl && label) eyebrowEl.textContent = label;
+      load();
+    });
+  }
+
   markNow();
   load();
   // Refreshing while someone is reading a description would yank it away, so

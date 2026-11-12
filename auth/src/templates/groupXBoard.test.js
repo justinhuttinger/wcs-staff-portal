@@ -273,3 +273,26 @@ test('hovering the class on now keeps it visible', () => {
   const html = groupX()
   assert.ok(html.includes('.day--today .cls--now.cls--tap:hover { background: var(--color-accent-hover); }'))
 })
+
+test('a split board draws a tab per area and asks the feed for the first', () => {
+  const html = renderBoardHtml({
+    clubSlug: 'x', clubName: 'X', area: 'groupx',
+    areaTabs: [{ key: 'groupx', label: 'Group X' }, { key: 'ultimate', label: 'Ultimate' }],
+    boardTitle: 'Group X Schedule',
+  })
+  assert.match(html, /data-area="groupx" aria-pressed="true">Group X</)
+  assert.match(html, /data-area="ultimate" aria-pressed="false">Ultimate</)
+  assert.match(html, /var AREA = "groupx";/)
+  assert.match(html, /'&area=' \+ encodeURIComponent\(AREA\)/)
+  const js = html.slice(html.indexOf('<script>') + 8, html.lastIndexOf('</script>'))
+  assert.doesNotThrow(() => new Function(js))
+})
+
+test('a pinned area has no tabs, and an unsplit board has neither', () => {
+  const pinned = renderBoardHtml({ clubSlug: 'x', clubName: 'X', area: 'ultimate', boardTitle: 'Ultimate Schedule' })
+  assert.doesNotMatch(pinned, /class="areas"/)
+  assert.match(pinned, /var AREA = "ultimate";/)
+  assert.match(pinned, /Ultimate Schedule/)
+  assert.doesNotMatch(groupX(), /class="areas"/)
+  assert.match(groupX(), /var AREA = "";/)
+})

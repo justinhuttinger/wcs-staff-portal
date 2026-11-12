@@ -21,6 +21,7 @@ const { supabaseAdmin } = require('../services/supabase')
 const { currentPacificDate, mondayOf, buildDays, windowEnd, publicCacheKey } = require('../lib/groupXPublic')
 const { renderBoardHtml } = require('../templates/groupXBoard')
 const { brandForSlug } = require('../services/dayOneProgram/brands')
+const { AREAS, DEFAULT_AREA, areaByKey, areaForCategories, filterWeekByArea } = require('../lib/groupXAreas')
 
 const router = Router()
 
@@ -60,11 +61,17 @@ async function loadWeek(club, start) {
     // the schedule without the NEW pill, which beats a blank TV.
     if (typeFlags.error) console.warn('[publicGroupX] class badges unavailable:', typeFlags.error.message)
     if (eventFlags.error) console.warn('[publicGroupX] session badges unavailable:', eventFlags.error.message)
-    const descriptions = new Map((classTypes || []).map(t => [t.event_type_id, t.description]))
-    const withDescriptions = classes.map(c => ({
-      ...c,
-      description: descriptions.get(c.event_type_id) || null,
-    }))
+    const typesById = new Map((classTypes || []).map(t => [t.event_type_id, t]))
+    const withDescriptions = classes.map(c => {
+      const type = typesById.get(c.event_type_id)
+      return {
+        ...c,
+        description: (type && type.description) || null,
+        // Every club's classes carry an area; only a club with the split
+        // switched on ever filters by it (see areaFor below).
+        area: areaForCategories(type && type.categories),
+      }
+    })
     const flagged = markNewClasses(withDescriptions, typeFlags.data || [], eventFlags.data || [])
     return { club: club.name, club_slug: club.slug, ...buildDays(start, flagged) }
   })
@@ -80,6 +87,19 @@ function resolve(req) {
   return { club, start }
 }
 
+// The area this request is narrowed to, or null for the whole schedule. A club
+// without the split switched on is never narrowed, whatever the URL says: a
+// stray ?area= must not quietly hide half a club's classes.
+async function areaFor(req, club) {
+  const area = areaByKey(req.query.area)
+  if (!area) return null
+  return await isSplit(club) ? area : null
+}
+
+async function isSplit(club) {
+  return clubFeatures.isEnabled(club.clubNumber, clubFeatures.GROUP_X_AREAS).catch(() => false)
+}
+
 router.get('/schedule', async (req, res) => {
   const r = resolve(req)
   if (!r) return res.status(404).json({ error: 'unknown club' })
@@ -89,8 +109,10 @@ router.get('/schedule', async (req, res) => {
     if (!await clubFeatures.isEnabled(r.club.clubNumber, clubFeatures.GROUP_X)) {
       return res.status(404).json({ error: 'unknown club' })
     }
+    const area = await areaFor(req, r.club)
+    const week = await loadWeek(r.club, r.start)
     res.set('Cache-Control', 'public, max-age=300')
-    res.json(await loadWeek(r.club, r.start))
+    res.json(area ? filterWeekByArea(week, area.key) : week)
   } catch (err) {
     console.error('[publicGroupX] /schedule failed:', err.message)
     res.status(503).json({ error: 'schedule temporarily unavailable' })
@@ -121,7 +143,21 @@ router.get('/board', async (req, res) => {
   // Snapped here rather than trusted from the caller, because the board can be
   // printed straight from its own URL with no portal in front of it.
   if (req.query.print === '1') startDate = mondayOf(startDate || currentPacificDate())
+  // A split club: ?area= pins one area (a TV over one room, a printed sheet
+  // for one room). With no area the board shows a tab per area, which is what
+  // the website iframe gets. Unsplit clubs get neither.
+  const split = await isSplit(r.club)
+  const pinned = split ? areaByKey(req.query.area) : null
+  const areaOpts = !split ? {} : pinned
+    ? { area: pinned.key, boardTitle: `${pinned.label} Schedule`, eyebrowLabel: pinned.label }
+    : {
+        area: DEFAULT_AREA,
+        areaTabs: AREAS,
+        boardTitle: `${areaByKey(DEFAULT_AREA).label} Schedule`,
+        eyebrowLabel: areaByKey(DEFAULT_AREA).label,
+      }
   res.type('html').send(renderBoardHtml({
+    ...areaOpts,
     clubSlug: r.club.slug,
     clubName: r.club.name,
     // Milwaukie trades as East Side Athletic Clubs: ESAC wordmark, black

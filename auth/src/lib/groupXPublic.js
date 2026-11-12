@@ -84,6 +84,9 @@ function toPublicClass(c, opts) {
     // card clickable off this, so an empty string would create a popup with
     // nothing in it.
     description: c.description ? String(c.description) : null,
+    // Which board area the class belongs to (lib/groupXAreas). Group X only;
+    // facility slots never carry one, so the key is left off rather than null.
+    ...(c.area ? { area: String(c.area) } : {}),
   }
 }
 

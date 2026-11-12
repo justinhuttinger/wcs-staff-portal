@@ -26,6 +26,7 @@ router.use(requireRole('admin'))
 const FEATURES = [
   ...FACILITIES.map(f => ({ key: f.slug, label: f.label, kind: 'facility' })),
   { key: clubFeatures.GROUP_X, label: 'Group X', kind: 'classes' },
+  { key: clubFeatures.GROUP_X_AREAS, label: 'Separate Ultimate board', kind: 'classes' },
 ]
 
 const FEATURE_KEYS = new Set(FEATURES.map(f => f.key))

@@ -141,6 +141,9 @@ function _shapeClassType(raw) {
     description: raw.description || null,
     duration_minutes: num(raw.duration),
     max_attendees: num(raw.maxAttendees),
+    // ABC "custom categories" on the type, e.g. ['Group X'] or ['Ultimate'].
+    // Clubs that split their board by area sort classes on these.
+    categories: (raw.customCategories || []).map(c => c && c.categoryName).filter(Boolean),
     training_levels: (raw.eventTrainingLevels || []).map(l => ({
       level_id: l.levelId,
       level_name: l.levelName,

@@ -4,12 +4,26 @@ import { useState } from 'react'
 // the portal, so this is derived from VITE_API_URL rather than window.location.
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
-function boardUrl(slug) {
-  return `${API_URL}/public/group-x/board?club=${slug}`
+function boardUrl(slug, areaKey) {
+  return `${API_URL}/public/group-x/board?club=${slug}${areaKey ? `&area=${areaKey}` : ''}`
 }
 
-function embedCode(slug, name) {
-  return `<iframe src="${boardUrl(slug)}" title="${name} Group X class schedule" style="width:100%;height:820px;border:0" loading="lazy"></iframe>`
+// One row per board. A club split by area (Group X / Ultimate) gets its plain
+// URL, which shows a switch between the two and is the one for the website,
+// plus a pinned URL per area for the TV in each room.
+function rowsFor(clubs) {
+  return clubs.flatMap(c => {
+    const plain = { key: c.slug, slug: c.slug, name: c.name, label: c.name }
+    if (!Array.isArray(c.areas) || c.areas.length < 2) return [plain]
+    return [
+      { ...plain, label: `${c.name} (website, both)` },
+      ...c.areas.map(a => ({ key: `${c.slug}:${a.key}`, slug: c.slug, name: `${c.name} ${a.label}`, label: `${c.name} - ${a.label} TV`, areaKey: a.key })),
+    ]
+  })
+}
+
+function embedCode(slug, name, areaKey) {
+  return `<iframe src="${boardUrl(slug, areaKey)}" title="${name} Group X class schedule" style="width:100%;height:820px;border:0" loading="lazy"></iframe>`
 }
 
 function CopyButton({ value, label = 'Copy' }) {
@@ -71,12 +85,12 @@ export default function BoardLinks({ clubs }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <tbody>
-            {clubs.map(c => {
-              const value = showEmbed ? embedCode(c.slug, c.name) : boardUrl(c.slug)
+            {rowsFor(clubs).map(c => {
+              const value = showEmbed ? embedCode(c.slug, c.name, c.areaKey) : boardUrl(c.slug, c.areaKey)
               return (
-                <tr key={c.slug} className="border-t border-border first:border-t-0">
+                <tr key={c.key} className="border-t border-border first:border-t-0">
                   <td className="py-2 pr-3 font-medium text-text-primary whitespace-nowrap align-top">
-                    {c.name}
+                    {c.label}
                   </td>
                   <td className="py-2 pr-3 w-full align-top">
                     <code className="block text-xs text-text-muted break-all font-mono">{value}</code>
