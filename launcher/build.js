@@ -58,5 +58,27 @@ if (missing.length === 0) {
   console.warn('[build] Windows code signing OFF (no AZURE_SIGN_* env). Smart App Control will block this build.')
 }
 
+// electron-builder 25 builds the Azure signing call as one PowerShell command
+// string with the file path UNQUOTED (`-Files C:\...\WCS ABC.exe`), so any path
+// with a space is cut at the space and SignTool fails with "File not found:
+// ...\win-unpacked\WCS". Portal never hit it (Portal.exe); WCS ABC and its
+// "Uninstall WCS ABC.exe" do. Fixed upstream in 26; until we upgrade, quote the
+// path here. Idempotent, and a no-op if the code no longer looks like this.
+function quoteAzureSignPath() {
+  let file
+  try {
+    file = require.resolve('app-builder-lib/out/codeSign/windowsSignAzureManager.js', { paths: [__dirname] })
+  } catch {
+    return
+  }
+  const src = fs.readFileSync(file, 'utf8')
+  const unquoted = 'Files: options.path,'
+  if (!src.includes(unquoted)) return
+  const quoted = 'Files: "\'" + String(options.path).replace(/\'/g, "\'\'") + "\'",'
+  fs.writeFileSync(file, src.replace(unquoted, quoted))
+  console.log('[build] Quoted the Azure signing file path (electron-builder 25 workaround)')
+}
+if (missing.length === 0) quoteAzureSignPath()
+
 const result = spawnSync('npx', ['electron-builder', ...args], { stdio: 'inherit', shell: true })
 process.exit(result.status ?? 1)
