@@ -731,7 +731,10 @@ app.on('ready', async () => {
   // plain web pages. The page sends a key, never a URL, so it can only open
   // these.
   const CLUB_LINKS = {
-    insurance: { title: 'Insurance Verification', url: (slug) => `https://strengthcoastwest.com/insurance/${slug}` },
+    // Our own page (auth routes/insuranceCheck.js); programs per club are set in
+    // portal Admin -> Insurance Programs. Replaced the GHL funnel pages, which
+    // were missing for newer clubs.
+    insurance: { title: 'Insurance Verification', url: (slug) => `https://book.westcoaststrength.com/insurance/${slug}` },
     paychex: { title: 'Paychex', url: () => 'https://login.flex.paychex.com/' },
   }
   ipcMain.on('abc-open-link', (e, key) => {
