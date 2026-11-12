@@ -31,6 +31,7 @@ const {
   isPlayground, playgroundStorageKey, messageById, buildMessages, customValuesMap,
 } = require('../lib/dripPlayground')
 const audit = require('../services/auditLog')
+const { resolveGhlContactId } = require('../lib/resolveGhlContact')
 
 // app_config keys backing the test send.
 const WEBHOOK_KEY = 'drip_test_webhook_url'
@@ -600,17 +601,30 @@ router.post('/test-sms', async (req, res) => {
         if (cv.fieldKey || cv.key) customValues[cv.fieldKey || cv.key] = cv.value
       }
     }
-    const rendered = resolveTokens(req.body.text, {
+    const values = {
+      ...DEFAULT_SAMPLE_VALUES,
+      ...parseSaved(settings[SAMPLE_KEY]),
+      'location.name': loc.name,
+      ...(req.body.values || {}),
+    }
+    const renderWith = vals => resolveTokens(req.body.text, {
       customValues,
-      values: {
-        ...DEFAULT_SAMPLE_VALUES,
-        ...parseSaved(settings[SAMPLE_KEY]),
-        'location.name': loc.name,
-        ...(req.body.values || {}),
-      },
+      values: vals,
       contact: req.body.contact || {},
       location: { name: loc.name },
     })
+    let rendered = renderWith(values)
+
+    // {{contact.id}} (usually inside a custom value, e.g. a personal Day One
+    // link) has no sample value: it has to be a real contact at THIS club or the
+    // link in the test is dead. Use the contact the test phone belongs to here,
+    // which is the person the test is going to. No match leaves it unresolved,
+    // and the panel reports it as before.
+    let testContactId = null
+    if (!playground && rendered.unresolved.includes('contact.id')) {
+      testContactId = await resolveGhlContactId({ locationId: loc.id, apiKey: loc.apiKey, phone })
+      if (testContactId) rendered = renderWith({ ...values, 'contact.id': testContactId })
+    }
 
     // GHL's Send SMS action rejects an empty attachment ("Not a valid URL
     // parameter"), so a message without media cannot go through an action that
@@ -652,6 +666,7 @@ router.post('/test-sms', async (req, res) => {
     res.json({
       ok: true,
       phone,
+      testContactId,
       text: rendered.text,
       unresolved: rendered.unresolved,
       ...smsSegments(rendered.text),
