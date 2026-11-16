@@ -36,3 +36,9 @@ test('buildPrompt nudge lists what is still owed', () => {
   assert.match(p, /Keizer copy/)
   assert.match(p, /Eugene photo/)
 })
+
+test('buildPrompt asks Claude to include the upload link when there is one', () => {
+  const p = buildPrompt({ kind: 'initial', project: { recipient_name: 'Sam', recipient_email: 's@x.co', title: 'T' },
+    history: [], today: '2026-11-16', openSlots: ['Salem Photo'], uploadUrl: 'https://x/upload.html?t=abc' })
+  assert.match(p, /https:\/\/x\/upload\.html\?t=abc/)
+})
