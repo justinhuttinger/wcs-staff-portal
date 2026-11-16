@@ -1809,6 +1809,20 @@ export async function getMeetingNotesAuthUrl() {
   return api('/meeting-notes/authorize-url', { method: 'POST' })
 }
 
+// Hub (owner-only): private task list, categories.
+export const hub = {
+  tasks: {
+    list: () => api('/hub/tasks'),
+    create: (body) => api('/hub/tasks', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id, patch) => api(`/hub/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  },
+  categories: {
+    list: () => api('/hub/categories'),
+    create: (body) => api('/hub/categories', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id, patch) => api(`/hub/categories/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  },
+}
+
 // Follow-ups (owner-only personal tracker; emails go out from his Gmail).
 export const followUps = {
   status: () => api('/follow-ups/status'),

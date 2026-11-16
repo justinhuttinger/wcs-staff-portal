@@ -31,7 +31,8 @@ import AdsManagerView from './components/AdsManagerView'
 import WorkflowTransferView from './components/WorkflowTransferView'
 import { canUseWorkflowTransfer } from './config/workflowTransfer'
 import FollowUpsView from './components/FollowUpsView'
-import { canUseFollowUps } from './config/followUps'
+import { canUseFollowUps, canUseHub } from './config/followUps'
+import HubView from './components/hub/HubView'
 // Side effect: picks the GHL session out of #open/workflowTransfer?ghl=...
 // and wipes it from the address bar before anything else reads the hash.
 import './lib/ghlSession'
@@ -119,6 +120,7 @@ export default function App() {
   const [showAdsManager, setShowAdsManager] = useState(false)
   const [showWorkflowTransfer, setShowWorkflowTransfer] = useState(false)
   const [showFollowUps, setShowFollowUps] = useState(false)
+  const [showHub, setShowHub] = useState(false)
   const [showAnalytics, setShowAnalytics] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
@@ -146,6 +148,7 @@ export default function App() {
   const isAdmin = user?.staff?.role === 'admin'
   const canWorkflowTransfer = canUseWorkflowTransfer(user?.staff)
   const canFollowUps = canUseFollowUps(user?.staff)
+  const canHub = canUseHub(user?.staff)
   // Tickets waiting on this person, for the count on the pinned Tickets tab.
   // Press-only, since that tab is the only place it is shown; the classic
   // header has no pins. Re-reads when the Tickets view opens or closes, so
@@ -558,7 +561,7 @@ export default function App() {
     )
   }
 
-  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showGroupX && !showFacility && !showTill && !showCoaching && !showGhlScripts && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showEventCalendar && !showMemos && !showInventory && !showForms && !showQuizzes && !showNps && !showAdsManager && !showWorkflowTransfer && !showFollowUps && !showAnalytics && !showProfile
+  const isHome = !showAdmin && !showCalendar && !showTrainerAvail && !showGroupX && !showFacility && !showTill && !showCoaching && !showGhlScripts && !showTicketsBoard && !showHelpCenter && !showDrive && !showDriveHub && !showMediaLibrary && !showHR && !showCommunicationNotes && !showLeaderboard && !showReporting && !showMarketingTracker && !showEventCalendar && !showMemos && !showInventory && !showForms && !showQuizzes && !showNps && !showAdsManager && !showWorkflowTransfer && !showFollowUps && !showHub && !showAnalytics && !showProfile
 
   function exitImpersonation() {
     setImpersonateId(null)
@@ -594,6 +597,7 @@ export default function App() {
     setShowAdsManager(false)
     setShowWorkflowTransfer(false)
     setShowFollowUps(false)
+    setShowHub(false)
     setShowForms(false)
     setShowQuizzes(false)
     setShowNps(false)
@@ -670,6 +674,7 @@ export default function App() {
     { key: 'tool:adsManager', label: 'Ads Manager', desc: 'Meta', show: isAdmin, open: () => setShowAdsManager(true) },
     { key: 'tool:workflowTransfer', label: 'Workflow Transfer', desc: 'GHL import/export', show: canWorkflowTransfer, open: () => setShowWorkflowTransfer(true) },
     { key: 'tool:followUps', label: 'Follow-ups', desc: 'Waiting on people', show: canFollowUps, open: () => setShowFollowUps(true) },
+    { key: 'tool:hub', label: 'Hub', desc: 'Your tasks', show: canHub, open: () => setShowHub(true) },
     { key: 'tool:analytics', label: 'Analytics', desc: 'Company Reports', icon: 'reporting', show: canAnalytics, open: () => { window.location.hash = '#analytics'; setShowAnalytics(true) } },
   ]
     .map(item => (item.kind ? item : { ...item, kind: 'tool' }))
@@ -714,6 +719,7 @@ export default function App() {
     : showAdsManager ? 'tool:adsManager'
     : showWorkflowTransfer ? 'tool:workflowTransfer'
     : showFollowUps ? 'tool:followUps'
+    : showHub ? 'tool:hub'
     : showAnalytics ? 'tool:analytics'
     : null
 
@@ -939,9 +945,11 @@ export default function App() {
         <WorkflowTransferView onBack={() => setShowWorkflowTransfer(false)} />
       ) : showFollowUps && canFollowUps ? (
         <FollowUpsView onBack={() => setShowFollowUps(false)} />
+      ) : showHub && canHub ? (
+        <HubView onBack={() => setShowHub(false)} />
       ) : (
         <main className={`flex-1 flex items-start pt-1 pb-12${press ? ' press-single' : ''}`}>
-          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingSection={openMarketing} onEventCalendar={() => setShowEventCalendar(true)} onMemos={() => setShowMemos(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onQuizzes={() => setShowQuizzes(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onCoaching={() => setShowCoaching(true)} onGhlScripts={() => setShowGhlScripts(true)} onAdsManager={() => setShowAdsManager(true)} onWorkflowTransfer={canWorkflowTransfer ? () => setShowWorkflowTransfer(true) : undefined} onFollowUps={canFollowUps ? () => setShowFollowUps(true) : undefined} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} marketingCaps={mAccess} customReports={user.staff?.custom_reports || []} />
+          <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingSection={openMarketing} onEventCalendar={() => setShowEventCalendar(true)} onMemos={() => setShowMemos(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onQuizzes={() => setShowQuizzes(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onCoaching={() => setShowCoaching(true)} onGhlScripts={() => setShowGhlScripts(true)} onAdsManager={() => setShowAdsManager(true)} onWorkflowTransfer={canWorkflowTransfer ? () => setShowWorkflowTransfer(true) : undefined} onFollowUps={canFollowUps ? () => setShowFollowUps(true) : undefined} onHub={canHub ? () => setShowHub(true) : undefined} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} marketingCaps={mAccess} customReports={user.staff?.custom_reports || []} />
         </main>
       )}
       </div>
