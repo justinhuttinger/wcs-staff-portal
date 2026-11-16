@@ -34,7 +34,7 @@ function stubDb({ taskStatus = 'waiting', slotPerson = 'p1', slotTask = 't1' } =
     getToken: async t => (t === 'good' ? { person_id: 'p1' } : null),
     getPerson: async id => (id === 'p1' ? { id: 'p1', task_id: 't1', name: 'Sam' } : null),
     getTask: async id => (id === 't1' ? { id: 't1', status: taskStatus } : null),
-    getSlot: async id => (id === 's1' ? { id: 's1', club: 'salem', deliverable: { id: 'd1', person_id: slotPerson, task_id: slotTask, kind: 'image', name: 'Photo' } } : null),
+    getSlot: async id => (id === 's1' ? { id: 's1', club: 'salem', person_id: slotPerson, deliverable: { id: 'd1', person_id: 'someone-else', task_id: slotTask, kind: 'image', name: 'Photo' } } : null),
   }
 }
 
@@ -101,4 +101,22 @@ test('chunk splits long id lists so query strings stay short', () => {
   const { chunk } = require('../src/services/hub/slots')
   assert.deepEqual(chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]])
   assert.deepEqual(chunk([], 2), [])
+})
+
+test('ownerForClub: first-added coverer wins; null club has no auto owner', () => {
+  const { ownerForClub } = require('../src/services/hub/slots')
+  const people = [{ id: 'b', clubs: ['salem'], created_at: '2026-11-02' }, { id: 'a', clubs: ['salem', 'keizer'], created_at: '2026-11-01' }]
+  assert.equal(ownerForClub('salem', people), 'a')
+  assert.equal(ownerForClub('eugene', people), null)
+  assert.equal(ownerForClub(null, people), null)
+})
+
+test('planOwners fills only unowned slots and never overrides a manual owner', () => {
+  const { planOwners } = require('../src/services/hub/slots')
+  const people = [{ id: 'steve', clubs: ['salem', 'keizer'], created_at: '1' }]
+  assert.deepEqual(planOwners([
+    { id: 's1', club: 'salem', person_id: null },
+    { id: 's2', club: 'keizer', person_id: 'paige' },
+    { id: 's3', club: 'eugene', person_id: null },
+  ], people), [{ id: 's1', person_id: 'steve' }])
 })
