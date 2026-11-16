@@ -5,6 +5,7 @@ import { Modal, Field, TextInput, TextArea, Button, ErrorBanner } from '../adsma
 import Composer from './Composer'
 import DeliverablesGrid from './DeliverablesGrid'
 import IncomingTray from './IncomingTray'
+import PeoplePicker from './PeoplePicker'
 import { ago, dueLabel } from './dates'
 import { isGmailDisconnected } from './gmailState'
 
@@ -102,7 +103,30 @@ function CopyLink({ personId }) {
   )
 }
 
-function PersonCard({ p, closed, gmailReady, onCompose, onRemove }) {
+// The clubs this person covers on the task (their slots follow these).
+function PersonClubs({ p, task, closed, onChanged }) {
+  const options = task.clubs.length ? task.clubs : []
+  if (!options.length) return null
+  const toggle = async slug => {
+    const next = p.clubs.includes(slug) ? p.clubs.filter(c => c !== slug) : [...p.clubs, slug]
+    try { onChanged((await hub.people.update(p.id, { clubs: next })).person) } catch { /* list refresh shows truth */ }
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {options.map(slug => {
+        const on = (p.clubs || []).includes(slug)
+        return (
+          <button key={slug} type="button" disabled={closed} onClick={() => toggle(slug)}
+            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${on ? 'bg-wcs-red text-white border-wcs-red' : 'bg-bg text-text-muted border-border hover:text-text-primary'}`}>
+            {CLUB_NAME(slug)}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function PersonCard({ p, task, closed, gmailReady, onCompose, onRemove, onChanged }) {
   const [showHistory, setShowHistory] = useState(false)
   const pill = STATE_PILL[p.state] || STATE_PILL.new
   return (
@@ -111,6 +135,7 @@ function PersonCard({ p, closed, gmailReady, onCompose, onRemove }) {
         <div className="min-w-0">
           <p className="text-sm font-semibold text-text-primary truncate">{p.name}</p>
           <p className="text-[11px] text-text-muted truncate">{p.email}</p>
+          <div className="mt-1"><PersonClubs p={p} task={task} closed={closed} onChanged={onChanged} /></div>
         </div>
         <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${pill.tone}`}>{pill.text}</span>
       </div>
@@ -146,7 +171,6 @@ function PersonCard({ p, closed, gmailReady, onCompose, onRemove }) {
 
 export default function TaskDetail({ task, gmailReady, onGmailLost, onClose, onEdit, onRefresh }) {
   const [people, setPeople] = useState(task.people || [])
-  const [adding, setAdding] = useState({ name: '', email: '' })
   const [compose, setCompose] = useState(null)
   const [gridKey, setGridKey] = useState(0)
   const [error, setError] = useState('')
@@ -160,13 +184,8 @@ export default function TaskDetail({ task, gmailReady, onGmailLost, onClose, onE
     Promise.all(unseen.map(p => hub.people.seen(p.id))).then(() => onRefresh()).catch(() => {})
   }, [task.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const addPerson = async () => {
-    setError('')
-    try {
-      const { person } = await hub.people.add(task.id, adding)
-      setPeople([...people, person]); setAdding({ name: '', email: '' }); onRefresh()
-    } catch (e) { setError(e.message) }
-  }
+  const added = person => { setPeople([...people, person]); setGridKey(k => k + 1); onRefresh() }
+  const personChanged = person => { setPeople(people.map(p => p.id === person.id ? { ...p, ...person } : p)); setGridKey(k => k + 1); onRefresh() }
   const remove = async p => {
     setError('')
     try { await hub.people.remove(p.id); setPeople(people.filter(x => x.id !== p.id)); onRefresh() }
@@ -198,17 +217,12 @@ export default function TaskDetail({ task, gmailReady, onGmailLost, onClose, onE
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {people.map(p => (
             <PersonCard key={p.id} p={p} closed={closed} gmailReady={gmailReady}
+              task={task} onChanged={personChanged}
               onCompose={(person, kind) => setCompose({ person, kind })} onRemove={remove} />
           ))}
         </div>
         {!closed && (
-          <div className="flex items-end gap-2 flex-wrap">
-            <div className="w-40"><Field label="Name"><TextInput value={adding.name} onChange={e => setAdding({ ...adding, name: e.target.value })} /></Field></div>
-            <div className="flex-1 min-w-[200px]"><Field label="Email"><TextInput type="email" value={adding.email}
-              onChange={e => setAdding({ ...adding, email: e.target.value })}
-              onKeyDown={e => { if (e.key === 'Enter' && adding.name.trim() && adding.email.trim()) addPerson() }} /></Field></div>
-            <Button variant="secondary" onClick={addPerson} disabled={!adding.name.trim() || !adding.email.trim()}>Add person</Button>
-          </div>
+          <PeoplePicker task={task} onTask={people} onAdded={added} />
         )}
       </div>
 

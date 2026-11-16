@@ -95,10 +95,6 @@ export default function UploadApp({ token }) {
 
       {data && (
         <>
-          <p className="text-sm text-text-primary">
-            Hi {data.personFirstName}, {data.ownerFirstName ? `${data.ownerFirstName} is` : "we're"} asking for the items below.
-            {data.dueDate && ` Needed by ${new Date(data.dueDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}.`}
-          </p>
           {data.slots.length === 0 && <p className="text-sm text-text-muted">Nothing to send right now.</p>}
           <div className="space-y-3">
             {data.slots.map(s => <SlotCard key={s.id} token={token} slot={s} onDone={markDone} />)}
