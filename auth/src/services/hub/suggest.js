@@ -212,4 +212,28 @@ async function runSuggestions({ owner, getToken, db, gmail, classify, now = Date
   return result
 }
 
-module.exports = { isAutomated, prefilter, cleanGuess, mergeAction, ownerRepliedAfter, recipientsToCc, addresses, fromName, runSuggestions }
+// The person attached to a task added from an email suggestion: the sender,
+// on the asking thread, with everyone else on the ask for reply-all. Their
+// last reply is the ask itself, so the next check doesn't flag it as new.
+function askerPersonFields(suggestion, threadMessages, ownerEmail) {
+  const owner = String(ownerEmail || '').toLowerCase()
+  const msgs = [...(threadMessages || [])].sort((a, b) => Number(a.internalDate || 0) - Number(b.internalDate || 0))
+  const theirs = msgs.filter(m => emailFrom(headerValue(m.payload?.headers, 'From')) !== owner)
+  const lastTheirs = theirs[theirs.length - 1]
+  const latest = msgs[msgs.length - 1]
+  const firstSubject = msgs.length ? headerValue(msgs[0].payload?.headers, 'Subject') : ''
+  return {
+    name: suggestion.from_name || suggestion.from_email,
+    email: suggestion.from_email,
+    cc_emails: suggestion.cc_emails || [],
+    gmail_thread_id: suggestion.gmail_thread_id,
+    subject: clip(firstSubject || suggestion.subject || '(no subject)', 250),
+    first_message_id_header: latest ? headerValue(latest.payload?.headers, 'Message-ID') || null : null,
+    state: 'replied',
+    reply_seen: true,
+    last_reply_at: lastTheirs ? new Date(Number(lastTheirs.internalDate || 0)).toISOString() : null,
+    last_reply_snippet: lastTheirs ? clip(lastTheirs.snippet, 500) : null,
+  }
+}
+
+module.exports = { isAutomated, prefilter, cleanGuess, mergeAction, ownerRepliedAfter, recipientsToCc, addresses, fromName, runSuggestions, askerPersonFields }

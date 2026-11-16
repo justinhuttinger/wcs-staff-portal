@@ -146,3 +146,20 @@ test('runSuggestions: flags "you replied" when the owner answered after the ask'
   await h.run()
   assert.equal(h.state.rows[0].you_replied, true)
 })
+
+// ---------- Add: the asker on the thread ----------
+const { askerPersonFields } = require('../src/services/hub/suggest')
+const { applyReply } = require('../src/services/hub/personState')
+const { latestReply } = require('../src/services/followUps/gmail')
+
+test('askerPersonFields: the ask is not a new reply; replies thread under the latest message', () => {
+  const msgs = [
+    { id: 'm1', internalDate: '1000', payload: { headers: [{ name: 'From', value: 'Alex <alex@example.com>' }, { name: 'Subject', value: 'Sauna' }, { name: 'Message-ID', value: '<a@x>' }] }, snippet: 'heater out' },
+    { id: 'm2', internalDate: '2000', payload: { headers: [{ name: 'From', value: 'owner@example.com' }, { name: 'Subject', value: 'Re: Sauna' }, { name: 'Message-ID', value: '<b@x>' }] }, snippet: 'on it' },
+  ]
+  const s = { from_name: 'Alex', from_email: 'alex@example.com', cc_emails: ['b@example.com'], gmail_thread_id: 't1', subject: 'Sauna' }
+  const f = askerPersonFields(s, msgs, 'owner@example.com')
+  assert.deepEqual([f.name, f.email, f.cc_emails, f.gmail_thread_id, f.subject, f.first_message_id_header, f.state, f.reply_seen, f.last_reply_at],
+    ['Alex', 'alex@example.com', ['b@example.com'], 't1', 'Sauna', '<b@x>', 'replied', true, new Date(1000).toISOString()])
+  assert.equal(applyReply(f, latestReply(msgs, 'owner@example.com')), null)
+})
