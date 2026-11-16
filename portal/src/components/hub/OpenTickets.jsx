@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ticketing } from '../../lib/api'
+import { ticketing, hub } from '../../lib/api'
 import TicketDetail from '../admin/ticketing/TicketDetail'
 import { ErrorBanner, Spinner } from '../adsmanager/ui'
 import { openTicketsFirst, LIVE_STATUSES } from './ticketFilter'
@@ -14,7 +14,7 @@ const STATUS = {
 
 // Left column of the Hub: every ticket not closed. Clicking one opens it (same
 // screen as the ticket board) across the full width; Back returns to the list.
-export default function OpenTickets({ onOpenChange }) {
+export default function OpenTickets({ onOpenChange, openRequest, onClosed }) {
   const [rows, setRows] = useState(null)
   const [openId, setOpenId] = useState(null)
   const [error, setError] = useState('')
@@ -26,12 +26,16 @@ export default function OpenTickets({ onOpenChange }) {
     } catch (e) { setError(e.message) }
   }, [])
   useEffect(() => { load() }, [load])
+  // The New feed asks for a ticket by id ({id, n} so the same ticket can be asked twice).
+  useEffect(() => { if (openRequest?.id) setOpenId(openRequest.id) }, [openRequest])
+  // Opening a ticket here clears it from the New feed.
+  useEffect(() => { if (openId) hub.markTicketSeen(openId).catch(() => {}) }, [openId])
   useEffect(() => { onOpenChange?.(!!openId) }, [openId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (openId) {
     return (
       <div className={`${CARD} p-3`}>
-        <TicketDetail ticketId={openId} onBack={() => { setOpenId(null); load() }} onChanged={load} />
+        <TicketDetail key={openId} ticketId={openId} onBack={() => { setOpenId(null); load(); onClosed?.() }} onChanged={load} />
       </div>
     )
   }

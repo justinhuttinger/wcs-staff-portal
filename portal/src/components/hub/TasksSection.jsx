@@ -59,12 +59,13 @@ function TaskRow({ t, onOpen, onToggleDone }) {
   )
 }
 
-export default function TasksSection({ gmailReady = false, refreshKey = 0, onGmailLost }) {
+export default function TasksSection({ gmailReady = false, refreshKey = 0, onGmailLost, openRequest, onDetailClosed }) {
   const [tasks, setTasks] = useState(null)
   const [categories, setCategories] = useState([])
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(undefined) // undefined closed, null new, task edit
   const [openId, setOpenId] = useState(null)
+  useEffect(() => { if (openRequest?.id) setOpenId(openRequest.id) }, [openRequest])
   const [showCats, setShowCats] = useState(false)
   const [clubFilter, setClubFilter] = useState([])
   const [catFilter, setCatFilter] = useState('')
@@ -164,7 +165,7 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
       ))}
 
       {openId && tasks?.find(t => t.id === openId) && (
-        <TaskDetail task={tasks.find(t => t.id === openId)} gmailReady={gmailReady} onGmailLost={onGmailLost} onClose={() => setOpenId(null)}
+        <TaskDetail task={tasks.find(t => t.id === openId)} gmailReady={gmailReady} onGmailLost={onGmailLost} onClose={() => { setOpenId(null); onDetailClosed?.() }}
           onEdit={t => setEditing(t)} onRefresh={load} />
       )}
       {editing !== undefined && (
