@@ -1809,6 +1809,19 @@ export async function getMeetingNotesAuthUrl() {
   return api('/meeting-notes/authorize-url', { method: 'POST' })
 }
 
+// Follow-ups (owner-only personal tracker; emails go out from his Gmail).
+export const followUps = {
+  status: () => api('/follow-ups/status'),
+  authUrl: () => api('/follow-ups/authorize-url', { method: 'POST' }),
+  list: () => api('/follow-ups/projects'),
+  messages: (id) => api(`/follow-ups/projects/${id}/messages`),
+  checkReplies: () => api('/follow-ups/check-replies', { method: 'POST' }),
+  draft: (body) => api('/follow-ups/draft', { method: 'POST', body: JSON.stringify(body) }),
+  create: (body) => api('/follow-ups/projects', { method: 'POST', body: JSON.stringify(body) }),
+  nudge: (id, body) => api(`/follow-ups/projects/${id}/nudge`, { method: 'POST', body: JSON.stringify({ body }) }),
+  update: (id, patch) => api(`/follow-ups/projects/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+}
+
 export async function getGoogleBusinessLocations() {
   return api('/google-business/locations')
 }
