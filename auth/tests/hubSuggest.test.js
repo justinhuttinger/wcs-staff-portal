@@ -87,7 +87,7 @@ function harness({ cursor = '2026-11-16T10:00:00Z', inbox = [], seen = [], track
     getToken: async () => ({ accessToken: 't', email: 'owner@example.com' }),
     db, gmail, classify: cls, now: Date.parse('2026-11-16T12:00:00Z'),
   })
-  return { state, run }
+  return { state, run, db, gmail }
 }
 
 test('runSuggestions: first run only sets the cursor', async () => {
@@ -162,4 +162,46 @@ test('askerPersonFields: the ask is not a new reply; replies thread under the la
   assert.deepEqual([f.name, f.email, f.cc_emails, f.gmail_thread_id, f.subject, f.first_message_id_header, f.state, f.reply_seen, f.last_reply_at],
     ['Alex', 'alex@example.com', ['b@example.com'], 't1', 'Sauna', '<b@x>', 'replied', true, new Date(1000).toISOString()])
   assert.equal(applyReply(f, latestReply(msgs, 'owner@example.com')), null)
+})
+
+// ---------- review fixes ----------
+test('runSuggestions: a failed fetch holds the cursor so the mail is listed again', async () => {
+  const h = harness({ inbox: [mail({ id: 'm1', thread: 't1', at: Date.parse('2026-11-16T11:00:00Z') })] })
+  const orig = h.state.cursor
+  // Swap in a failing fetch.
+  const run = () => runSuggestions({
+    owner: { id: 'o1', email: 'owner@example.com' },
+    getToken: async () => ({ accessToken: 't', email: 'owner@example.com' }),
+    db: h.db, gmail: { ...h.gmail, getMessageFull: async () => { throw new Error('503') } },
+    classify: async () => new Map(), now: Date.parse('2026-11-16T12:00:00Z'),
+  })
+  const r = await run()
+  assert.equal(h.state.cursor, orig)
+  assert.equal(h.state.seen.has('m1'), false)
+  assert.equal(r.errors.length, 1)
+})
+
+test('runSuggestions: a big backlog is worked oldest first, a slice per run, cursor held', async () => {
+  const inbox = Array.from({ length: 200 }, (_, i) => mail({ id: `m${i}`, thread: `t${i}`, at: 1000 + i }))
+  // Gmail lists newest first.
+  const h = harness({ inbox: [...inbox].reverse() })
+  const orig = h.state.cursor
+  await h.run()
+  assert.equal(h.state.rows.length, 150)
+  assert.equal(h.state.seen.has('m0'), true)
+  assert.equal(h.state.seen.has('m199'), false)
+  assert.equal(h.state.cursor, orig)
+  await h.run()
+  assert.equal(h.state.rows.length, 200)
+  assert.equal(h.state.cursor, '2026-11-16T12:00:00.000Z')
+})
+
+test('runSuggestions: a database error mid-run still records what was handled', async () => {
+  const h = harness({ inbox: [mail({ id: 'm1', thread: 't1', at: 1000, text: 'FYI only' }), mail({ id: 'm2', thread: 't2', at: 2000 })] })
+  let n = 0
+  const insert = h.db.insertSuggestion
+  h.db.insertSuggestion = async row => { if (++n === 2) throw new Error('db down'); return insert(row) }
+  await assert.rejects(h.run())
+  assert.equal(h.state.seen.has('m1'), true)
+  assert.equal(h.state.seen.has('m2'), false)
 })

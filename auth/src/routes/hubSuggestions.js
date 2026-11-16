@@ -67,6 +67,7 @@ router.post('/suggestions/:id/restore', async (req, res) => {
   try {
     const s = await loadSuggestion(req)
     if (s.status !== 'skipped') throw httpError(400, 'Only skipped items can be restored')
+    if (s.gmail_thread_id && await threadIsTask(req.staff.id, s.gmail_thread_id)) throw httpError(409, 'That conversation is already a task')
     const { data, error } = await supabaseAdmin.from('hub_suggestions')
       .update({ status: 'open', seen: true, summary: s.summary || s.subject, updated_at: new Date().toISOString() })
       .eq('id', s.id).select(LIST_COLS).single()
@@ -132,12 +133,21 @@ router.post('/suggestions/:id/add', async (req, res) => {
         console.error('[HubSuggest] add follow-up failed', { suggestionId: s.id, error: e.message })
         warning = e.notConnected
           ? 'Task added, but Gmail is disconnected so the sender and files were not attached.'
-          : 'Task added, but the sender or their files could not all be attached.'
+          : e.filesOnly
+            ? `Task added with the sender attached, but ${e.message}. Open them in Gmail.`
+            : 'Task added, but the sender or their files could not all be attached.'
       }
     }
     res.json({ task: { ...task, people: [], signal: rowSignal(task, []) }, warning })
   } catch (e) { fail(res, e) }
 })
+
+async function threadIsTask(ownerId, threadId) {
+  const rows = must(await supabaseAdmin.from('hub_task_people').select('task_id').eq('gmail_thread_id', threadId))
+  if (!rows.length) return false
+  const mine = must(await supabaseAdmin.from('hub_tasks').select('id').eq('owner_staff_id', ownerId).in('id', rows.map(r => r.task_id)))
+  return mine.length > 0
+}
 
 async function attachAsker({ owner, task, suggestion }) {
   const { accessToken, email } = await getStaffGoogleAccessToken(owner.id)
@@ -145,8 +155,8 @@ async function attachAsker({ owner, task, suggestion }) {
   const messages = await gmail.getThreadFull(accessToken, suggestion.gmail_thread_id)
 
   // Saved person: reuse the contact with this email, else save them.
-  let contact = must(await supabaseAdmin.from('hub_contacts').select('*')
-    .eq('owner_staff_id', owner.id).eq('email', suggestion.from_email).maybeSingle())
+  const contacts = must(await supabaseAdmin.from('hub_contacts').select('*').eq('owner_staff_id', owner.id))
+  let contact = contacts.find(c => String(c.email).toLowerCase() === suggestion.from_email) || null
   if (!contact) {
     const { data, error } = await supabaseAdmin.from('hub_contacts')
       .insert({ owner_staff_id: owner.id, name: suggestion.from_name || suggestion.from_email, email: suggestion.from_email })
@@ -159,17 +169,23 @@ async function attachAsker({ owner, task, suggestion }) {
     ...askerPersonFields(suggestion, messages, ownerEmail),
   }).select('id').single())
 
-  // Every file anyone (not the owner) sent in the conversation so far: copied
-  // to the task, and marked seen so the Gmail check never trays it.
+  // Every file anyone (not the owner) sent in the conversation so far. All of
+  // them are marked seen first, before any slow download, so a Gmail check
+  // that starts mid-Add never puts them in the tray. Then each is copied to
+  // the task; one that fails doesn't stop the rest.
+  const files = []
   for (const m of messages) {
     const from = gmail.emailFrom(gmail.headerValue(m.payload?.headers, 'From'))
     if (!from || from === ownerEmail) continue
-    for (const a of gmail.listAttachments(m)) {
-      const partId = a.partId ?? a.attachmentId
-      await dl.markGmailSeen(person.id, `${m.id}:${partId}`)
-      const att = { name: a.filename, mime: a.mimeType, size: a.size, inline: a.inline }
-      if (!isFilableAttachment(att)) continue
-      const ref = { messageId: m.id, partId }
+    for (const a of gmail.listAttachments(m)) files.push({ m, a, partId: a.partId ?? a.attachmentId })
+  }
+  for (const f of files) await dl.markGmailSeen(person.id, `${f.m.id}:${f.partId}`)
+  let failed = 0
+  for (const { m, a, partId } of files) {
+    const att = { name: a.filename, mime: a.mimeType, size: a.size, inline: a.inline }
+    if (!isFilableAttachment(att)) continue
+    const ref = { messageId: m.id, partId }
+    try {
       if (a.size > MAX_BYTES) {
         await dl.addTaskFile({ taskId: task.id, ownerId: owner.id, meta: att, gmail: ref, tooLarge: true })
         continue
@@ -179,7 +195,16 @@ async function attachAsker({ owner, task, suggestion }) {
         taskId: task.id, ownerId: owner.id, gmail: ref,
         file: { buffer: bytes, originalname: a.filename, mimetype: a.mimeType, size: bytes.length },
       })
+    } catch (e) {
+      if (e.notConnected) throw e
+      failed++
+      console.warn('[HubSuggest] file copy failed', { taskId: task.id, error: e.message })
     }
+  }
+  if (failed) {
+    const e = new Error(`${failed} file${failed === 1 ? '' : 's'} could not be copied`)
+    e.filesOnly = true
+    throw e
   }
 }
 

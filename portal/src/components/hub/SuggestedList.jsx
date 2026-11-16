@@ -22,6 +22,13 @@ const SuggestedList = forwardRef(function SuggestedList({ reloadKey = 0, highlig
     hub.suggestions.list().then(r => { setData(r); setError('') }).catch(e => setError(e.message))
   }, [])
   useEffect(() => { load() }, [load, reloadKey])
+  // Close the ⋯ menu on any click outside it.
+  useEffect(() => {
+    if (!menu) return undefined
+    const close = e => { if (!e.target.closest?.('[data-suggest-menu]')) setMenu(null) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [menu])
   useEffect(() => {
     const t = setInterval(load, 60_000)
     return () => clearInterval(t)
@@ -44,7 +51,7 @@ const SuggestedList = forwardRef(function SuggestedList({ reloadKey = 0, highlig
   if (!open.length && !skipped.length) return null
 
   return (
-    <div ref={ref} className={`${CARD} overflow-hidden`}>
+    <div ref={ref} className={CARD}>
       <div className="px-5 py-2.5 border-b border-border flex items-center justify-between">
         <h3 className="text-xs font-bold uppercase tracking-widest text-text-primary">
           Suggested {open.length > 0 && <span className="text-wcs-red">({open.length})</span>}
@@ -77,7 +84,7 @@ const SuggestedList = forwardRef(function SuggestedList({ reloadKey = 0, highlig
             <button disabled={busy === s.id} onClick={() => act(s.id, () => hub.suggestions.dismiss(s.id))}
               className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold border border-border text-text-muted hover:text-text-primary disabled:opacity-50">Dismiss</button>
             {s.source === 'email' && (
-              <div className="relative shrink-0">
+              <div className="relative shrink-0" data-suggest-menu>
                 <button onClick={() => setMenu(menu === s.id ? null : s.id)} aria-label="More"
                   className="px-2 py-1 rounded-lg text-xs text-text-muted hover:text-text-primary">⋯</button>
                 {menu === s.id && (

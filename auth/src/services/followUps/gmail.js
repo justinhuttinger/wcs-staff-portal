@@ -178,8 +178,8 @@ function listAttachments(message) {
   return out
 }
 
-// Inbox message ids received after a unix time (seconds), newest first, capped.
-async function listInboxSince(accessToken, afterSeconds, { cap = 300 } = {}) {
+// Inbox message ids received after a unix time (seconds), newest first, capped (ids only, so a big cap is cheap).
+async function listInboxSince(accessToken, afterSeconds, { cap = 2000 } = {}) {
   const out = []
   let pageToken = ''
   do {

@@ -77,8 +77,9 @@ router.post('/tasks', async (req, res) => {
 router.get('/tasks/:id/files', async (req, res) => {
   try {
     if (!UUID_RE.test(String(req.params.id))) return res.status(404).json({ error: 'Not found' })
-    const { data: task } = await supabaseAdmin.from('hub_tasks').select('id')
+    const { data: task, error } = await supabaseAdmin.from('hub_tasks').select('id')
       .eq('id', req.params.id).eq('owner_staff_id', req.staff.id).maybeSingle()
+    if (error) throw error
     if (!task) return res.status(404).json({ error: 'Not found' })
     const files = await dl.taskFiles(task.id)
     res.json({ files: files.map(({ storage_path, drive_url, ...f }) => ({ ...f, stored: !!(storage_path || drive_url) })) })
@@ -88,9 +89,11 @@ router.get('/tasks/:id/files', async (req, res) => {
 router.get('/task-files/:fid/open', async (req, res) => {
   try {
     if (!UUID_RE.test(String(req.params.fid))) return res.status(404).json({ error: 'Not found' })
-    const { data: f } = await supabaseAdmin.from('hub_task_files').select('task_id, drive_url, storage_path').eq('id', req.params.fid).maybeSingle()
+    const { data: f, error: fErr } = await supabaseAdmin.from('hub_task_files').select('task_id, drive_url, storage_path').eq('id', req.params.fid).maybeSingle()
+    if (fErr) throw fErr
     if (!f) return res.status(404).json({ error: 'Not found' })
-    const { data: task } = await supabaseAdmin.from('hub_tasks').select('id').eq('id', f.task_id).eq('owner_staff_id', req.staff.id).maybeSingle()
+    const { data: task, error: tErr } = await supabaseAdmin.from('hub_tasks').select('id').eq('id', f.task_id).eq('owner_staff_id', req.staff.id).maybeSingle()
+    if (tErr) throw tErr
     if (!task) return res.status(404).json({ error: 'Not found' })
     const url = await dl.openUrl(f)
     if (!url) return res.status(404).json({ error: 'Too large; open it in Gmail' })

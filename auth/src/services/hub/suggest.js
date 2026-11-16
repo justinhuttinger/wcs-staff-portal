@@ -100,6 +100,8 @@ function fromName(fromHeader) {
 
 const OVERLAP_MS = 2 * 60 * 1000
 const BATCH = 15
+// Messages fetched per run; a bigger backlog is worked oldest first over several runs.
+const MAX_PER_RUN = 150
 const REPLY_CHECKS = 50
 
 // Reads inbox mail since the cursor, skips what can't be a request, asks
@@ -124,7 +126,11 @@ async function runSuggestions({ owner, getToken, db, gmail, classify, now = Date
 
   const listed = await gmail.listInboxSince(token, Math.floor((Date.parse(cursor) - OVERLAP_MS) / 1000))
   const already = await db.seenIds(owner.id, listed.map(m => m.id))
-  const fresh = listed.filter(m => !already.has(m.id))
+  // Gmail lists newest first: work the backlog oldest first, a slice per run.
+  const unseen = listed.filter(m => !already.has(m.id)).reverse()
+  const fresh = unseen.slice(0, MAX_PER_RUN)
+  // Keep the cursor where it is while anything in this window is left over.
+  let holdOld = unseen.length > fresh.length
   const [tracked, muted, ctx] = await Promise.all([db.trackedThreads(owner.id), db.muted(owner.id), db.context(owner.id)])
 
   const messages = []
@@ -132,6 +138,7 @@ async function runSuggestions({ owner, getToken, db, gmail, classify, now = Date
     try { const full = await gmail.getMessageFull(token, m.id); if (full) messages.push(full) } catch (e) {
       if (e.notConnected) throw e
       result.errors.push(`fetch ${m.id}: ${e.message}`)
+      holdOld = true
     }
   }
   messages.sort((a, b) => Number(a.internalDate || 0) - Number(b.internalDate || 0))
@@ -146,6 +153,8 @@ async function runSuggestions({ owner, getToken, db, gmail, classify, now = Date
   }
 
   let holdCursor = null
+  // Whatever was handled is recorded even if a database write fails mid-run.
+  try {
   for (let i = 0; i < candidates.length; i += BATCH) {
     const batch = candidates.slice(i, i + BATCH)
     let guesses
@@ -194,7 +203,9 @@ async function runSuggestions({ owner, getToken, db, gmail, classify, now = Date
       done.push(m.id)
     }
   }
-  if (done.length) await db.markSeen(owner.id, done)
+  } finally {
+    if (done.length) await db.markSeen(owner.id, done)
+  }
 
   // "You replied": the owner answered in the thread after the ask.
   const open = (await db.openEmailSuggestions(owner.id)).filter(s => !s.you_replied && s.gmail_thread_id).slice(0, REPLY_CHECKS)
@@ -208,6 +219,7 @@ async function runSuggestions({ owner, getToken, db, gmail, classify, now = Date
     }
   }
 
+  if (holdOld) return result
   await db.setCursor(owner.id, holdCursor != null ? new Date(Math.min(now, holdCursor - 1000)).toISOString() : nowIso)
   return result
 }

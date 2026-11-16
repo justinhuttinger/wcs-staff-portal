@@ -133,7 +133,8 @@ const CLASSIFY_SCHEMA = {
 // Claude reads each message and says whether the sender is asking the owner
 // to do something, with a guessed task. Short ids (m1, m2) keep output small.
 async function classify(items, ctx) {
-  if (!claude || !items.length) throw new Error('Claude is not configured')
+  if (!items.length) return new Map()
+  if (!claude) throw new Error('Claude is not configured')
   const ids = items.map((it, i) => [`m${i + 1}`, it])
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
   const lines = [
@@ -222,7 +223,9 @@ async function runAll() {
         if (r.replies || r.filed || r.trayed || r.errors.length) console.log('[HubCheck]', email.replace(/@.*/, '@…'), r)
       }
       // After the thread check, so replies on task threads are already handled.
-      if (process.env.HUB_SUGGESTIONS_ENABLED === 'true') {
+      if (process.env.HUB_SUGGESTIONS_ENABLED === 'true' && !claude) {
+        console.warn('[HubSuggest] ANTHROPIC_API_KEY missing; suggestions paused')
+      } else if (process.env.HUB_SUGGESTIONS_ENABLED === 'true') {
         try {
           const s = await runSuggestions({ owner: staff, getToken: getStaffGoogleAccessToken, db: suggestDb, gmail, classify })
           if (s.suggested || s.updated || s.errors.length) console.log('[HubSuggest]', { ...s, errors: s.errors.slice(0, 5) })
