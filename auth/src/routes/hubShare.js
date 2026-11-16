@@ -10,6 +10,9 @@ const { supabaseAdmin } = require('../services/supabase')
 const dl = require('../services/hub/deliverables')
 const { newUploadToken } = require('../services/hub/slots')
 const { groupSubmissions, claudeBlock } = require('../services/hub/share')
+const { realDrive } = require('../services/hub/drive')
+const { getStaffGoogleAccessToken } = require('../services/googleUserToken')
+const { Readable } = require('stream')
 
 const PORTAL_URL = process.env.PORTAL_URL || 'https://portal.wcstrength.com'
 const API_URL = process.env.AUTH_API_URL || 'https://api.wcstrength.com'
@@ -38,8 +41,12 @@ async function submissionsFor(task, club = null, { withPaths = false } = {}) {
   const groups = groupSubmissions({ deliverables, clubNames: names, people, clubOrder: task.clubs || [], club })
   if (!withPaths) return { groups }
   const paths = new Map()
-  for (const d of deliverables) for (const s of d.slots) for (const i of s.items) if (i.storage_path) paths.set(i.id, i.storage_path)
-  return { groups, paths }
+  const drive = new Set()
+  for (const d of deliverables) for (const s of d.slots) for (const i of s.items) {
+    if (i.storage_path) paths.set(i.id, i.storage_path)
+    if (i.drive_file_id) drive.add(i.id)
+  }
+  return { groups, paths, drive }
 }
 
 async function tokenFor(taskId, create) {
@@ -97,7 +104,9 @@ owner.delete('/tasks/:id/share', async (req, res) => {
 
 // ---------- public ----------
 const pub = Router()
-pub.use(rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false }))
+// Page data and file links get separate allowances: one page can hold many images.
+const pageLimit = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false })
+const fileLimit = rateLimit({ windowMs: 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false })
 
 async function taskForToken(token) {
   if (!TOKEN_RE.test(String(token))) return null
@@ -106,11 +115,11 @@ async function taskForToken(token) {
   return must(await supabaseAdmin.from('hub_tasks').select('*').eq('id', row.task_id).maybeSingle())
 }
 
-pub.get('/:token', async (req, res) => {
+pub.get('/:token', pageLimit, async (req, res) => {
   try {
     const task = await taskForToken(req.params.token)
     if (!task) return res.status(404).json({ error: 'This link is not valid' })
-    const { groups, paths } = await submissionsFor(task, null, { withPaths: true })
+    const { groups, paths, drive } = await submissionsFor(task, null, { withPaths: true })
     const link = fileUrl(req.params.token)
     // One batch of 1-hour URLs for inline images.
     const imageIds = groups.flatMap(g => g.items).filter(i => i.isFile && /^image\//.test(i.mime || '') && paths.has(i.id)).map(i => i.id)
@@ -121,20 +130,31 @@ pub.get('/:token', async (req, res) => {
     }
     res.json({
       taskTitle: task.title,
-      groups: groups.map(g => ({ ...g, items: g.items.map(i => ({ ...i, url: i.isFile ? link(i.id) : null, imageUrl: signed.get(i.id) || null })) })),
+      groups: groups.map(g => ({ ...g, items: g.items.map(i => ({
+        ...i, url: i.isFile ? link(i.id) : null,
+        imageUrl: signed.get(i.id) || (drive.has(i.id) && /^image\//.test(i.mime || '') ? link(i.id) : null),
+      })) })),
     })
   } catch (e) { fail(res, e) }
 })
 
-pub.get('/:token/files/:itemId', async (req, res) => {
+pub.get('/:token/files/:itemId', fileLimit, async (req, res) => {
   try {
     const task = await taskForToken(req.params.token)
     if (!task || !UUID_RE.test(String(req.params.itemId))) return res.status(404).json({ error: 'Not found' })
-    const item = must(await supabaseAdmin.from('hub_slot_items').select('id, slot_id, storage_path').eq('id', req.params.itemId).maybeSingle())
-    if (!item?.storage_path) return res.status(404).json({ error: 'Not found' })
+    const item = must(await supabaseAdmin.from('hub_slot_items').select('id, slot_id, storage_path, drive_file_id, mime, file_name').eq('id', req.params.itemId).maybeSingle())
+    if (!item?.storage_path && !item?.drive_file_id) return res.status(404).json({ error: 'Not found' })
     const slot = must(await supabaseAdmin.from('hub_slots').select('deliverable_id').eq('id', item.slot_id).maybeSingle())
     const del = slot && must(await supabaseAdmin.from('hub_deliverables').select('task_id').eq('id', slot.deliverable_id).maybeSingle())
     if (!del || del.task_id !== task.id) return res.status(404).json({ error: 'Not found' })
+    if (item.drive_file_id) {
+      const { accessToken } = await getStaffGoogleAccessToken(task.owner_staff_id)
+      const r = await realDrive.download(accessToken, item.drive_file_id)
+      res.setHeader('Content-Type', item.mime || r.headers.get('content-type') || 'application/octet-stream')
+      res.setHeader('Content-Disposition', `inline; filename="${String(item.file_name || 'file').replace(/[^\w. ()-]/g, '_')}"`)
+      res.setHeader('Cache-Control', 'private, max-age=3600')
+      return Readable.fromWeb(r.body).pipe(res)
+    }
     res.redirect(302, await dl.signedUrl(item.storage_path))
   } catch (e) { fail(res, e) }
 })

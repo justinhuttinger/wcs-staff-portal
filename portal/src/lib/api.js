@@ -1834,6 +1834,10 @@ export const hub = {
   },
   checkReplies: () => api('/hub/check-replies', { method: 'POST' }),
   newFeed: () => api('/hub/new'),
+  drive: {
+    status: () => api('/hub/drive'),
+    move: () => api('/hub/drive/move', { method: 'POST' }),
+  },
   share: {
     submissions: (taskId, club) => api(`/hub/tasks/${taskId}/submissions${club ? `?club=${encodeURIComponent(club)}` : ''}`),
     create: (taskId) => api(`/hub/tasks/${taskId}/share`, { method: 'POST' }),

@@ -36,6 +36,7 @@ function Item({ item, onChanged, onError }) {
           {label}
         </button>
         {item.is_new && <span className="px-1.5 rounded-full text-[9px] font-bold bg-wcs-red text-white">NEW</span>}
+        {item.storage_path && <span className="text-[9px] text-text-muted" title="Stored in the portal, not yet in Drive">portal</span>}
         <button onClick={clear} className="text-[11px] text-text-muted hover:text-red-600 ml-auto" title="Remove">×</button>
       </div>
       {open && <p className="text-xs whitespace-pre-wrap text-text-primary rounded border border-border bg-bg p-2">{item.text_body}</p>}

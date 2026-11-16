@@ -71,12 +71,50 @@ function Categories() {
   )
 }
 
-// Admin > Hub: the owner's Hub settings (categories and saved people).
+// Where Hub files live: one "Hub Uploads" folder in the owner's Google Drive.
+function DriveCard() {
+  const [s, setS] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [error, setError] = useState('')
+  const load = () => hub.drive.status().then(setS).catch(e => setError(e.message))
+  useEffect(() => { load() }, [])
+  const move = async () => {
+    setBusy(true); setError(''); setMsg('')
+    try {
+      const r = await hub.drive.move()
+      setMsg(`Moved ${r.moved} file${r.moved === 1 ? '' : 's'} to Drive${r.failed ? ` (${r.failed} couldn't be moved; they stay in the portal)` : ''}.`)
+      load()
+    } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+  return (
+    <div className={`${CARD} p-5 space-y-3 lg:col-span-2`}>
+      <h3 className="text-sm font-bold text-text-primary">Google Drive</h3>
+      <ErrorBanner error={error} onDismiss={() => setError('')} />
+      <p className="text-xs text-text-muted">
+        Files people send are saved to one folder in your Drive, named by task, club, item and person.
+        {s?.folderUrl ? ' ' : ' The folder is created with the first upload.'}
+      </p>
+      <div className="flex items-center gap-3 flex-wrap">
+        {s?.folderUrl && <a href={s.folderUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-wcs-red hover:underline">Open Hub Uploads folder</a>}
+        {s?.portalFiles > 0 && (
+          <Button variant="secondary" onClick={move} disabled={busy}>
+            {busy ? 'Moving…' : `Move ${s.portalFiles} portal file${s.portalFiles === 1 ? '' : 's'} to Drive`}
+          </Button>
+        )}
+        {msg && <span className="text-xs text-green-700">{msg}</span>}
+      </div>
+    </div>
+  )
+}
+
+// Admin > Hub: the owner's Hub settings (categories, saved people, Drive).
 export default function HubAdmin() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
       <Categories />
       <div className={`${CARD} p-5`}><SavedPeople inline /></div>
+      <DriveCard />
     </div>
   )
 }
