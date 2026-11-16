@@ -5,6 +5,7 @@ import GmailConnect from './GmailConnect'
 import SavedPeople from './SavedPeople'
 import OpenTickets from './OpenTickets'
 import IssuesStrip from './IssuesStrip'
+import NewFeed from './NewFeed'
 import { isGmailDisconnected, markGmailLost } from './gmailState'
 
 // The owner's private Hub, laid out as a dashboard: issues across the top,
@@ -18,6 +19,11 @@ export default function HubView({ onBack }) {
   const [showPeople, setShowPeople] = useState(false)
   // An open ticket takes the full width; the tasks column waits underneath.
   const [ticketOpen, setTicketOpen] = useState(false)
+  // New feed: what to open, and when to reload it (after something is closed).
+  const [ticketRequest, setTicketRequest] = useState(null)
+  const [taskRequest, setTaskRequest] = useState(null)
+  const [feedKey, setFeedKey] = useState(0)
+  const bumpFeed = useCallback(() => setFeedKey(k => k + 1), [])
   // Filled by the Alerts project; the strip renders nothing while empty.
   const [issues] = useState([])
 
@@ -53,15 +59,19 @@ export default function HubView({ onBack }) {
           className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-bg border border-border text-text-primary hover:bg-border/40">Saved people</button>
       </div>
 
+      <NewFeed reloadKey={feedKey + refreshKey}
+        onOpenTicket={id => setTicketRequest({ id, n: Date.now() })}
+        onOpenTask={id => setTaskRequest({ id, n: Date.now() })} />
       <IssuesStrip issues={issues} />
       {gmail && !gmail.ready && <GmailConnect status={gmail} onConnected={loadGmail} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
         <div className={ticketOpen ? 'lg:col-span-3' : 'lg:col-span-1'}>
-          <OpenTickets onOpenChange={setTicketOpen} />
+          <OpenTickets onOpenChange={setTicketOpen} openRequest={ticketRequest} onClosed={bumpFeed} />
         </div>
         <div className={ticketOpen ? 'lg:col-span-3' : 'lg:col-span-2'}>
-          <TasksSection gmailReady={!!gmail?.ready} refreshKey={refreshKey} onGmailLost={onGmailLost} />
+          <TasksSection gmailReady={!!gmail?.ready} refreshKey={refreshKey} onGmailLost={onGmailLost}
+            openRequest={taskRequest} onDetailClosed={bumpFeed} />
         </div>
       </div>
 

@@ -1833,6 +1833,8 @@ export const hub = {
     seen: (id) => api(`/hub/people/${id}/seen`, { method: 'POST' }),
   },
   checkReplies: () => api('/hub/check-replies', { method: 'POST' }),
+  newFeed: () => api('/hub/new'),
+  markTicketSeen: (ticketId) => api(`/hub/new/tickets/${ticketId}/seen`, { method: 'POST' }),
   deliverables: {
     list: (taskId) => api(`/hub/tasks/${taskId}/deliverables`),
     create: (taskId, body) => api(`/hub/tasks/${taskId}/deliverables`, { method: 'POST', body: JSON.stringify(body) }),
