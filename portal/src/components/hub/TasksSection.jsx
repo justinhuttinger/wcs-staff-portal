@@ -3,6 +3,7 @@ import { hub } from '../../lib/api'
 import { CLUBS } from '../../config/locations'
 import { Button, ErrorBanner, EmptyState, Spinner, Select } from '../adsmanager/ui'
 import TaskEditor from './TaskEditor'
+import TaskDetail from './TaskDetail'
 import CategoryManager from './CategoryManager'
 import { dueLabel, shortDate } from './dates'
 
@@ -58,11 +59,12 @@ function TaskRow({ t, onOpen, onToggleDone }) {
   )
 }
 
-export default function TasksSection() {
+export default function TasksSection({ gmailReady = false, refreshKey = 0, onGmailLost }) {
   const [tasks, setTasks] = useState(null)
   const [categories, setCategories] = useState([])
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(undefined) // undefined closed, null new, task edit
+  const [openId, setOpenId] = useState(null)
   const [showCats, setShowCats] = useState(false)
   const [clubFilter, setClubFilter] = useState([])
   const [catFilter, setCatFilter] = useState('')
@@ -77,7 +79,7 @@ export default function TasksSection() {
       setTasks(r.tasks); setCategories(r.categories)
     } catch (e) { setError(e.message) }
   }, [])
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, refreshKey])
 
   const upsert = row => setTasks(list => {
     const rest = (list || []).filter(t => t.id !== row.id)
@@ -156,11 +158,15 @@ export default function TasksSection() {
             <span className="text-[11px] text-text-muted">{g.items.length}</span>
           </div>
           <div className="divide-y divide-border">
-            {g.items.map(t => <TaskRow key={t.id} t={t} onOpen={setEditing} onToggleDone={toggleDone} />)}
+            {g.items.map(t => <TaskRow key={t.id} t={t} onOpen={row => setOpenId(row.id)} onToggleDone={toggleDone} />)}
           </div>
         </div>
       ))}
 
+      {openId && tasks?.find(t => t.id === openId) && (
+        <TaskDetail task={tasks.find(t => t.id === openId)} gmailReady={gmailReady} onGmailLost={onGmailLost} onClose={() => setOpenId(null)}
+          onEdit={t => setEditing(t)} onRefresh={load} />
+      )}
       {editing !== undefined && (
         <TaskEditor task={editing} categories={categories} onClose={() => setEditing(undefined)}
           onSaved={row => { upsert(row); setEditing(undefined) }} />

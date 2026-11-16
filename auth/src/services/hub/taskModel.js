@@ -48,4 +48,7 @@ function rowSignal(task, people = [], { allIn = false, newItems = 0 } = {}) {
   return { needsReview, waitingDays, allIn }
 }
 
-module.exports = { cleanTaskInput, rowSignal, PRIORITIES }
+// Person columns returned with tasks (subject is needed for "Re:" on nudges).
+const PERSON_LIST_COLS = 'id, task_id, name, email, state, subject, gmail_thread_id, first_message_id_header, last_sent_at, last_reply_at, last_reply_snippet, reply_seen, created_at'
+
+module.exports = { cleanTaskInput, rowSignal, PRIORITIES, PERSON_LIST_COLS }

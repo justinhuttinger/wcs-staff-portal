@@ -1816,6 +1816,15 @@ export const hub = {
     create: (body) => api('/hub/tasks', { method: 'POST', body: JSON.stringify(body) }),
     update: (id, patch) => api(`/hub/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   },
+  people: {
+    add: (taskId, body) => api(`/hub/tasks/${taskId}/people`, { method: 'POST', body: JSON.stringify(body) }),
+    remove: (id) => api(`/hub/people/${id}`, { method: 'DELETE' }),
+    messages: (id) => api(`/hub/people/${id}/messages`),
+    draft: (id, body) => api(`/hub/people/${id}/draft`, { method: 'POST', body: JSON.stringify(body) }),
+    send: (id, body) => api(`/hub/people/${id}/send`, { method: 'POST', body: JSON.stringify(body) }),
+    seen: (id) => api(`/hub/people/${id}/seen`, { method: 'POST' }),
+  },
+  checkReplies: () => api('/hub/check-replies', { method: 'POST' }),
   categories: {
     list: () => api('/hub/categories'),
     create: (body) => api('/hub/categories', { method: 'POST', body: JSON.stringify(body) }),
@@ -1823,17 +1832,10 @@ export const hub = {
   },
 }
 
-// Follow-ups (owner-only personal tracker; emails go out from his Gmail).
+// Gmail connection for the Hub (the OAuth flow lives under /follow-ups).
 export const followUps = {
   status: () => api('/follow-ups/status'),
   authUrl: () => api('/follow-ups/authorize-url', { method: 'POST' }),
-  list: () => api('/follow-ups/projects'),
-  messages: (id) => api(`/follow-ups/projects/${id}/messages`),
-  checkReplies: () => api('/follow-ups/check-replies', { method: 'POST' }),
-  draft: (body) => api('/follow-ups/draft', { method: 'POST', body: JSON.stringify(body) }),
-  create: (body) => api('/follow-ups/projects', { method: 'POST', body: JSON.stringify(body) }),
-  nudge: (id, body) => api(`/follow-ups/projects/${id}/nudge`, { method: 'POST', body: JSON.stringify({ body }) }),
-  update: (id, patch) => api(`/follow-ups/projects/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
 }
 
 export async function getGoogleBusinessLocations() {
