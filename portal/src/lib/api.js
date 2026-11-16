@@ -1816,8 +1816,16 @@ export const hub = {
     create: (body) => api('/hub/tasks', { method: 'POST', body: JSON.stringify(body) }),
     update: (id, patch) => api(`/hub/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   },
+  contacts: {
+    list: () => api('/hub/contacts'),
+    create: (body) => api('/hub/contacts', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id, patch) => api(`/hub/contacts/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+    remove: (id) => api(`/hub/contacts/${id}`, { method: 'DELETE' }),
+  },
   people: {
+    // body: { contact_id } or { name, email, clubs }
     add: (taskId, body) => api(`/hub/tasks/${taskId}/people`, { method: 'POST', body: JSON.stringify(body) }),
+    update: (id, patch) => api(`/hub/people/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
     remove: (id) => api(`/hub/people/${id}`, { method: 'DELETE' }),
     messages: (id) => api(`/hub/people/${id}/messages`),
     draft: (id, body) => api(`/hub/people/${id}/draft`, { method: 'POST', body: JSON.stringify(body) }),
@@ -1835,6 +1843,8 @@ export const hub = {
     removeItem: (id) => api(`/hub/slot-items/${id}`, { method: 'DELETE' }),
     itemUrl: (id) => api(`/hub/slot-items/${id}/url`),
     itemSeen: (id) => api(`/hub/slot-items/${id}/seen`, { method: 'POST' }),
+    setSlotOwner: (slotId, personId) => api(`/hub/slots/${slotId}`, { method: 'PATCH', body: JSON.stringify({ person_id: personId || null }) }),
+    autoSlotOwner: (slotId) => api(`/hub/slots/${slotId}`, { method: 'PATCH', body: JSON.stringify({ auto: true }) }),
     uploadLink: (personId) => api(`/hub/people/${personId}/upload-link`, { method: 'POST' }),
     tray: (taskId) => api(`/hub/tasks/${taskId}/tray`),
     trayUrl: (id) => api(`/hub/tray/${id}/url`),

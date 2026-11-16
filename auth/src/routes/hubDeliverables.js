@@ -72,10 +72,17 @@ router.post('/tasks/:id/deliverables', async (req, res) => {
     if (personId === false) return res.status(400).json({ error: 'That person is not on this task' })
     const { count } = await supabaseAdmin.from('hub_deliverables').select('id', { count: 'exact', head: true }).eq('task_id', task.id)
     const { error } = await supabaseAdmin.from('hub_deliverables')
-      .insert({ task_id: task.id, person_id: personId, name, kind, sort: count || 0 })
+      .insert({ task_id: task.id, name, kind, sort: count || 0 })
     if (error) throw error
     await dl.resyncSlots(task)
-    await dl.refreshPersonDelivered(personId)
+    // Club slots get owners from the clubs people cover. A task with no clubs
+    // has one slot; it goes to the person picked in the form.
+    if (personId && !(task.clubs || []).length) {
+      const { data: d } = await supabaseAdmin.from('hub_deliverables').select('id').eq('task_id', task.id)
+        .eq('name', name).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      if (d) await supabaseAdmin.from('hub_slots').update({ person_id: personId }).eq('deliverable_id', d.id).is('club', null)
+      await dl.applyOwners(task)
+    }
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })
@@ -89,15 +96,8 @@ router.patch('/deliverables/:id', async (req, res) => {
       if (!name) return res.status(400).json({ error: 'Name is required' })
       patch.name = name
     }
-    if (req.body?.person_id !== undefined) {
-      const personId = await personOnTask(req.body.person_id, task.id)
-      if (personId === false) return res.status(400).json({ error: 'That person is not on this task' })
-      patch.person_id = personId
-    }
     const { error } = await supabaseAdmin.from('hub_deliverables').update(patch).eq('id', deliverable.id)
     if (error) throw error
-    await dl.refreshPersonDelivered(deliverable.person_id)
-    if (patch.person_id !== undefined) await dl.refreshPersonDelivered(patch.person_id)
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })
@@ -114,7 +114,7 @@ router.delete('/deliverables/:id', async (req, res) => {
     }
     const { error } = await supabaseAdmin.from('hub_deliverables').delete().eq('id', deliverable.id)
     if (error) throw error
-    await dl.refreshPersonDelivered(deliverable.person_id)
+    await dl.applyOwners(task)
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })
@@ -132,7 +132,29 @@ router.post('/slots/:id/items', readFile, async (req, res) => {
       if (!kindAccepts(deliverable.kind, req.file.mimetype)) return res.status(400).json({ error: 'This slot takes images only' })
       await dl.addSlotItem({ taskId: task.id, slotId: slot.id, file: req.file, source: 'owner', isNew: false })
     }
-    await dl.refreshPersonDelivered(deliverable.person_id)
+    await dl.applyOwners(task)
+    res.json({ deliverables: await dl.loadTaskDeliverables(task) })
+  } catch (e) { sendError(res, e) }
+})
+
+// Set who owes one slot by hand (a person on the same task, or null for
+// nobody); hand-set slots are never changed automatically. {auto: true} hands
+// the slot back to automatic assignment by clubs.
+router.patch('/slots/:id', async (req, res) => {
+  try {
+    const { slot, task } = await ownSlot(req, req.params.id)
+    if (req.body?.auto === true) {
+      const { error } = await supabaseAdmin.from('hub_slots').update({ owner_manual: false }).eq('id', slot.id)
+      if (error) throw error
+      await dl.applyOwners(task)
+      return res.json({ deliverables: await dl.loadTaskDeliverables(task) })
+    }
+    const personId = await personOnTask(req.body?.person_id, task.id)
+    if (personId === false) return res.status(400).json({ error: 'That person is not on this task' })
+    const { error } = await supabaseAdmin.from('hub_slots').update({ person_id: personId, owner_manual: true }).eq('id', slot.id)
+    if (error) throw error
+    if (slot.person_id) await dl.refreshPersonDelivered(slot.person_id)
+    if (personId) await dl.refreshPersonDelivered(personId)
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })
@@ -141,7 +163,7 @@ router.delete('/slot-items/:id', async (req, res) => {
   try {
     const { item, deliverable, task } = await ownItem(req, req.params.id)
     await dl.removeSlotItem(item)
-    await dl.refreshPersonDelivered(deliverable.person_id)
+    await dl.applyOwners(task)
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })
@@ -224,7 +246,7 @@ router.post('/tray/:id/file', async (req, res) => {
     if (error && error.code !== '23505') throw error
     const { error: delErr } = await supabaseAdmin.from('hub_tray_items').delete().eq('id', item.id)
     if (delErr) throw delErr
-    await dl.refreshPersonDelivered(deliverable.person_id)
+    await dl.applyOwners(task)
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })
@@ -265,7 +287,7 @@ router.post('/people/:pid/use-reply-text', async (req, res) => {
     text = text || person.last_reply_snippet || ''
     if (!text.trim()) return res.status(400).json({ error: 'Their reply has no text' })
     await dl.addSlotItem({ taskId: task.id, slotId: slot.id, text, source: 'email', isNew: false })
-    await dl.refreshPersonDelivered(deliverable.person_id)
+    await dl.applyOwners(task)
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })

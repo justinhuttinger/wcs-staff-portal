@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { followUps, hub } from '../../lib/api'
 import TasksSection from './TasksSection'
 import GmailConnect from './GmailConnect'
+import SavedPeople from './SavedPeople'
 import { isGmailDisconnected, markGmailLost } from './gmailState'
 
 // The owner's private Hub. Tasks is the first section; more sections
@@ -31,6 +32,7 @@ export default function HubView({ onBack, openTickets, onOpenTickets }) {
   const [section, setSection] = useState('tasks')
   const [gmail, setGmail] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [showPeople, setShowPeople] = useState(false)
 
   // Gmail status, then a reply check so the list opens current.
   const loadGmail = useCallback(async () => {
@@ -59,6 +61,8 @@ export default function HubView({ onBack, openTickets, onOpenTickets }) {
             <p className="text-xs text-text-muted">Just for you</p>
           </div>
         </div>
+        <button onClick={() => setShowPeople(true)}
+          className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-bg border border-border text-text-primary hover:bg-border/40">Saved people</button>
         {SECTIONS.length > 1 && (
           <div className="flex items-center gap-1">
             {SECTIONS.map(s => (
@@ -72,6 +76,7 @@ export default function HubView({ onBack, openTickets, onOpenTickets }) {
       </div>
       {gmail && !gmail.ready && <GmailConnect status={gmail} onConnected={loadGmail} />}
       {onOpenTickets && <TicketsCard count={openTickets} onOpen={onOpenTickets} />}
+      {showPeople && <SavedPeople onClose={() => setShowPeople(false)} />}
       {section === 'tasks' && <TasksSection gmailReady={!!gmail?.ready} refreshKey={refreshKey} onGmailLost={onGmailLost} />}
     </div>
   )

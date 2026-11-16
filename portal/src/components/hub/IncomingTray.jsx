@@ -15,7 +15,7 @@ export default function IncomingTray({ task, people, reloadKey, onChanged }) {
     try {
       const [{ items: tray }, { deliverables }] = await Promise.all([hub.deliverables.tray(task.id), hub.deliverables.list(task.id)])
       setItems(tray)
-      setSlots(deliverables.flatMap(d => d.slots.filter(s => s.items.length === 0).map(s => ({ id: s.id, label: s.label, kind: d.kind, personId: d.person_id }))))
+      setSlots(deliverables.flatMap(d => d.slots.filter(s => s.items.length === 0).map(s => ({ id: s.id, label: s.label, kind: d.kind, personId: s.person_id }))))
       setPick(Object.fromEntries(tray.map(i => [i.id, i.suggested_slot_id || ''])))
     } catch (e) { setError(e.message) }
   }, [task.id])

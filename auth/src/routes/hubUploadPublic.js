@@ -27,10 +27,10 @@ const db = {
   getTask: async id => (await supabaseAdmin.from('hub_tasks').select('id, status, title, due_date, clubs, owner_staff_id').eq('id', id).maybeSingle()).data,
   getSlot: async id => {
     if (!UUID_RE.test(String(id))) return null
-    const { data: slot } = await supabaseAdmin.from('hub_slots').select('id, club, deliverable_id').eq('id', id).maybeSingle()
+    const { data: slot } = await supabaseAdmin.from('hub_slots').select('id, club, person_id, deliverable_id').eq('id', id).maybeSingle()
     if (!slot) return null
     const { data: deliverable } = await supabaseAdmin.from('hub_deliverables')
-      .select('id, person_id, task_id, kind, name').eq('id', slot.deliverable_id).maybeSingle()
+      .select('id, task_id, kind, name').eq('id', slot.deliverable_id).maybeSingle()
     return deliverable ? { ...slot, deliverable } : null
   },
 }
@@ -46,12 +46,14 @@ router.get('/:token', async (req, res) => {
   try {
     const { person, task } = await validateUploadTarget({ db, token: req.params.token })
     const { data: owner } = await supabaseAdmin.from('staff').select('first_name, display_name').eq('id', task.owner_staff_id).maybeSingle()
-    const { data: dels } = await supabaseAdmin.from('hub_deliverables').select('id, name, kind, sort')
-      .eq('person_id', person.id).order('sort')
-    const delIds = (dels || []).map(d => d.id)
+    // Only the slots this person owns.
+    const { data: s } = await supabaseAdmin.from('hub_slots').select('id, club, deliverable_id').eq('person_id', person.id)
+    const delIds = [...new Set((s || []).map(x => x.deliverable_id))]
+    const { data: dels } = delIds.length
+      ? await supabaseAdmin.from('hub_deliverables').select('id, name, kind, sort').in('id', delIds)
+      : { data: [] }
     let slots = []
     if (delIds.length) {
-      const { data: s } = await supabaseAdmin.from('hub_slots').select('id, club, deliverable_id').in('deliverable_id', delIds)
       const { data: items } = s?.length
         ? await supabaseAdmin.from('hub_slot_items').select('slot_id').in('slot_id', s.map(x => x.id))
         : { data: [] }

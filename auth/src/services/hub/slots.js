@@ -30,7 +30,7 @@ function fail(status, message) {
 }
 
 // db: getToken(token) -> {person_id}|null, getPerson(id) -> {id, task_id}|null,
-// getTask(id) -> {id, status}|null, getSlot(id) -> {id, club, deliverable:{person_id, task_id, kind, name}}|null
+// getTask(id) -> {id, status}|null, getSlot(id) -> {id, club, person_id, deliverable:{task_id, kind, name}}|null
 async function validateUploadTarget({ db, token, slotId }) {
   const tok = token ? await db.getToken(token) : null
   if (!tok) throw fail(404, 'This link is not valid')
@@ -42,8 +42,39 @@ async function validateUploadTarget({ db, token, slotId }) {
   if (slotId === undefined) return { person, task }
   const slot = await db.getSlot(slotId)
   if (!slot) throw fail(404, 'Not found')
-  if (slot.deliverable.person_id !== person.id || slot.deliverable.task_id !== task.id) throw fail(403, 'Not yours to fill')
+  // Each club's slot has its own owner.
+  if (slot.person_id !== person.id || slot.deliverable.task_id !== task.id) throw fail(403, 'Not yours to fill')
   return { person, task, slot }
+}
+
+// The person on a task who covers a club: the first added wins. A club-less
+// slot has no automatic owner (it is assigned by hand).
+function ownerForClub(club, people) {
+  if (!club) return null
+  const covering = people.filter(p => (p.clubs || []).includes(club))
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+  return covering.length ? covering[0].id : null
+}
+
+// Owner updates so every automatic club slot belongs to the person covering
+// its club (unassigned when nobody does). Slots set by hand (owner_manual) and
+// club-less slots are never changed here.
+function planOwners(slots, people) {
+  const out = []
+  for (const s of slots) {
+    if (s.owner_manual || !s.club) continue
+    const owner = ownerForClub(s.club, people)
+    if ((s.person_id || null) !== owner) out.push({ id: s.id, person_id: owner })
+  }
+  return out
+}
+
+// A saved person's clubs as they apply to one task: only the task's clubs,
+// or all of theirs when the task has none.
+function personClubsFor(contactClubs, taskClubs) {
+  const mine = Array.isArray(contactClubs) ? contactClubs : []
+  if (!taskClubs || !taskClubs.length) return [...mine]
+  return mine.filter(c => taskClubs.includes(c))
 }
 
 function slotLabel(deliverable, club, clubNames) {
@@ -82,4 +113,4 @@ function chunk(list, size) {
   return out
 }
 
-module.exports = { preValidate, chunk, planSlots, kindAccepts, newUploadToken, validateUploadTarget, slotLabel, allFilled, withUploadLink }
+module.exports = { personClubsFor, ownerForClub, planOwners, preValidate, chunk, planSlots, kindAccepts, newUploadToken, validateUploadTarget, slotLabel, allFilled, withUploadLink }

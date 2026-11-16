@@ -42,7 +42,7 @@ function Item({ item, onChanged, onError }) {
   )
 }
 
-function Cell({ slot, kind, onChanged, onError }) {
+function Cell({ slot, kind, ownerOptions, onOwner, onAuto, onChanged, onError }) {
   const [busy, setBusy] = useState(false)
   const [writing, setWriting] = useState(false)
   const [text, setText] = useState('')
@@ -63,6 +63,11 @@ function Cell({ slot, kind, onChanged, onError }) {
   }
   return (
     <td className="align-top px-3 py-2 border-l border-border min-w-[150px]">
+      <Select value={slot.person_id || ''} onChange={e => onOwner(slot.id, e.target.value)} options={ownerOptions}
+        className="!py-0.5 !px-1.5 !text-[11px] !w-full" />
+      {slot.owner_manual && slot.club
+        ? <button onClick={() => onAuto(slot.id)} className="block text-[10px] text-text-muted hover:text-text-primary mb-1.5" title="Assign by who covers this club">set by hand · use clubs</button>
+        : <div className="mb-1.5" />}
       {slot.items.length === 0 && <p className="text-[11px] text-text-muted">○ waiting</p>}
       <div className="space-y-1.5">{slot.items.map(i => <Item key={i.id} item={i} onChanged={onChanged} onError={onError} />)}</div>
       {kind === 'text' ? (
@@ -106,8 +111,12 @@ export default function DeliverablesGrid({ task, people, reloadKey = 0, onChange
       setRows(deliverables); setForm({ ...form, name: '' }); onChanged?.()
     } catch (e) { setError(e.message) }
   }
-  const setOwer = async (d, personId) => {
-    try { setRows((await hub.deliverables.update(d.id, { person_id: personId || null })).deliverables); onChanged?.() }
+  const setOwner = async (slotId, personId) => {
+    try { setRows((await hub.deliverables.setSlotOwner(slotId, personId)).deliverables); onChanged?.() }
+    catch (e) { setError(e.message) }
+  }
+  const autoOwner = async slotId => {
+    try { setRows((await hub.deliverables.autoSlotOwner(slotId)).deliverables); onChanged?.() }
     catch (e) { setError(e.message) }
   }
   const remove = async d => {
@@ -117,6 +126,7 @@ export default function DeliverablesGrid({ task, people, reloadKey = 0, onChange
 
   const columns = gridColumns(task.clubs, rows || [])
   const personOptions = [{ value: '', label: 'Nobody yet' }, ...people.map(p => ({ value: p.id, label: p.name }))]
+  const ownerOptions = [{ value: '', label: 'Unassigned' }, ...people.map(p => ({ value: p.id, label: p.name }))]
 
   return (
     <div className="space-y-3">
@@ -142,15 +152,13 @@ export default function DeliverablesGrid({ task, people, reloadKey = 0, onChange
                     <p className="text-sm font-semibold text-text-primary">{d.name}</p>
                     <p className="text-[11px] text-text-muted">{KIND_OPTIONS.find(k => k.value === d.kind)?.label}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <Select value={d.person_id || ''} onChange={e => setOwer(d, e.target.value)} options={personOptions}
-                        className="!py-1 !px-2 !text-[11px] !w-auto" />
                       <button onClick={() => remove(d)} className="text-[11px] text-text-muted hover:text-red-600">Delete</button>
                     </div>
                   </td>
                   {columns.map(({ club: c }) => {
                     const slot = d.slots.find(s => (s.club ?? null) === c)
                     return slot
-                      ? <Cell key={slot.id} slot={slot} kind={d.kind} onChanged={changed} onError={setError} />
+                      ? <Cell key={slot.id} slot={slot} kind={d.kind} ownerOptions={ownerOptions} onOwner={setOwner} onAuto={autoOwner} onChanged={changed} onError={setError} />
                       : <td key={c || 'none'} className="border-l border-border" />
                   })}
                 </tr>
@@ -165,7 +173,9 @@ export default function DeliverablesGrid({ task, people, reloadKey = 0, onChange
           <div className="flex-1 min-w-[160px]"><TextInput value={form.name} placeholder="e.g. Photo, Copy, Flyer" onChange={e => setForm({ ...form, name: e.target.value })}
             onKeyDown={e => { if (e.key === 'Enter' && form.name.trim()) add() }} /></div>
           <Select value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })} options={KIND_OPTIONS} className="!w-auto" />
-          <Select value={form.person_id} onChange={e => setForm({ ...form, person_id: e.target.value })} options={personOptions} className="!w-auto" />
+          {task.clubs.length === 0 && (
+            <Select value={form.person_id} onChange={e => setForm({ ...form, person_id: e.target.value })} options={personOptions} className="!w-auto" />
+          )}
           <Button variant="secondary" onClick={add} disabled={!form.name.trim()}>Add</Button>
         </div>
       )}

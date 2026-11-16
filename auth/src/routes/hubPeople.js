@@ -12,7 +12,8 @@ const { applyReply } = require('../services/hub/personState')
 const { recordSend } = require('../services/hub/recordSend')
 const { PERSON_LIST_COLS } = require('../services/hub/taskModel')
 const dl = require('../services/hub/deliverables')
-const { withUploadLink } = require('../services/hub/slots')
+const { withUploadLink, personClubsFor } = require('../services/hub/slots')
+const { cleanContact } = require('./hubContacts')
 
 const router = Router()
 router.use(ownerOnly)
@@ -60,19 +61,55 @@ async function loadHistory(personId) {
   return data || []
 }
 
+// Add a saved person ({contact_id}) or a new one ({name, email, clubs}, which
+// is saved for next time). Their clubs on this task come from their saved
+// clubs; slots for those clubs become theirs if nobody owns them yet.
 router.post('/tasks/:id/people', async (req, res) => {
   try {
     const task = await loadTask(req, req.params.id)
-    const name = String(req.body?.name || '').trim().slice(0, 120)
-    const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 200)
-    if (!name) return res.status(400).json({ error: 'Name is required' })
-    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'A valid email is required' })
-    const { data, error } = await supabaseAdmin.from('hub_task_people')
-      .insert({ task_id: task.id, name, email }).select(PERSON_COLS).single()
+    let contact
+    if (req.body?.contact_id) {
+      if (!UUID_RE.test(String(req.body.contact_id))) return res.status(404).json({ error: 'Not found' })
+      const { data } = await supabaseAdmin.from('hub_contacts').select('*')
+        .eq('id', req.body.contact_id).eq('owner_staff_id', req.staff.id).maybeSingle()
+      if (!data) return res.status(404).json({ error: 'Not found' })
+      contact = data
+    } else {
+      const { fields, error } = cleanContact(req.body || {})
+      if (error) return res.status(400).json({ error })
+      const { data: existing } = await supabaseAdmin.from('hub_contacts').select('*')
+        .eq('owner_staff_id', req.staff.id).eq('email', fields.email).maybeSingle()
+      if (existing) contact = existing
+      else {
+        const { data, error: insErr } = await supabaseAdmin.from('hub_contacts')
+          .insert({ ...fields, owner_staff_id: req.staff.id }).select('*').single()
+        if (insErr) throw insErr
+        contact = data
+      }
+    }
+    const { data, error } = await supabaseAdmin.from('hub_task_people').insert({
+      task_id: task.id, contact_id: contact.id, name: contact.name, email: contact.email,
+      clubs: personClubsFor(contact.clubs, task.clubs),
+    }).select(PERSON_COLS).single()
     if (error) {
       if (error.code === '23505') return res.status(409).json({ error: 'That person is already on this task' })
       throw error
     }
+    await dl.applyOwners(task)
+    res.json({ person: data })
+  } catch (e) { sendError(res, e) }
+})
+
+// Change which clubs a person covers on this task.
+router.patch('/people/:pid', async (req, res) => {
+  try {
+    const { person, task } = await loadPerson(req, req.params.pid)
+    const list = Array.isArray(req.body?.clubs) ? req.body.clubs : []
+    const clubs = [...new Set(list.map(String).filter(c => /^[a-z0-9-]{2,40}$/.test(c)))]
+    const { data, error } = await supabaseAdmin.from('hub_task_people').update({ clubs })
+      .eq('id', person.id).select(PERSON_COLS).single()
+    if (error) throw error
+    await dl.applyOwners(task)
     res.json({ person: data })
   } catch (e) { sendError(res, e) }
 })
@@ -85,6 +122,8 @@ router.delete('/people/:pid', async (req, res) => {
     if (person.gmail_thread_id) return res.status(400).json({ error: 'Already emailed; drop the task or leave them on it' })
     const { error } = await supabaseAdmin.from('hub_task_people').delete().eq('id', person.id)
     if (error) throw error
+    // Their slots are now unowned; give them to whoever else covers the club.
+    await dl.applyOwners(await loadTask(req, person.task_id))
     res.json({ ok: true })
   } catch (e) { sendError(res, e) }
 })
