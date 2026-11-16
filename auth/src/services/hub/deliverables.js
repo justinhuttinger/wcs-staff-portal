@@ -3,7 +3,7 @@
 // upload links, and store files. Rules live in ./slots (unit-tested).
 const crypto = require('crypto')
 const { supabaseAdmin } = require('../supabase')
-const { planSlots, planOwners, newUploadToken, slotLabel, allFilled, chunk } = require('./slots')
+const { planSlots, planOwners, affectedPeople, newUploadToken, slotLabel, allFilled, chunk } = require('./slots')
 
 const BUCKET = 'hub-task-files'
 const PORTAL_URL = process.env.PORTAL_URL || 'https://portal.wcstrength.com'
@@ -63,23 +63,29 @@ async function resyncSlots(task) {
       if (victim) must(await supabaseAdmin.from('hub_slots').delete().eq('id', victim.id))
     }
   }
-  // New slots get owners from the clubs people cover; that also refreshes
-  // who has delivered everything.
-  await applyOwners(task)
+  // New slots get owners from the clubs people cover. Removed slots can change
+  // anyone's "delivered", so refresh everyone (task club edits are rare).
+  await applyOwners(task, { refreshAll: true })
 }
 
-// Give every unowned slot on the task to the person covering its club, then
-// refresh "delivered" for everyone on the task.
-async function applyOwners(task) {
-  const people = must(await supabaseAdmin.from('hub_task_people').select('id, clubs, created_at').eq('task_id', task.id))
-  const dels = must(await supabaseAdmin.from('hub_deliverables').select('id').eq('task_id', task.id))
+// Re-assign automatic slots to whoever covers their club. Only people whose
+// slots changed hands get "delivered" refreshed, unless refreshAll (used after
+// an item is added or removed, which can change anyone's delivered state).
+// Writes run in parallel: this sits behind every club toggle in the UI.
+async function applyOwners(task, { refreshAll = false } = {}) {
+  const [people, dels] = await Promise.all([
+    supabaseAdmin.from('hub_task_people').select('id, clubs, created_at').eq('task_id', task.id).then(must),
+    supabaseAdmin.from('hub_deliverables').select('id').eq('task_id', task.id).then(must),
+  ])
+  let touched = []
   if (dels.length) {
     const slots = must(await supabaseAdmin.from('hub_slots').select('id, club, person_id, owner_manual').in('deliverable_id', dels.map(d => d.id)))
-    for (const u of planOwners(slots, people)) {
-      must(await supabaseAdmin.from('hub_slots').update({ person_id: u.person_id }).eq('id', u.id))
-    }
+    const updates = planOwners(slots, people)
+    await Promise.all(updates.map(async u => must(await supabaseAdmin.from('hub_slots').update({ person_id: u.person_id }).eq('id', u.id))))
+    touched = affectedPeople(slots, updates)
   }
-  for (const p of people) await refreshPersonDelivered(p.id)
+  const ids = refreshAll ? people.map(p => p.id) : touched
+  await Promise.all(ids.map(id => refreshPersonDelivered(id)))
 }
 
 // The slots a person owns (with fill state) and their deliverables.

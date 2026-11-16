@@ -81,7 +81,7 @@ router.post('/tasks/:id/deliverables', async (req, res) => {
       const { data: d } = await supabaseAdmin.from('hub_deliverables').select('id').eq('task_id', task.id)
         .eq('name', name).order('created_at', { ascending: false }).limit(1).maybeSingle()
       if (d) await supabaseAdmin.from('hub_slots').update({ person_id: personId }).eq('deliverable_id', d.id).is('club', null)
-      await dl.applyOwners(task)
+      await dl.applyOwners(task, { refreshAll: true })
     }
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
@@ -114,7 +114,7 @@ router.delete('/deliverables/:id', async (req, res) => {
     }
     const { error } = await supabaseAdmin.from('hub_deliverables').delete().eq('id', deliverable.id)
     if (error) throw error
-    await dl.applyOwners(task)
+    await dl.applyOwners(task, { refreshAll: true })
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })
@@ -132,7 +132,7 @@ router.post('/slots/:id/items', readFile, async (req, res) => {
       if (!kindAccepts(deliverable.kind, req.file.mimetype)) return res.status(400).json({ error: 'This slot takes images only' })
       await dl.addSlotItem({ taskId: task.id, slotId: slot.id, file: req.file, source: 'owner', isNew: false })
     }
-    await dl.applyOwners(task)
+    await dl.applyOwners(task, { refreshAll: true })
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })
@@ -146,7 +146,7 @@ router.patch('/slots/:id', async (req, res) => {
     if (req.body?.auto === true) {
       const { error } = await supabaseAdmin.from('hub_slots').update({ owner_manual: false }).eq('id', slot.id)
       if (error) throw error
-      await dl.applyOwners(task)
+      await dl.applyOwners(task, { refreshAll: true })
       return res.json({ deliverables: await dl.loadTaskDeliverables(task) })
     }
     const personId = await personOnTask(req.body?.person_id, task.id)
@@ -163,7 +163,7 @@ router.delete('/slot-items/:id', async (req, res) => {
   try {
     const { item, deliverable, task } = await ownItem(req, req.params.id)
     await dl.removeSlotItem(item)
-    await dl.applyOwners(task)
+    await dl.applyOwners(task, { refreshAll: true })
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })
@@ -246,7 +246,7 @@ router.post('/tray/:id/file', async (req, res) => {
     if (error && error.code !== '23505') throw error
     const { error: delErr } = await supabaseAdmin.from('hub_tray_items').delete().eq('id', item.id)
     if (delErr) throw delErr
-    await dl.applyOwners(task)
+    await dl.applyOwners(task, { refreshAll: true })
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })
@@ -287,7 +287,7 @@ router.post('/people/:pid/use-reply-text', async (req, res) => {
     text = text || person.last_reply_snippet || ''
     if (!text.trim()) return res.status(400).json({ error: 'Their reply has no text' })
     await dl.addSlotItem({ taskId: task.id, slotId: slot.id, text, source: 'email', isNew: false })
-    await dl.applyOwners(task)
+    await dl.applyOwners(task, { refreshAll: true })
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })

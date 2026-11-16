@@ -107,9 +107,13 @@ function CopyLink({ personId }) {
 function PersonClubs({ p, task, closed, onChanged }) {
   const options = task.clubs.length ? task.clubs : []
   if (!options.length) return null
+  // Show the change at once; save in the background and undo it if the save fails.
   const toggle = async slug => {
-    const next = p.clubs.includes(slug) ? p.clubs.filter(c => c !== slug) : [...p.clubs, slug]
-    try { onChanged((await hub.people.update(p.id, { clubs: next })).person) } catch { /* list refresh shows truth */ }
+    const before = p.clubs || []
+    const next = before.includes(slug) ? before.filter(c => c !== slug) : [...before, slug]
+    onChanged({ ...p, clubs: next }, { optimistic: true })
+    try { onChanged((await hub.people.update(p.id, { clubs: next })).person) }
+    catch { onChanged({ ...p, clubs: before }, { optimistic: true }) }
   }
   return (
     <div className="flex flex-wrap gap-1">
@@ -185,7 +189,12 @@ export default function TaskDetail({ task, gmailReady, onGmailLost, onClose, onE
   }, [task.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const added = person => { setPeople([...people, person]); setGridKey(k => k + 1); onRefresh() }
-  const personChanged = person => { setPeople(people.map(p => p.id === person.id ? { ...p, ...person } : p)); setGridKey(k => k + 1); onRefresh() }
+  // Optimistic updates only redraw the card; the saved result redraws the grid
+  // (owners may have moved). The task list doesn't change with clubs.
+  const personChanged = (person, { optimistic = false } = {}) => {
+    setPeople(ps => ps.map(p => p.id === person.id ? { ...p, ...person } : p))
+    if (!optimistic) setGridKey(k => k + 1)
+  }
   const remove = async p => {
     setError('')
     try { await hub.people.remove(p.id); setPeople(people.filter(x => x.id !== p.id)); setGridKey(k => k + 1); onRefresh() }
