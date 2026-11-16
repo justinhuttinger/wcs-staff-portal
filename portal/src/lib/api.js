@@ -1834,6 +1834,11 @@ export const hub = {
   },
   checkReplies: () => api('/hub/check-replies', { method: 'POST' }),
   newFeed: () => api('/hub/new'),
+  share: {
+    submissions: (taskId, club) => api(`/hub/tasks/${taskId}/submissions${club ? `?club=${encodeURIComponent(club)}` : ''}`),
+    create: (taskId) => api(`/hub/tasks/${taskId}/share`, { method: 'POST' }),
+    remove: (taskId) => api(`/hub/tasks/${taskId}/share`, { method: 'DELETE' }),
+  },
   markTicketSeen: (ticketId) => api(`/hub/new/tickets/${ticketId}/seen`, { method: 'POST' }),
   deliverables: {
     list: (taskId) => api(`/hub/tasks/${taskId}/deliverables`),

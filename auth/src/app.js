@@ -266,6 +266,9 @@ app.use('/hub', require('./routes/hubPeople'))
 app.use('/hub', require('./routes/hubDeliverables'))
 app.use('/hub', require('./routes/hubContacts').router)
 app.use('/hub', require('./routes/hubFeed'))
+app.use('/hub', require('./routes/hubShare').owner)
+// Public: no-login share page for a task's submissions.
+app.use('/hub-share', require('./routes/hubShare').pub)
 // Public: the no-login deliverable upload page (token per person per task).
 app.use('/hub-upload', require('./routes/hubUploadPublic'))
 app.use('/inventory', require('./routes/inventory'))
