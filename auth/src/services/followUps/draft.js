@@ -42,7 +42,7 @@ Rules:
 - Address the recipient by first name.`
 }
 
-function buildPrompt({ kind, project, history, today }) {
+function buildPrompt({ kind, project, history, today, openSlots = [] }) {
   const lines = [
     `Today is ${today}.`,
     `Recipient: ${project.recipient_name} <${project.recipient_email}>`,
@@ -50,10 +50,23 @@ function buildPrompt({ kind, project, history, today }) {
   ]
   if (project.details) lines.push(`More context: ${project.details}`)
   if (project.due_date) lines.push(`Due date: ${project.due_date}`)
+  if (openSlots.length) lines.push(`Still owed by them: ${openSlots.join(', ')}`)
+  if (kind === 'ask') {
+    if (history.length) {
+      lines.push('', 'Emails already sent in this thread, oldest first:')
+      for (const h of history) lines.push(`--- ${h.kind} sent ${String(h.sent_at).slice(0, 10)} ---`, h.body)
+      lines.push('---')
+    }
+    lines.push('', `What the owner wants to say or ask them, in his own rough words: ${project.instructions || '(nothing given)'}`,
+      history.length
+        ? 'Write a short email that says exactly that, in his voice, as a reply in this thread. Do not add requests he did not make. The subject field is ignored; return the original subject.'
+        : 'Write a short first email that says exactly that, in his voice, with a clear subject line. Do not add requests he did not make.')
+    return lines.join('\n')
+  }
   if (project.instructions) lines.push(`Extra instructions for this draft: ${project.instructions}`)
 
   if (kind === 'initial') {
-    lines.push('', 'Write the first email asking them to take this on. Include the due date if there is one. Write a clear, specific subject line.')
+    lines.push('', 'Write the first email asking them to take this on. Include the due date if there is one. If items are listed as still owed, name each one so they know exactly what to send. Write a clear, specific subject line.')
     return lines.join('\n')
   }
 
@@ -71,6 +84,7 @@ function buildPrompt({ kind, project, history, today }) {
   }
   lines.push(
     `This is follow-up number ${nudgeNumber}. Write a short nudge that goes as a reply in the same thread.`,
+    openSlots.length ? 'Name exactly what is still owed (the items listed above), nothing already received.' : '',
     'Word it differently from every email above: different opening, different phrasing. Do not repeat the full request; a brief reference is enough.',
     nudgeNumber >= 3
       ? 'Be a little more direct than earlier nudges and ask for a quick status or an ETA, while staying friendly. Never guilt-trip.'
@@ -80,7 +94,7 @@ function buildPrompt({ kind, project, history, today }) {
   return lines.join('\n')
 }
 
-async function draftEmail({ kind, project, history = [], ownerName, samples = [] }) {
+async function draftEmail({ kind, project, history = [], ownerName, samples = [], openSlots = [] }) {
   if (!client) {
     const err = new Error('ANTHROPIC_API_KEY is not set on the API')
     err.status = 500
@@ -94,7 +108,7 @@ async function draftEmail({ kind, project, history = [], ownerName, samples = []
     fallbacks: 'default',
     output_config: { effort: 'medium', format: { type: 'json_schema', schema: DRAFT_SCHEMA } },
     system: buildSystem({ ownerName, samples }),
-    messages: [{ role: 'user', content: buildPrompt({ kind, project, history, today }) }],
+    messages: [{ role: 'user', content: buildPrompt({ kind, project, history, today, openSlots }) }],
   })
   if (response.stop_reason === 'refusal') {
     const err = new Error('Claude declined to write this one. Try rewording the request.')
