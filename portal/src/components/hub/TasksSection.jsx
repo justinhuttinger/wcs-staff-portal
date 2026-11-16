@@ -150,10 +150,10 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
       )}
 
       {groups.length > 0 && (
-        <div className={`${CARD} overflow-hidden`}>
+        <div className={`${CARD} overflow-hidden divide-y divide-border`}>
           {groups.map(g => (
             <div key={g.id}>
-              <div className="px-4 py-1 bg-bg/60 border-y border-border first:border-t-0 flex items-center justify-between">
+              <div className="px-4 py-1 bg-bg/60 border-b border-border flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted">{g.name}</span>
                 <span className="text-[10px] text-text-muted">{g.items.length}</span>
               </div>

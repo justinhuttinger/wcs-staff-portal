@@ -11,13 +11,14 @@ function Categories() {
   const [name, setName] = useState('')
   const [editing, setEditing] = useState(null)
   const [error, setError] = useState('')
+  const [moving, setMoving] = useState(false)
 
   const load = () => hub.categories.list().then(r => setRows(r.categories)).catch(e => setError(e.message))
   useEffect(() => { load() }, [])
 
   const add = async () => {
     if (!name.trim()) return
-    try { await hub.categories.create({ name, sort: rows.length }); setName(''); load() } catch (e) { setError(e.message) }
+    try { await hub.categories.create({ name, sort: rows?.length ?? 0 }); setName(''); load() } catch (e) { setError(e.message) }
   }
   const rename = async () => {
     try { await hub.categories.update(editing.id, { name: editing.name }); setEditing(null); load() } catch (e) { setError(e.message) }
@@ -29,8 +30,11 @@ function Categories() {
     if (j < 0 || j >= next.length) return
     ;[next[index], next[j]] = [next[j], next[index]]
     setRows(next)
-    try { await Promise.all(next.map((c, i) => (c.sort === i ? null : hub.categories.update(c.id, { sort: i })))); load() }
-    catch (e) { setError(e.message); load() }
+    setMoving(true)
+    // Write every position (0..n), then reload; arrows stay off until done.
+    try { await Promise.all(next.map((c, i) => hub.categories.update(c.id, { sort: i }))) }
+    catch (e) { setError(e.message) }
+    finally { await load(); setMoving(false) }
   }
 
   return (
@@ -50,8 +54,8 @@ function Categories() {
             ) : (
               <>
                 <span className="flex-1 text-sm text-text-primary">{c.name}</span>
-                <button onClick={() => move(i, -1)} disabled={i === 0} className="text-xs text-text-muted hover:text-text-primary disabled:opacity-30 px-1" title="Move up">↑</button>
-                <button onClick={() => move(i, 1)} disabled={i === rows.length - 1} className="text-xs text-text-muted hover:text-text-primary disabled:opacity-30 px-1" title="Move down">↓</button>
+                <button onClick={() => move(i, -1)} disabled={moving || i === 0} className="text-xs text-text-muted hover:text-text-primary disabled:opacity-30 px-1" title="Move up">↑</button>
+                <button onClick={() => move(i, 1)} disabled={moving || i === rows.length - 1} className="text-xs text-text-muted hover:text-text-primary disabled:opacity-30 px-1" title="Move down">↓</button>
                 <button onClick={() => setEditing({ id: c.id, name: c.name })} className="text-xs text-text-muted hover:text-text-primary">Rename</button>
               </>
             )}
@@ -61,7 +65,7 @@ function Categories() {
       {rows?.length === 0 && <p className="text-xs text-text-muted">No categories yet.</p>}
       <div className="flex items-center gap-2 pt-2 border-t border-border">
         <TextInput value={name} placeholder="New category" onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add() }} />
-        <Button onClick={add} disabled={!name.trim()}>Add</Button>
+        <Button onClick={add} disabled={!name.trim() || !rows}>Add</Button>
       </div>
     </div>
   )
