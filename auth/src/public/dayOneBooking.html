@@ -587,6 +587,13 @@
       S.cfg = cfg
       $('duration').textContent = cfg.calendar.slotDuration + ' ' +
         (cfg.calendar.slotDurationUnit === 'hours' ? 'hr' : 'min')
+      // ?trainer= preselects a trainer once, on first load (e.g. a "book with this
+      // trainer" email). Unknown values fall back to Anyone.
+      if (TRAINER_PARAM && !S.trainerParamUsed) {
+        S.trainerParamUsed = true
+        var pre = matchTrainer(cfg.trainers || [], TRAINER_PARAM)
+        if (pre) S.key = pre.key || pre.userId
+      }
       renderTrainerMenu(cfg.trainers || [])
       var keepMember = $('tourMember').value
       $('tourMember').innerHTML = '<option value="">Select…</option>' +
@@ -631,6 +638,22 @@
   }
 
   // The chosen trainer, or null for "Anyone".
+  // Match ?trainer= against the roster: GHL userId / picker key, full name, or
+  // first name ("jane", "Jane Doe", "jane-doe" all work). A first
+  // name shared by two trainers matches nobody, so the link never guesses.
+  var TRAINER_PARAM = (qp.get('trainer') || '').trim()
+  function matchTrainer(trainers, raw) {
+    var norm = function (s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() }
+    var want = norm(raw)
+    if (!want) return null
+    var byId = trainers.filter(function (t) { return t.userId === raw || t.key === raw })[0]
+    if (byId) return byId
+    var full = trainers.filter(function (t) { return norm(t.name) === want })
+    if (full.length === 1) return full[0]
+    var first = trainers.filter(function (t) { return norm(t.name).split(' ')[0] === want })
+    return first.length === 1 ? first[0] : null
+  }
+
   function selected() {
     if (!S.key || !S.cfg) return null
     return (S.cfg.trainers || []).filter(function (t) { return (t.key || t.userId) === S.key })[0] || null
