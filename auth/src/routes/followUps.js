@@ -10,17 +10,13 @@
 // holds so connecting here never narrows that token).
 const { Router } = require('express')
 const crypto = require('crypto')
-const authenticate = require('../middleware/auth')
-const { requireRole } = require('../middleware/role')
+const { ownerOnly } = require('../lib/ownerGate')
 const { supabaseAdmin } = require('../services/supabase')
 const { getStaffGoogleAccessToken } = require('../services/googleUserToken')
 const gmail = require('../services/followUps/gmail')
 const { draftEmail } = require('../services/followUps/draft')
 
 const router = Router()
-
-const OWNER_EMAILS = (process.env.FOLLOW_UPS_EMAILS || 'justin@wcstrength.com')
-  .split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_BUSINESS_CLIENT_ID
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_BUSINESS_CLIENT_SECRET
@@ -43,15 +39,8 @@ const STATUSES = ['active', 'replied', 'done', 'cancelled']
 const EMAIL_RE = /^[^\s@<>",]+@[^\s@<>",]+\.[^\s@<>",]+$/
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
-function requireOwner(req, res, next) {
-  if (!OWNER_EMAILS.includes(String(req.staff?.email || '').toLowerCase())) {
-    return res.status(403).json({ error: 'Not available' })
-  }
-  next()
-}
-
 // Auth is per-route: /callback is Google's redirect and carries no bearer token.
-const owner = [authenticate, requireRole('admin'), requireOwner]
+const owner = ownerOnly
 
 function sendError(res, e) {
   if (e.notConnected) return res.status(412).json({ error: 'Connect Gmail first', code: 'gmail_not_connected' })
