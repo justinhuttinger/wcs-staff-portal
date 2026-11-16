@@ -88,4 +88,128 @@ function recipientsToCc(headers, { ownerEmail, senderEmail }) {
   return [...new Set(all)].filter(e => !skip.has(e)).slice(0, 20)
 }
 
-module.exports = { isAutomated, prefilter, cleanGuess, mergeAction, ownerRepliedAfter, recipientsToCc, addresses, extractPlainText, stripQuoted }
+// "Alex Kim <alex@x>" -> "Alex Kim"; a bare address -> its local part.
+function fromName(fromHeader) {
+  const v = String(fromHeader || '')
+  const m = v.match(/^\s*"?([^"<]*?)"?\s*</)
+  if (m && m[1].trim()) return m[1].trim().slice(0, 120)
+  return emailFrom(v).split('@')[0] || 'Someone'
+}
+
+// ---------- the 10-minute run ----------
+
+const OVERLAP_MS = 2 * 60 * 1000
+const BATCH = 15
+const REPLY_CHECKS = 50
+
+// Reads inbox mail since the cursor, skips what can't be a request, asks
+// Claude about the rest and keeps one open suggestion per thread. Every
+// processed message is recorded, so overlapping runs never repeat one.
+async function runSuggestions({ owner, getToken, db, gmail, classify, now = Date.now() }) {
+  const result = { scanned: 0, suggested: 0, updated: 0, skipped: 0, errors: [] }
+  const nowIso = new Date(now).toISOString()
+  const cursor = await db.getCursor(owner.id)
+  // First run: start from now, never read old mail.
+  if (!cursor) { await db.setCursor(owner.id, nowIso); return result }
+
+  let token, ownerEmail
+  try {
+    const t = await getToken(owner.id)
+    token = t.accessToken
+    ownerEmail = String(t.email || owner.email || '').toLowerCase()
+  } catch (e) {
+    if (e.notConnected) { result.errors.push('gmail_not_connected'); return result }
+    throw e
+  }
+
+  const listed = await gmail.listInboxSince(token, Math.floor((Date.parse(cursor) - OVERLAP_MS) / 1000))
+  const already = await db.seenIds(owner.id, listed.map(m => m.id))
+  const fresh = listed.filter(m => !already.has(m.id))
+  const [tracked, muted, ctx] = await Promise.all([db.trackedThreads(owner.id), db.muted(owner.id), db.context(owner.id)])
+
+  const messages = []
+  for (const m of fresh) {
+    try { const full = await gmail.getMessageFull(token, m.id); if (full) messages.push(full) } catch (e) {
+      if (e.notConnected) throw e
+      result.errors.push(`fetch ${m.id}: ${e.message}`)
+    }
+  }
+  messages.sort((a, b) => Number(a.internalDate || 0) - Number(b.internalDate || 0))
+  result.scanned = messages.length
+
+  const done = []
+  const candidates = []
+  for (const m of messages) {
+    const reason = prefilter({ id: m.id, threadId: m.threadId, headers: m.payload?.headers }, { ownerEmail, trackedThreads: tracked, muted })
+    if (reason) done.push(m.id)
+    else candidates.push(m)
+  }
+
+  let holdCursor = null
+  for (let i = 0; i < candidates.length; i += BATCH) {
+    const batch = candidates.slice(i, i + BATCH)
+    let guesses
+    try {
+      guesses = await classify(batch.map(m => ({
+        key: m.id,
+        from: headerValue(m.payload?.headers, 'From'),
+        subject: headerValue(m.payload?.headers, 'Subject'),
+        text: stripQuoted(extractPlainText(m.payload)).slice(0, 2500) || m.snippet || '',
+      })), ctx)
+    } catch (e) {
+      result.errors.push(`classify: ${e.message}`)
+      // Leave them unseen and keep the cursor before them, so the next run retries.
+      const first = Number(batch[0].internalDate || 0)
+      if (holdCursor == null || first < holdCursor) holdCursor = first
+      continue
+    }
+    for (const m of batch) {
+      const headers = m.payload?.headers
+      const guess = cleanGuess(guesses.get(m.id), ctx)
+      const fromHeader = headerValue(headers, 'From')
+      const at = new Date(Number(m.internalDate || now)).toISOString()
+      const open = await db.openForThread(owner.id, m.threadId)
+      const action = mergeAction(open, guess.request)
+      if (action === 'update') {
+        const patch = {
+          message_ids: [...new Set([...(open.message_ids || []), m.id])],
+          snippet: clip(m.snippet, 500), last_message_at: at, updated_at: nowIso,
+        }
+        if (guess.request) Object.assign(patch, { summary: guess.summary || open.summary, seen: false })
+        await db.updateSuggestion(open.id, patch)
+        result.updated++
+      } else {
+        await db.insertSuggestion({
+          owner_staff_id: owner.id, source: 'email', status: action === 'create' ? 'open' : 'skipped',
+          gmail_thread_id: m.threadId, message_ids: [m.id],
+          from_name: fromName(fromHeader), from_email: emailFrom(fromHeader),
+          cc_emails: recipientsToCc(headers, { ownerEmail, senderEmail: emailFrom(fromHeader) }),
+          subject: clip(headerValue(headers, 'Subject'), 250), snippet: clip(m.snippet, 500), summary: guess.summary,
+          guess: { title: guess.title, description: guess.description, due_date: guess.due_date, clubs: guess.clubs, category_id: guess.category_id },
+          received_at: at, last_message_at: at,
+        })
+        if (action === 'create') result.suggested++
+        else result.skipped++
+      }
+      done.push(m.id)
+    }
+  }
+  if (done.length) await db.markSeen(owner.id, done)
+
+  // "You replied": the owner answered in the thread after the ask.
+  const open = (await db.openEmailSuggestions(owner.id)).filter(s => !s.you_replied && s.gmail_thread_id).slice(0, REPLY_CHECKS)
+  for (const s of open) {
+    try {
+      const msgs = await gmail.getThread(token, s.gmail_thread_id)
+      if (ownerRepliedAfter(msgs, ownerEmail, Date.parse(s.received_at))) await db.updateSuggestion(s.id, { you_replied: true })
+    } catch (e) {
+      if (e.notConnected) throw e
+      result.errors.push(`thread ${s.id}: ${e.message}`)
+    }
+  }
+
+  await db.setCursor(owner.id, holdCursor != null ? new Date(Math.min(now, holdCursor - 1000)).toISOString() : nowIso)
+  return result
+}
+
+module.exports = { isAutomated, prefilter, cleanGuess, mergeAction, ownerRepliedAfter, recipientsToCc, addresses, fromName, runSuggestions }

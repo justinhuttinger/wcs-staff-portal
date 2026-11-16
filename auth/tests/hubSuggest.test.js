@@ -46,3 +46,103 @@ test('recipientsToCc: To+Cc minus owner and sender', () => {
   const h = [{ name: 'To', value: 'owner@example.com, "B, Person" <b@example.com>' }, { name: 'Cc', value: 'c@example.com, alex@example.com, C@example.com' }]
   assert.deepEqual(recipientsToCc(h, { ownerEmail: 'owner@example.com', senderEmail: 'alex@example.com' }), ['b@example.com', 'c@example.com'])
 })
+
+// ---------- runSuggestions ----------
+const { runSuggestions } = require('../src/services/hub/suggest')
+
+const b64 = s => Buffer.from(s).toString('base64url')
+function mail({ id, thread, at, from = 'Alex Kim <alex@example.com>', to = 'owner@example.com', cc = '', subject = 'Sauna', text = 'Can you fix the sauna?', extra = [] }) {
+  const headers = [{ name: 'From', value: from }, { name: 'To', value: to }, { name: 'Subject', value: subject }, ...extra]
+  if (cc) headers.push({ name: 'Cc', value: cc })
+  return { id, threadId: thread, internalDate: String(at), snippet: text, payload: { mimeType: 'text/plain', headers, body: { data: b64(text) } } }
+}
+
+function harness({ cursor = '2026-11-16T10:00:00Z', inbox = [], seen = [], tracked = [], classify, threads = {} } = {}) {
+  const state = { cursor, rows: [], seen: new Set(seen), classified: [] }
+  let nextId = 1
+  const db = {
+    getCursor: async () => state.cursor,
+    setCursor: async (_o, iso) => { state.cursor = iso },
+    seenIds: async (_o, ids) => new Set(ids.filter(i => state.seen.has(i))),
+    markSeen: async (_o, ids) => ids.forEach(i => state.seen.add(i)),
+    trackedThreads: async () => new Set(tracked),
+    muted: async () => new Set(),
+    openForThread: async (_o, t) => state.rows.find(r => r.gmail_thread_id === t && r.status === 'open') || null,
+    insertSuggestion: async row => { state.rows.push({ id: `s${nextId++}`, ...row }) },
+    updateSuggestion: async (id, patch) => Object.assign(state.rows.find(r => r.id === id), patch),
+    openEmailSuggestions: async () => state.rows.filter(r => r.status === 'open' && r.source === 'email'),
+    context: async () => ({ clubSlugs: ['salem'], categories: [] }),
+  }
+  const gmail = {
+    listInboxSince: async () => inbox.map(m => ({ id: m.id, threadId: m.threadId })),
+    getMessageFull: async (_t, id) => inbox.find(m => m.id === id),
+    getThread: async (_t, id) => threads[id] || [],
+  }
+  const cls = classify || (async items => {
+    state.classified.push(...items.map(i => i.key))
+    return new Map(items.map(i => [i.key, { request: !/fyi/i.test(i.text), summary: `ask: ${i.subject}`, title: i.subject, clubs: ['salem'] }]))
+  })
+  const run = () => runSuggestions({
+    owner: { id: 'o1', email: 'owner@example.com' },
+    getToken: async () => ({ accessToken: 't', email: 'owner@example.com' }),
+    db, gmail, classify: cls, now: Date.parse('2026-11-16T12:00:00Z'),
+  })
+  return { state, run }
+}
+
+test('runSuggestions: first run only sets the cursor', async () => {
+  const h = harness({ cursor: null, inbox: [mail({ id: 'm1', thread: 't1', at: 1 })] })
+  const r = await h.run()
+  assert.equal(h.state.cursor, '2026-11-16T12:00:00.000Z')
+  assert.equal(h.state.rows.length, 0)
+  assert.equal(r.scanned, 0)
+})
+
+test('runSuggestions: a request becomes one open suggestion with cc and guess', async () => {
+  const h = harness({ inbox: [mail({ id: 'm1', thread: 't1', at: Date.parse('2026-11-16T11:00:00Z'), cc: 'b@example.com' })] })
+  await h.run()
+  assert.equal(h.state.rows.length, 1)
+  const s = h.state.rows[0]
+  assert.deepEqual([s.status, s.source, s.from_email, s.from_name, s.cc_emails, s.guess.title, s.message_ids, s.received_at],
+    ['open', 'email', 'alex@example.com', 'Alex Kim', ['b@example.com'], 'Sauna', ['m1'], '2026-11-16T11:00:00.000Z'])
+  assert.equal(h.state.seen.has('m1'), true)
+  assert.equal(h.state.cursor, '2026-11-16T12:00:00.000Z')
+})
+
+test('runSuggestions: later mail on the thread updates the open suggestion', async () => {
+  const h = harness({ inbox: [mail({ id: 'm1', thread: 't1', at: 1000 }), mail({ id: 'm2', thread: 't1', at: 2000, text: 'fyi still broken' })] })
+  await h.run()
+  assert.equal(h.state.rows.length, 1)
+  assert.deepEqual(h.state.rows[0].message_ids, ['m1', 'm2'])
+  assert.equal(h.state.rows[0].snippet, 'fyi still broken')
+})
+
+test('runSuggestions: a non-request is kept as skipped', async () => {
+  const h = harness({ inbox: [mail({ id: 'm1', thread: 't1', at: 1, text: 'FYI only' })] })
+  await h.run()
+  assert.equal(h.state.rows[0].status, 'skipped')
+})
+
+test('runSuggestions: already-seen messages and tracked threads never reach Claude', async () => {
+  const h = harness({ seen: ['m1'], tracked: ['t2'], inbox: [mail({ id: 'm1', thread: 't1', at: 1 }), mail({ id: 'm2', thread: 't2', at: 2 })] })
+  await h.run()
+  assert.deepEqual(h.state.classified, [])
+  assert.equal(h.state.rows.length, 0)
+  assert.equal(h.state.seen.has('m2'), true)
+})
+
+test('runSuggestions: a Claude failure leaves messages unseen and holds the cursor', async () => {
+  const at = Date.parse('2026-11-16T11:30:00Z')
+  const h = harness({ inbox: [mail({ id: 'm1', thread: 't1', at })], classify: async () => { throw new Error('down') } })
+  const r = await h.run()
+  assert.equal(h.state.seen.has('m1'), false)
+  assert.ok(Date.parse(h.state.cursor) < at)
+  assert.equal(r.errors.length, 1)
+})
+
+test('runSuggestions: flags "you replied" when the owner answered after the ask', async () => {
+  const h = harness({ threads: { t1: [{ internalDate: String(Date.parse('2026-11-16T11:50:00Z')), payload: { headers: [{ name: 'From', value: 'owner@example.com' }] } }] } })
+  h.state.rows.push({ id: 's9', status: 'open', source: 'email', gmail_thread_id: 't1', received_at: '2026-11-16T11:00:00Z', you_replied: false })
+  await h.run()
+  assert.equal(h.state.rows[0].you_replied, true)
+})

@@ -176,6 +176,24 @@ function listAttachments(message) {
   return out
 }
 
+// Inbox message ids received after a unix time (seconds), newest first, capped.
+async function listInboxSince(accessToken, afterSeconds, { cap = 300 } = {}) {
+  const out = []
+  let pageToken = ''
+  do {
+    const q = new URLSearchParams({ q: 'in:inbox after:' + Math.max(0, Math.floor(afterSeconds)), maxResults: '100' })
+    if (pageToken) q.set('pageToken', pageToken)
+    const data = await gmailFetch(accessToken, '/messages?' + q)
+    out.push(...(data.messages || []))
+    pageToken = data.nextPageToken || ''
+  } while (pageToken && out.length < cap)
+  return out.slice(0, cap)
+}
+
+async function getMessageFull(accessToken, id) {
+  return gmailFetch(accessToken, '/messages/' + encodeURIComponent(id) + '?format=full')
+}
+
 async function getThreadFull(accessToken, threadId) {
   const data = await gmailFetch(accessToken, `/threads/${encodeURIComponent(threadId)}?format=full`)
   return data.messages || []
@@ -221,5 +239,5 @@ async function recentSentSamples(accessToken, cacheKey, { want = 8 } = {}) {
 module.exports = {
   buildRawMessage, encodeHeader, replySubject, extractPlainText, stripQuoted, latestReply,
   emailFrom, headerValue, decodeBase64url,
-  sendEmail, getThread, getThreadFull, getAttachment, listAttachments, recentSentSamples,
+  sendEmail, getThread, getThreadFull, listInboxSince, getMessageFull, getAttachment, listAttachments, recentSentSamples,
 }
