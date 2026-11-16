@@ -42,7 +42,8 @@ router.get('/tasks', async (req, res) => {
       if (error) throw error
       people = data || []
     }
-    const summary = await dl.summaryByTask(ids)
+    // Only open tasks need the deliverables summary (keeps the list fast).
+    const summary = await dl.summaryByTask((tasks || []).filter(t => t.status === 'todo' || t.status === 'waiting').map(t => t.id))
     const byTask = new Map()
     for (const p of people) {
       if (!byTask.has(p.task_id)) byTask.set(p.task_id, [])

@@ -79,3 +79,26 @@ test('withUploadLink keeps a draft that has the link, appends it otherwise', () 
   assert.equal(withUploadLink('Hi Sam,\n\nThanks!', url), `Hi Sam,\n\nThanks!\n\nUpload here: ${url}`)
   assert.equal(withUploadLink('Hi', null), 'Hi')
 })
+
+test('preValidate rejects before the body is read, and passes the target on', async () => {
+  const { preValidate } = require('../src/services/hub/slots')
+  const run = async (validate) => {
+    const out = {}
+    const res = { status(c) { out.status = c; return this }, json(b) { out.body = b; return this } }
+    const req = { params: { token: 't', slotId: 's' } }
+    await preValidate(validate)(req, res, () => { out.next = true })
+    return { ...out, req }
+  }
+  const bad = await run(async () => { const e = new Error('This link is not valid'); e.status = 404; throw e })
+  assert.equal(bad.status, 404)
+  assert.equal(bad.next, undefined)
+  const good = await run(async () => ({ person: { id: 'p' }, task: { id: 't' }, slot: { id: 's' } }))
+  assert.equal(good.next, true)
+  assert.equal(good.req.uploadTarget.slot.id, 's')
+})
+
+test('chunk splits long id lists so query strings stay short', () => {
+  const { chunk } = require('../src/services/hub/slots')
+  assert.deepEqual(chunk([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]])
+  assert.deepEqual(chunk([], 2), [])
+})

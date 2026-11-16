@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { hub } from '../../lib/api'
 import { CLUBS } from '../../config/locations'
 import { TextInput, Select, Button, ErrorBanner } from '../adsmanager/ui'
+import { gridColumns } from './gridColumns'
 
 const KIND_OPTIONS = [
   { value: 'image', label: 'Photo / image' },
@@ -114,7 +115,7 @@ export default function DeliverablesGrid({ task, people, onChanged }) {
     try { setRows((await hub.deliverables.remove(d.id)).deliverables); onChanged?.() } catch (e) { setError(e.message) }
   }
 
-  const columns = task.clubs.length ? task.clubs : [null]
+  const columns = gridColumns(task.clubs, rows || [])
   const personOptions = [{ value: '', label: 'Nobody yet' }, ...people.map(p => ({ value: p.id, label: p.name }))]
 
   return (
@@ -127,7 +128,11 @@ export default function DeliverablesGrid({ task, people, onChanged }) {
             <thead>
               <tr className="bg-bg/60">
                 <th className="text-left px-3 py-2 text-[11px] font-semibold text-text-muted">Item</th>
-                {columns.map(c => <th key={c || 'none'} className="text-left px-3 py-2 text-[11px] font-semibold text-text-muted border-l border-border">{CLUB_NAME(c) || 'Received'}</th>)}
+                {columns.map(({ club, removed }) => (
+                  <th key={club || 'none'} className="text-left px-3 py-2 text-[11px] font-semibold text-text-muted border-l border-border">
+                    {CLUB_NAME(club) || (removed ? 'Before clubs' : 'Received')}{removed && club ? ' (removed)' : ''}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -142,7 +147,7 @@ export default function DeliverablesGrid({ task, people, onChanged }) {
                       <button onClick={() => remove(d)} className="text-[11px] text-text-muted hover:text-red-600">Delete</button>
                     </div>
                   </td>
-                  {columns.map(c => {
+                  {columns.map(({ club: c }) => {
                     const slot = d.slots.find(s => (s.club ?? null) === c)
                     return slot
                       ? <Cell key={slot.id} slot={slot} kind={d.kind} onChanged={changed} onError={setError} />

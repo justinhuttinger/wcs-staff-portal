@@ -12,7 +12,8 @@ router.use(ownerOnly)
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const KINDS = ['image', 'file', 'text']
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1 } })
+const multerSingle = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1 } }).single('file')
+const readFile = (req, res, next) => multerSingle(req, res, err => (err ? sendError(res, err) : next()))
 
 function sendError(res, e) {
   if (e.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'Files can be up to 25 MB' })
@@ -117,7 +118,7 @@ router.delete('/deliverables/:id', async (req, res) => {
 })
 
 // Owner fills a slot himself: a file (multipart "file") or {text}.
-router.post('/slots/:id/items', upload.single('file'), async (req, res) => {
+router.post('/slots/:id/items', readFile, async (req, res) => {
   try {
     const { slot, deliverable, task } = await ownSlot(req, req.params.id)
     if (deliverable.kind === 'text') {

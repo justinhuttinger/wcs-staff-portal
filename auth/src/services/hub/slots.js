@@ -63,4 +63,23 @@ function withUploadLink(body, url) {
 Upload here: ${url}`
 }
 
-module.exports = { planSlots, kindAccepts, newUploadToken, validateUploadTarget, slotLabel, allFilled, withUploadLink }
+// Express middleware: check the token, task and slot BEFORE the upload body
+// is read, so a bad link can't make the server buffer a 25 MB file.
+function preValidate(validate) {
+  return async (req, res, next) => {
+    try {
+      req.uploadTarget = await validate({ token: req.params.token, slotId: req.params.slotId })
+      next()
+    } catch (e) {
+      res.status(e.status && e.status >= 400 && e.status < 600 ? e.status : 500).json({ error: e.status ? e.message : 'Something went wrong, please try again' })
+    }
+  }
+}
+
+function chunk(list, size) {
+  const out = []
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size))
+  return out
+}
+
+module.exports = { preValidate, chunk, planSlots, kindAccepts, newUploadToken, validateUploadTarget, slotLabel, allFilled, withUploadLink }

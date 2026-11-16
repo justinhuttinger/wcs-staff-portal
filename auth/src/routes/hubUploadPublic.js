@@ -6,7 +6,7 @@ const { Router } = require('express')
 const multer = require('multer')
 const rateLimit = require('express-rate-limit')
 const { supabaseAdmin } = require('../services/supabase')
-const { validateUploadTarget, kindAccepts, slotLabel } = require('../services/hub/slots')
+const { validateUploadTarget, kindAccepts, slotLabel, preValidate } = require('../services/hub/slots')
 const dl = require('../services/hub/deliverables')
 
 const router = Router()
@@ -14,7 +14,10 @@ router.use(rateLimit({ windowMs: 60 * 1000, limit: 30, standardHeaders: true, le
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const TOKEN_RE = /^[A-Za-z0-9_-]{20,64}$/
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1 } })
+const MAX_BYTES = 25 * 1024 * 1024
+const multerSingle = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_BYTES, files: 1 } }).single('file')
+// multer's own errors (e.g. too large) answered here, not by the global 500.
+const readFile = (req, res, next) => multerSingle(req, res, err => (err ? sendError(res, err) : next()))
 
 const db = {
   getToken: async t => (TOKEN_RE.test(String(t))
@@ -69,9 +72,10 @@ router.get('/:token', async (req, res) => {
   } catch (e) { sendError(res, e) }
 })
 
-router.post('/:token/slots/:slotId', upload.single('file'), async (req, res) => {
+// The link is checked before the body is read (preValidate), then the file.
+router.post('/:token/slots/:slotId', preValidate(args => validateUploadTarget({ db, ...args })), readFile, async (req, res) => {
   try {
-    const { person, task, slot } = await validateUploadTarget({ db, token: req.params.token, slotId: req.params.slotId })
+    const { person, task, slot } = req.uploadTarget
     const kind = slot.deliverable.kind
     if (kind === 'text') {
       const text = String(req.body?.text || '').trim()

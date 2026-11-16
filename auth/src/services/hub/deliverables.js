@@ -3,7 +3,7 @@
 // upload links, and store files. Rules live in ./slots (unit-tested).
 const crypto = require('crypto')
 const { supabaseAdmin } = require('../supabase')
-const { planSlots, newUploadToken, slotLabel, allFilled } = require('./slots')
+const { planSlots, newUploadToken, slotLabel, allFilled, chunk } = require('./slots')
 
 const BUCKET = 'hub-task-files'
 const PORTAL_URL = process.env.PORTAL_URL || 'https://portal.wcstrength.com'
@@ -11,7 +11,7 @@ const PORTAL_URL = process.env.PORTAL_URL || 'https://portal.wcstrength.com'
 let bucketReady = false
 async function ensureBucket() {
   if (bucketReady) return
-  const { error } = await supabaseAdmin.storage.createBucket(BUCKET, { public: false, fileSizeLimit: '25MB' })
+  const { error } = await supabaseAdmin.storage.createBucket(BUCKET, { public: false, fileSizeLimit: 25 * 1024 * 1024 })
   if (error && !/already exists/i.test(error.message)) throw error
   bucketReady = true
 }
@@ -29,11 +29,18 @@ function must({ data, error }) {
 // Slots plus whether each holds an item, for a set of deliverables.
 async function slotsWithFill(deliverableIds) {
   if (!deliverableIds.length) return []
-  const slots = must(await supabaseAdmin.from('hub_slots').select('id, deliverable_id, club').in('deliverable_id', deliverableIds))
+  // Batched so long id lists never make an over-long request URL.
+  const slots = []
+  for (const ids of chunk(deliverableIds, 150)) {
+    slots.push(...must(await supabaseAdmin.from('hub_slots').select('id, deliverable_id, club').in('deliverable_id', ids)))
+  }
   if (!slots.length) return []
-  const items = must(await supabaseAdmin.from('hub_slot_items')
-    .select('id, slot_id, file_name, mime, size_bytes, text_body, source, is_new, created_at')
-    .in('slot_id', slots.map(s => s.id)).order('created_at', { ascending: true }))
+  const items = []
+  for (const ids of chunk(slots.map(s => s.id), 150)) {
+    items.push(...must(await supabaseAdmin.from('hub_slot_items')
+      .select('id, slot_id, file_name, mime, size_bytes, text_body, source, is_new, created_at')
+      .in('slot_id', ids).order('created_at', { ascending: true })))
+  }
   return slots.map(s => {
     const own = items.filter(i => i.slot_id === s.id)
     return { ...s, items: own, filled: own.length > 0 }
@@ -42,7 +49,7 @@ async function slotsWithFill(deliverableIds) {
 
 // Add/remove club slots on every deliverable of a task to match its clubs.
 async function resyncSlots(task) {
-  const dels = must(await supabaseAdmin.from('hub_deliverables').select('id').eq('task_id', task.id))
+  const dels = must(await supabaseAdmin.from('hub_deliverables').select('id, person_id').eq('task_id', task.id))
   if (!dels.length) return
   const slots = await slotsWithFill(dels.map(d => d.id))
   for (const d of dels) {
@@ -56,6 +63,8 @@ async function resyncSlots(task) {
       if (victim) must(await supabaseAdmin.from('hub_slots').delete().eq('id', victim.id))
     }
   }
+  // New or removed slots can change who has delivered everything.
+  for (const pid of new Set(dels.map(d => d.person_id).filter(Boolean))) await refreshPersonDelivered(pid)
 }
 
 async function loadTaskDeliverables(task) {
@@ -75,7 +84,10 @@ async function loadTaskDeliverables(task) {
 async function summaryByTask(taskIds) {
   const out = new Map()
   if (!taskIds.length) return out
-  const dels = must(await supabaseAdmin.from('hub_deliverables').select('id, task_id').in('task_id', taskIds))
+  const dels = []
+  for (const ids of chunk(taskIds, 150)) {
+    dels.push(...must(await supabaseAdmin.from('hub_deliverables').select('id, task_id').in('task_id', ids)))
+  }
   const slots = await slotsWithFill(dels.map(d => d.id))
   for (const id of taskIds) {
     const delIds = new Set(dels.filter(d => d.task_id === id).map(d => d.id))
