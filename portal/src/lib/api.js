@@ -1825,6 +1825,18 @@ export const hub = {
     seen: (id) => api(`/hub/people/${id}/seen`, { method: 'POST' }),
   },
   checkReplies: () => api('/hub/check-replies', { method: 'POST' }),
+  deliverables: {
+    list: (taskId) => api(`/hub/tasks/${taskId}/deliverables`),
+    create: (taskId, body) => api(`/hub/tasks/${taskId}/deliverables`, { method: 'POST', body: JSON.stringify(body) }),
+    update: (id, patch) => api(`/hub/deliverables/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+    remove: (id) => api(`/hub/deliverables/${id}`, { method: 'DELETE' }),
+    // body: FormData with "file", or { text }
+    addItem: (slotId, body) => api(`/hub/slots/${slotId}/items`, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body) }),
+    removeItem: (id) => api(`/hub/slot-items/${id}`, { method: 'DELETE' }),
+    itemUrl: (id) => api(`/hub/slot-items/${id}/url`),
+    itemSeen: (id) => api(`/hub/slot-items/${id}/seen`, { method: 'POST' }),
+    uploadLink: (personId) => api(`/hub/people/${personId}/upload-link`, { method: 'POST' }),
+  },
   categories: {
     list: () => api('/hub/categories'),
     create: (body) => api('/hub/categories', { method: 'POST', body: JSON.stringify(body) }),

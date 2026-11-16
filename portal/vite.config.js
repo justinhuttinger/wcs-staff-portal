@@ -15,6 +15,7 @@ export default defineConfig({
         groupx: resolve(__dirname, 'groupx.html'),
         childcare: resolve(__dirname, 'childcare.html'),
         help: resolve(__dirname, 'help.html'),
+        upload: resolve(__dirname, 'upload.html'),
       },
     },
   },
