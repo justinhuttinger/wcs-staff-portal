@@ -3,6 +3,11 @@
 // this copy just decides whether the tile shows.
 export const FOLLOW_UPS_EMAILS = ['justin@wcstrength.com']
 
+// The Hub uses the same owner list.
+export function canUseHub(staff) {
+  return canUseFollowUps(staff)
+}
+
 export function canUseFollowUps(staff) {
   return staff?.role === 'admin' && FOLLOW_UPS_EMAILS.includes(String(staff?.email || '').toLowerCase())
 }
