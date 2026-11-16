@@ -56,14 +56,15 @@ function ownerForClub(club, people) {
   return covering.length ? covering[0].id : null
 }
 
-// Owner updates for slots nobody owns yet. A slot with an owner (set by hand
-// or earlier) is never changed here.
+// Owner updates so every automatic club slot belongs to the person covering
+// its club (unassigned when nobody does). Slots set by hand (owner_manual) and
+// club-less slots are never changed here.
 function planOwners(slots, people) {
   const out = []
   for (const s of slots) {
-    if (s.person_id) continue
-    const owner = ownerForClub(s.club ?? null, people)
-    if (owner) out.push({ id: s.id, person_id: owner })
+    if (s.owner_manual || !s.club) continue
+    const owner = ownerForClub(s.club, people)
+    if ((s.person_id || null) !== owner) out.push({ id: s.id, person_id: owner })
   }
   return out
 }

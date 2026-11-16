@@ -32,7 +32,7 @@ async function slotsWithFill(deliverableIds) {
   // Batched so long id lists never make an over-long request URL.
   const slots = []
   for (const ids of chunk(deliverableIds, 150)) {
-    slots.push(...must(await supabaseAdmin.from('hub_slots').select('id, deliverable_id, club, person_id').in('deliverable_id', ids)))
+    slots.push(...must(await supabaseAdmin.from('hub_slots').select('id, deliverable_id, club, person_id, owner_manual').in('deliverable_id', ids)))
   }
   if (!slots.length) return []
   const items = []
@@ -49,7 +49,7 @@ async function slotsWithFill(deliverableIds) {
 
 // Add/remove club slots on every deliverable of a task to match its clubs.
 async function resyncSlots(task) {
-  const dels = must(await supabaseAdmin.from('hub_deliverables').select('id, person_id').eq('task_id', task.id))
+  const dels = must(await supabaseAdmin.from('hub_deliverables').select('id').eq('task_id', task.id))
   if (!dels.length) return
   const slots = await slotsWithFill(dels.map(d => d.id))
   for (const d of dels) {
@@ -74,7 +74,7 @@ async function applyOwners(task) {
   const people = must(await supabaseAdmin.from('hub_task_people').select('id, clubs, created_at').eq('task_id', task.id))
   const dels = must(await supabaseAdmin.from('hub_deliverables').select('id').eq('task_id', task.id))
   if (dels.length) {
-    const slots = must(await supabaseAdmin.from('hub_slots').select('id, club, person_id').in('deliverable_id', dels.map(d => d.id)))
+    const slots = must(await supabaseAdmin.from('hub_slots').select('id, club, person_id, owner_manual').in('deliverable_id', dels.map(d => d.id)))
     for (const u of planOwners(slots, people)) {
       must(await supabaseAdmin.from('hub_slots').update({ person_id: u.person_id }).eq('id', u.id))
     }

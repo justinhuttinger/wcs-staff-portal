@@ -111,14 +111,18 @@ test('ownerForClub: first-added coverer wins; null club has no auto owner', () =
   assert.equal(ownerForClub(null, people), null)
 })
 
-test('planOwners fills only unowned slots and never overrides a manual owner', () => {
+test('planOwners: automatic slots follow the clubs people cover; hand-set slots never change', () => {
   const { planOwners } = require('../src/services/hub/slots')
-  const people = [{ id: 'steve', clubs: ['salem', 'keizer'], created_at: '1' }]
+  const people = [{ id: 'p-a', clubs: ['salem', 'keizer'], created_at: '1' }, { id: 'p-b', clubs: ['eugene'], created_at: '2' }]
   assert.deepEqual(planOwners([
-    { id: 's1', club: 'salem', person_id: null },
-    { id: 's2', club: 'keizer', person_id: 'paige' },
-    { id: 's3', club: 'eugene', person_id: null },
-  ], people), [{ id: 's1', person_id: 'steve' }])
+    { id: 's1', club: 'salem', person_id: null, owner_manual: false },      // unowned -> coverer
+    { id: 's2', club: 'keizer', person_id: 'p-b', owner_manual: false },    // auto, wrong person -> moves to p-a
+    { id: 's3', club: 'eugene', person_id: 'p-b', owner_manual: false },    // already right -> no update
+    { id: 's4', club: 'medford', person_id: 'p-a', owner_manual: false },   // nobody covers -> unassigned
+    { id: 's5', club: 'salem', person_id: null, owner_manual: true },       // hand-set unassigned -> stays
+    { id: 's6', club: 'keizer', person_id: 'p-b', owner_manual: true },     // hand-set -> stays
+    { id: 's7', club: null, person_id: 'p-b', owner_manual: false },        // club-less -> left alone
+  ], people), [{ id: 's1', person_id: 'p-a' }, { id: 's2', person_id: 'p-a' }, { id: 's4', person_id: null }])
 })
 
 test("personClubsFor: a saved person's clubs narrowed to the task's clubs", () => {

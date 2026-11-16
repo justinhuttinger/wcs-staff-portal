@@ -137,14 +137,21 @@ router.post('/slots/:id/items', readFile, async (req, res) => {
   } catch (e) { sendError(res, e) }
 })
 
-// Set who owes one slot (a person on the same task, or null for nobody).
-// A slot set by hand is never changed automatically.
+// Set who owes one slot by hand (a person on the same task, or null for
+// nobody); hand-set slots are never changed automatically. {auto: true} hands
+// the slot back to automatic assignment by clubs.
 router.patch('/slots/:id', async (req, res) => {
   try {
     const { slot, task } = await ownSlot(req, req.params.id)
+    if (req.body?.auto === true) {
+      const { error } = await supabaseAdmin.from('hub_slots').update({ owner_manual: false }).eq('id', slot.id)
+      if (error) throw error
+      await dl.applyOwners(task)
+      return res.json({ deliverables: await dl.loadTaskDeliverables(task) })
+    }
     const personId = await personOnTask(req.body?.person_id, task.id)
     if (personId === false) return res.status(400).json({ error: 'That person is not on this task' })
-    const { error } = await supabaseAdmin.from('hub_slots').update({ person_id: personId }).eq('id', slot.id)
+    const { error } = await supabaseAdmin.from('hub_slots').update({ person_id: personId, owner_manual: true }).eq('id', slot.id)
     if (error) throw error
     if (slot.person_id) await dl.refreshPersonDelivered(slot.person_id)
     if (personId) await dl.refreshPersonDelivered(personId)

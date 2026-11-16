@@ -20,12 +20,22 @@ alter table hub_task_people add column if not exists contact_id uuid references 
 alter table hub_task_people add column if not exists clubs text[] not null default '{}';
 
 alter table hub_slots add column if not exists person_id uuid references hub_task_people(id) on delete set null;
+-- true when the owner picked (or cleared) this slot's owner by hand; automatic
+-- assignment never touches those.
+alter table hub_slots add column if not exists owner_manual boolean not null default false;
+create index if not exists hub_slots_person_idx on hub_slots (person_id);
 
 -- Existing slots keep the person their deliverable was owed by.
 update hub_slots s
 set person_id = d.person_id
 from hub_deliverables d
 where d.id = s.deliverable_id and s.person_id is null and d.person_id is not null;
+
+-- People already on tasks cover the clubs of the slots they own, so automatic
+-- assignment keeps those slots with them.
+update hub_task_people p
+set clubs = coalesce((select array_agg(distinct s.club) from hub_slots s where s.person_id = p.id and s.club is not null), '{}')
+where p.clubs = '{}';
 
 -- Everyone already on a task becomes a saved person (first name seen wins).
 insert into hub_contacts (owner_staff_id, name, email)

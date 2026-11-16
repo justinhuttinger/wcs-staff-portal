@@ -1844,6 +1844,7 @@ export const hub = {
     itemUrl: (id) => api(`/hub/slot-items/${id}/url`),
     itemSeen: (id) => api(`/hub/slot-items/${id}/seen`, { method: 'POST' }),
     setSlotOwner: (slotId, personId) => api(`/hub/slots/${slotId}`, { method: 'PATCH', body: JSON.stringify({ person_id: personId || null }) }),
+    autoSlotOwner: (slotId) => api(`/hub/slots/${slotId}`, { method: 'PATCH', body: JSON.stringify({ auto: true }) }),
     uploadLink: (personId) => api(`/hub/people/${personId}/upload-link`, { method: 'POST' }),
     tray: (taskId) => api(`/hub/tasks/${taskId}/tray`),
     trayUrl: (id) => api(`/hub/tray/${id}/url`),

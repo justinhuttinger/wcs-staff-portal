@@ -42,7 +42,7 @@ function Item({ item, onChanged, onError }) {
   )
 }
 
-function Cell({ slot, kind, ownerOptions, onOwner, onChanged, onError }) {
+function Cell({ slot, kind, ownerOptions, onOwner, onAuto, onChanged, onError }) {
   const [busy, setBusy] = useState(false)
   const [writing, setWriting] = useState(false)
   const [text, setText] = useState('')
@@ -64,7 +64,10 @@ function Cell({ slot, kind, ownerOptions, onOwner, onChanged, onError }) {
   return (
     <td className="align-top px-3 py-2 border-l border-border min-w-[150px]">
       <Select value={slot.person_id || ''} onChange={e => onOwner(slot.id, e.target.value)} options={ownerOptions}
-        className="!py-0.5 !px-1.5 !text-[11px] !w-full mb-1.5" />
+        className="!py-0.5 !px-1.5 !text-[11px] !w-full" />
+      {slot.owner_manual && slot.club
+        ? <button onClick={() => onAuto(slot.id)} className="block text-[10px] text-text-muted hover:text-text-primary mb-1.5" title="Assign by who covers this club">set by hand · use clubs</button>
+        : <div className="mb-1.5" />}
       {slot.items.length === 0 && <p className="text-[11px] text-text-muted">○ waiting</p>}
       <div className="space-y-1.5">{slot.items.map(i => <Item key={i.id} item={i} onChanged={onChanged} onError={onError} />)}</div>
       {kind === 'text' ? (
@@ -112,6 +115,10 @@ export default function DeliverablesGrid({ task, people, reloadKey = 0, onChange
     try { setRows((await hub.deliverables.setSlotOwner(slotId, personId)).deliverables); onChanged?.() }
     catch (e) { setError(e.message) }
   }
+  const autoOwner = async slotId => {
+    try { setRows((await hub.deliverables.autoSlotOwner(slotId)).deliverables); onChanged?.() }
+    catch (e) { setError(e.message) }
+  }
   const remove = async d => {
     if (!window.confirm(`Delete "${d.name}" and anything already in it?`)) return
     try { setRows((await hub.deliverables.remove(d.id)).deliverables); onChanged?.() } catch (e) { setError(e.message) }
@@ -151,7 +158,7 @@ export default function DeliverablesGrid({ task, people, reloadKey = 0, onChange
                   {columns.map(({ club: c }) => {
                     const slot = d.slots.find(s => (s.club ?? null) === c)
                     return slot
-                      ? <Cell key={slot.id} slot={slot} kind={d.kind} ownerOptions={ownerOptions} onOwner={setOwner} onChanged={changed} onError={setError} />
+                      ? <Cell key={slot.id} slot={slot} kind={d.kind} ownerOptions={ownerOptions} onOwner={setOwner} onAuto={autoOwner} onChanged={changed} onError={setError} />
                       : <td key={c || 'none'} className="border-l border-border" />
                   })}
                 </tr>

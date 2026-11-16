@@ -188,7 +188,7 @@ export default function TaskDetail({ task, gmailReady, onGmailLost, onClose, onE
   const personChanged = person => { setPeople(people.map(p => p.id === person.id ? { ...p, ...person } : p)); setGridKey(k => k + 1); onRefresh() }
   const remove = async p => {
     setError('')
-    try { await hub.people.remove(p.id); setPeople(people.filter(x => x.id !== p.id)); onRefresh() }
+    try { await hub.people.remove(p.id); setPeople(people.filter(x => x.id !== p.id)); setGridKey(k => k + 1); onRefresh() }
     catch (e) { setError(e.message) }
   }
   // A warning means Gmail sent it but saving failed: close the composer anyway
