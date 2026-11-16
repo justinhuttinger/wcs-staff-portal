@@ -16,6 +16,7 @@ export default defineConfig({
         childcare: resolve(__dirname, 'childcare.html'),
         help: resolve(__dirname, 'help.html'),
         upload: resolve(__dirname, 'upload.html'),
+        share: resolve(__dirname, 'share.html'),
       },
     },
   },

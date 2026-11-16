@@ -3,6 +3,7 @@ import { hub } from '../../lib/api'
 import { CLUBS } from '../../config/locations'
 import { TextInput, Select, Button, ErrorBanner } from '../adsmanager/ui'
 import { gridColumns } from './gridColumns'
+import SubmissionsModal from './SubmissionsModal'
 
 const KIND_OPTIONS = [
   { value: 'image', label: 'Photo / image' },
@@ -96,6 +97,8 @@ export default function DeliverablesGrid({ task, people, reloadKey = 0, onChange
   const [rows, setRows] = useState(null)
   const [form, setForm] = useState({ name: '', kind: 'image', person_id: '' })
   const [error, setError] = useState('')
+  // Submissions view: { club, clubName } for one club, {} for all.
+  const [viewing, setViewing] = useState(null)
   const closed = task.status === 'done' || task.status === 'dropped'
 
   const load = useCallback(async () => {
@@ -130,7 +133,12 @@ export default function DeliverablesGrid({ task, people, reloadKey = 0, onChange
 
   return (
     <div className="space-y-3">
-      <h4 className="text-xs font-bold uppercase tracking-widest text-text-muted">Deliverables</h4>
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-xs font-bold uppercase tracking-widest text-text-muted">Deliverables</h4>
+        {rows?.length > 0 && (
+          <button onClick={() => setViewing({})} className="text-xs font-semibold text-wcs-red hover:underline">View all submissions</button>
+        )}
+      </div>
       <ErrorBanner error={error} onDismiss={() => setError('')} />
       {rows && rows.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-border">
@@ -140,7 +148,10 @@ export default function DeliverablesGrid({ task, people, reloadKey = 0, onChange
                 <th className="text-left px-3 py-2 text-[11px] font-semibold text-text-muted">Item</th>
                 {columns.map(({ club, removed }) => (
                   <th key={club || 'none'} className="text-left px-3 py-2 text-[11px] font-semibold text-text-muted border-l border-border">
-                    {CLUB_NAME(club) || (removed ? 'Before clubs' : 'Received')}{removed && club ? ' (removed)' : ''}
+                    <button onClick={() => setViewing({ club, clubName: CLUB_NAME(club) || (removed ? 'Before clubs' : 'Received') })}
+                      className="hover:text-wcs-red hover:underline" title="See everything submitted for this club">
+                      {CLUB_NAME(club) || (removed ? 'Before clubs' : 'Received')}{removed && club ? ' (removed)' : ''}
+                    </button>
                   </th>
                 ))}
               </tr>
@@ -179,6 +190,7 @@ export default function DeliverablesGrid({ task, people, reloadKey = 0, onChange
           <Button variant="secondary" onClick={add} disabled={!form.name.trim()}>Add</Button>
         </div>
       )}
+      {viewing && <SubmissionsModal task={task} club={viewing.club ?? null} clubName={viewing.clubName} onClose={() => setViewing(null)} />}
     </div>
   )
 }
