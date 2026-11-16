@@ -3,7 +3,7 @@
 const { Router } = require('express')
 const { ownerOnly } = require('../lib/ownerGate')
 const { supabaseAdmin } = require('../services/supabase')
-const { cleanTaskInput, rowSignal } = require('../services/hub/taskModel')
+const { cleanTaskInput, rowSignal, PERSON_LIST_COLS } = require('../services/hub/taskModel')
 
 const router = Router()
 router.use(ownerOnly)
@@ -36,7 +36,7 @@ router.get('/tasks', async (req, res) => {
     let people = []
     if (ids.length) {
       const { data, error } = await supabaseAdmin.from('hub_task_people')
-        .select('id, task_id, name, email, state, last_sent_at, last_reply_at, last_reply_snippet, reply_seen, gmail_thread_id')
+        .select(PERSON_LIST_COLS)
         .in('task_id', ids)
       if (error) throw error
       people = data || []
@@ -87,7 +87,7 @@ router.patch('/tasks/:id', async (req, res) => {
     if (upErr) throw upErr
     if (!data) return res.status(404).json({ error: 'Not found' })
     const { data: people } = await supabaseAdmin.from('hub_task_people')
-      .select('id, task_id, name, email, state, last_sent_at, last_reply_at, last_reply_snippet, reply_seen, gmail_thread_id')
+      .select(PERSON_LIST_COLS)
       .eq('task_id', data.id)
     res.json({ task: { ...data, people: people || [], signal: rowSignal(data, people || []) } })
   } catch (e) { sendError(res, e) }

@@ -4,6 +4,7 @@ import { CLUBS } from '../../config/locations'
 import { Modal, Field, TextInput, TextArea, Button, ErrorBanner } from '../adsmanager/ui'
 import Composer from './Composer'
 import { ago, dueLabel } from './dates'
+import { isGmailDisconnected } from './gmailState'
 
 const STATE_PILL = {
   new: { text: 'Not emailed', tone: 'text-text-muted bg-bg border-border' },
@@ -15,7 +16,7 @@ const CLUB_NAME = slug => CLUBS.find(c => c.slug === slug)?.name || slug
 const SMALL = '!px-3 !py-1.5 !text-xs'
 
 // kind: initial | nudge | ask. Ask first collects what to say, then drafts.
-function ComposeModal({ person, kind, onClose, onSent }) {
+function ComposeModal({ person, kind, onClose, onSent, onGmailLost }) {
   const [note, setNote] = useState('')
   const [draft, setDraft] = useState(null)
   const [drafting, setDrafting] = useState(false)
@@ -28,7 +29,7 @@ function ComposeModal({ person, kind, onClose, onSent }) {
     try {
       const text = kind === 'ask' ? [note, instructions].filter(Boolean).join('. ') : instructions
       setDraft(await hub.people.draft(person.id, { kind, instructions: text }))
-    } catch (e) { setError(e.message) } finally { setDrafting(false) }
+    } catch (e) { setError(e.message); if (isGmailDisconnected(e)) onGmailLost?.() } finally { setDrafting(false) }
   }, [kind, note, person.id])
 
   useEffect(() => { if (kind !== 'ask') write() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -36,7 +37,7 @@ function ComposeModal({ person, kind, onClose, onSent }) {
   const send = async () => {
     setSending(true); setError('')
     try { onSent(await hub.people.send(person.id, { kind, subject: draft.subject, body: draft.body })) }
-    catch (e) { setError(e.message); setSending(false) }
+    catch (e) { setError(e.message); setSending(false); if (isGmailDisconnected(e)) onGmailLost?.() }
   }
 
   const first = person.name.split(' ')[0]
@@ -124,7 +125,7 @@ function PersonCard({ p, closed, gmailReady, onCompose, onRemove }) {
   )
 }
 
-export default function TaskDetail({ task, gmailReady, onClose, onEdit, onRefresh }) {
+export default function TaskDetail({ task, gmailReady, onGmailLost, onClose, onEdit, onRefresh }) {
   const [people, setPeople] = useState(task.people || [])
   const [adding, setAdding] = useState({ name: '', email: '' })
   const [compose, setCompose] = useState(null)
@@ -151,8 +152,11 @@ export default function TaskDetail({ task, gmailReady, onClose, onEdit, onRefres
     try { await hub.people.remove(p.id); setPeople(people.filter(x => x.id !== p.id)); onRefresh() }
     catch (e) { setError(e.message) }
   }
-  const sent = ({ person }) => {
-    setPeople(people.map(p => p.id === person.id ? person : p)); setCompose(null); onRefresh()
+  // A warning means Gmail sent it but saving failed: close the composer anyway
+  // so it is not sent twice, and say so.
+  const sent = ({ person, warning }) => {
+    setPeople(people.map(p => p.id === person.id ? { ...p, ...person } : p)); setCompose(null); onRefresh()
+    if (warning) setError(warning)
   }
 
   return (
@@ -188,7 +192,7 @@ export default function TaskDetail({ task, gmailReady, onClose, onEdit, onRefres
         )}
       </div>
 
-      {compose && <ComposeModal person={compose.person} kind={compose.kind} onClose={() => setCompose(null)} onSent={sent} />}
+      {compose && <ComposeModal person={compose.person} kind={compose.kind} onClose={() => setCompose(null)} onSent={sent} onGmailLost={onGmailLost} />}
     </Modal>
   )
 }

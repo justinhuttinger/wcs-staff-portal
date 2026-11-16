@@ -59,7 +59,7 @@ function TaskRow({ t, onOpen, onToggleDone }) {
   )
 }
 
-export default function TasksSection({ gmailReady = false, refreshKey = 0 }) {
+export default function TasksSection({ gmailReady = false, refreshKey = 0, onGmailLost }) {
   const [tasks, setTasks] = useState(null)
   const [categories, setCategories] = useState([])
   const [error, setError] = useState('')
@@ -164,7 +164,7 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0 }) {
       ))}
 
       {openId && tasks?.find(t => t.id === openId) && (
-        <TaskDetail task={tasks.find(t => t.id === openId)} gmailReady={gmailReady} onClose={() => setOpenId(null)}
+        <TaskDetail task={tasks.find(t => t.id === openId)} gmailReady={gmailReady} onGmailLost={onGmailLost} onClose={() => setOpenId(null)}
           onEdit={t => setEditing(t)} onRefresh={load} />
       )}
       {editing !== undefined && (

@@ -8,7 +8,9 @@ const { supabaseAdmin } = require('../services/supabase')
 const { getStaffGoogleAccessToken } = require('../services/googleUserToken')
 const gmail = require('../services/followUps/gmail')
 const { draftEmail } = require('../services/followUps/draft')
-const { applyReply, afterSend, taskStatusAfterSend } = require('../services/hub/personState')
+const { applyReply } = require('../services/hub/personState')
+const { recordSend } = require('../services/hub/recordSend')
+const { PERSON_LIST_COLS } = require('../services/hub/taskModel')
 
 const router = Router()
 router.use(ownerOnly)
@@ -16,7 +18,7 @@ router.use(ownerOnly)
 const EMAIL_RE = /^[^\s@<>",]+@[^\s@<>",]+\.[^\s@<>",]+$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const KINDS = ['initial', 'nudge', 'ask']
-const PERSON_COLS = 'id, task_id, name, email, state, subject, gmail_thread_id, first_message_id_header, last_sent_at, last_reply_at, last_reply_snippet, reply_seen, created_at'
+const PERSON_COLS = PERSON_LIST_COLS
 
 function sendError(res, e) {
   if (e.notConnected) return res.status(412).json({ error: 'Connect Gmail first', code: 'gmail_not_connected' })
@@ -135,25 +137,16 @@ router.post('/people/:pid/send', async (req, res) => {
       threadId: person.gmail_thread_id || undefined,
       inReplyTo: person.first_message_id_header || undefined,
     })
-    const now = new Date().toISOString()
-    await supabaseAdmin.from('hub_task_messages').insert({
-      person_id: person.id, kind: newThread && kind === 'nudge' ? 'initial' : kind,
-      subject, body, gmail_message_id: sent.id, sent_at: now,
+    // From here the email is gone: recordSend never throws, it warns instead.
+    const result = await recordSend({
+      db: {
+        updatePerson: (id, patch) => supabaseAdmin.from('hub_task_people').update(patch).eq('id', id).select(PERSON_COLS).single(),
+        insertMessage: row => supabaseAdmin.from('hub_task_messages').insert(row),
+        updateTask: (id, patch) => supabaseAdmin.from('hub_tasks').update(patch).eq('id', id),
+      },
+      person, task, sent, kind, subject, body, now: new Date().toISOString(),
     })
-    const patch = { ...afterSend(person, now) }
-    if (newThread) {
-      patch.subject = subject
-      patch.gmail_thread_id = sent.threadId
-      patch.first_message_id_header = sent.messageIdHeader || null
-    }
-    const { data: row, error } = await supabaseAdmin.from('hub_task_people').update(patch)
-      .eq('id', person.id).select(PERSON_COLS).single()
-    if (error) throw error
-    const nextStatus = taskStatusAfterSend(task.status)
-    if (nextStatus !== task.status) {
-      await supabaseAdmin.from('hub_tasks').update({ status: nextStatus, updated_at: now }).eq('id', task.id)
-    }
-    res.json({ person: row, taskStatus: nextStatus })
+    res.json(result)
   } catch (e) { sendError(res, e) }
 })
 
@@ -188,8 +181,9 @@ router.post('/check-replies', async (req, res) => {
         try {
           const patch = applyReply(p, gmail.latestReply(await gmail.getThread(accessToken, p.gmail_thread_id), ownerEmail))
           if (!patch) continue
-          const { data: row } = await supabaseAdmin.from('hub_task_people').update(patch)
+          const { data: row, error: upErr } = await supabaseAdmin.from('hub_task_people').update(patch)
             .eq('id', p.id).select(PERSON_COLS).single()
+          if (upErr) console.warn('[Hub] reply save failed', p.id, upErr.message)
           if (row) updated.push(row)
         } catch (e) {
           if (e.notConnected) throw e

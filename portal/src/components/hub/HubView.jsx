@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { followUps, hub } from '../../lib/api'
 import TasksSection from './TasksSection'
 import GmailConnect from './GmailConnect'
+import { isGmailDisconnected, markGmailLost } from './gmailState'
 
 // The owner's private Hub. Tasks is the first section; more sections
 // (suggestions, alerts) slot into SECTIONS later.
@@ -40,8 +41,13 @@ export default function HubView({ onBack, openTickets, onOpenTickets }) {
         const { updated } = await hub.checkReplies()
         if (updated?.length) setRefreshKey(k => k + 1)
       }
-    } catch { setGmail(g => g || { ready: false }) }
+    } catch (e) {
+      // A revoked grant answers 412: bring the connect card back.
+      if (isGmailDisconnected(e)) setGmail(markGmailLost)
+      else setGmail(g => g || { ready: false })
+    }
   }, [])
+  const onGmailLost = useCallback(() => setGmail(markGmailLost), [])
   useEffect(() => { loadGmail() }, [loadGmail])
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
@@ -66,7 +72,7 @@ export default function HubView({ onBack, openTickets, onOpenTickets }) {
       </div>
       {gmail && !gmail.ready && <GmailConnect status={gmail} onConnected={loadGmail} />}
       {onOpenTickets && <TicketsCard count={openTickets} onOpen={onOpenTickets} />}
-      {section === 'tasks' && <TasksSection gmailReady={!!gmail?.ready} refreshKey={refreshKey} />}
+      {section === 'tasks' && <TasksSection gmailReady={!!gmail?.ready} refreshKey={refreshKey} onGmailLost={onGmailLost} />}
     </div>
   )
 }
