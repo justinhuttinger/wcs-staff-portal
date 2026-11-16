@@ -40,3 +40,11 @@ test('rowSignal: no people, or seen replies only, needs no review', () => {
   assert.deepEqual(rowSignal({}, []), { needsReview: false, waitingDays: null, allIn: false })
   assert.equal(rowSignal({}, [{ state: 'replied', reply_seen: true }]).needsReview, false)
 })
+
+test('cleanTaskInput: Time needed is 30/60/90/120/180 minutes or empty (Claude estimates)', () => {
+  assert.equal(cleanTaskInput({ title: 'x', minutes_override: 90 }).fields.minutes_override, 90)
+  assert.equal(cleanTaskInput({ title: 'x', minutes_override: '' }).fields.minutes_override, null)
+  assert.equal(cleanTaskInput({ title: 'x' }).fields.minutes_override, null)
+  assert.equal(cleanTaskInput({ title: 'x', minutes_override: 45 }).error, 'Bad time needed')
+  assert.deepEqual(cleanTaskInput({ minutes_override: 120 }, { partial: true }).fields, { minutes_override: 120 })
+})

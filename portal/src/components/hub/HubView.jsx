@@ -5,6 +5,7 @@ import GmailConnect from './GmailConnect'
 import OpenTickets from './OpenTickets'
 import IssuesStrip from './IssuesStrip'
 import NewFeed from './NewFeed'
+import PlanWeekButton from './PlanWeekButton'
 import { isGmailDisconnected, markGmailLost } from './gmailState'
 
 // The owner's private Hub, laid out as a dashboard: issues across the top,
@@ -53,6 +54,7 @@ export default function HubView({ onBack }) {
             <p className="text-xs text-text-muted">Just for you</p>
           </div>
         </div>
+        <PlanWeekButton />
       </div>
 
       <NewFeed reloadKey={feedKey + refreshKey}

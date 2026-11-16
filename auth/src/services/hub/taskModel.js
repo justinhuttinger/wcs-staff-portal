@@ -6,6 +6,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const SLUG_RE = /^[a-z0-9-]{2,40}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DAY_MS = 24 * 60 * 60 * 1000
+// Plan my week: optional override of Claude's block estimate, in minutes.
+const TIME_NEEDED = [30, 60, 90, 120, 180]
 
 // Returns { fields } or { error }. With partial, only keys present in body
 // are returned (for PATCH); without, defaults fill the rest (for create).
@@ -35,6 +37,12 @@ function cleanTaskInput(body = {}, { partial = false } = {}) {
   }
   if (!partial || has('category_id')) {
     fields.category_id = body.category_id && UUID_RE.test(String(body.category_id)) ? String(body.category_id) : null
+  }
+  if (!partial || has('minutes_override')) {
+    const v = body.minutes_override
+    if (v == null || v === '') fields.minutes_override = null
+    else if (TIME_NEEDED.includes(Number(v))) fields.minutes_override = Number(v)
+    else return { error: 'Bad time needed' }
   }
   return { fields }
 }
