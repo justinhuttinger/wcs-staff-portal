@@ -33,6 +33,8 @@ const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const HOOK = /^ {2}(const \[?[\w{},: ]+\]?\s*=\s*)?(useState|useEffect|useMemo|useCallback|useRef|useReducer|useLayoutEffect|useCancellableFetch)\s*\(/
 const GUARD = /^ {2}if\s*\(.*\b(loading|error|!\s*data|!\s*rows|!\s*report)\b.*\)\s*return\b/
 const COMPONENT = /^(export default )?function [A-Z]/
+// Any top-level function ends the previous one, so its guard stops counting.
+const TOP_FUNCTION = /^(export )?(default )?(async )?function /
 
 function walk(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -49,7 +51,7 @@ function findConditionalHooks(file) {
   let inComponent = false
   let guardLine = -1
   lines.forEach((line, i) => {
-    if (COMPONENT.test(line)) { inComponent = true; guardLine = -1 }
+    if (TOP_FUNCTION.test(line)) { inComponent = COMPONENT.test(line); guardLine = -1 }
     if (!inComponent) return
     if (GUARD.test(line)) guardLine = i + 1
     if (guardLine > 0 && HOOK.test(line)) {
@@ -118,6 +120,32 @@ test('the detector leaves correct components alone', () => {
   ].join('\n')
   const tmp = path.join(SRC, '__hookorder_ok_fixture__.jsx')
   fs.writeFileSync(tmp, fine)
+  try {
+    assert.deepEqual(findConditionalHooks(tmp), [])
+  } finally {
+    fs.unlinkSync(tmp)
+  }
+})
+
+// A custom hook (lowercase `function useX`) that follows a component is its own
+// function: the component's guard must not carry into it. This false alarm
+// fired on MemosView's useDates, which sits right after CurrentMemo.
+test('the detector does not carry a guard into the next function', () => {
+  const twoFunctions = [
+    'function Thing() {',
+    '  const [data, setData] = useState(null)',
+    '  const loading = !data',
+    '  if (loading) return null',
+    '  return <div>{data}</div>',
+    '}',
+    '',
+    'function useDates(row) {',
+    '  const [start, setStart] = useState(row.start)',
+    '  return start',
+    '}',
+  ].join('\n')
+  const tmp = path.join(SRC, '__hookorder_next_fn_fixture__.jsx')
+  fs.writeFileSync(tmp, twoFunctions)
   try {
     assert.deepEqual(findConditionalHooks(tmp), [])
   } finally {
