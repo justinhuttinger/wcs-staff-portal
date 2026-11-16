@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { followUps, hub } from '../../lib/api'
 import TasksSection from './TasksSection'
 import GmailConnect from './GmailConnect'
@@ -6,6 +6,7 @@ import OpenTickets from './OpenTickets'
 import IssuesStrip from './IssuesStrip'
 import NewFeed from './NewFeed'
 import PlanWeekButton from './PlanWeekButton'
+import SuggestedList from './SuggestedList'
 import { isGmailDisconnected, markGmailLost } from './gmailState'
 
 // The owner's private Hub, laid out as a dashboard: issues across the top,
@@ -25,6 +26,13 @@ export default function HubView({ onBack }) {
   const bumpFeed = useCallback(() => setFeedKey(k => k + 1), [])
   // Filled by the Alerts project; the strip renders nothing while empty.
   const [issues] = useState([])
+  // A suggestion opened from New: scroll to the Suggested list and mark it.
+  const suggestedRef = useRef(null)
+  const [highlight, setHighlight] = useState(null)
+  const openSuggestion = useCallback(id => {
+    setHighlight(id)
+    suggestedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
 
   // Gmail status, then a reply check so the list opens current.
   const loadGmail = useCallback(async () => {
@@ -59,8 +67,11 @@ export default function HubView({ onBack }) {
 
       <NewFeed reloadKey={feedKey + refreshKey}
         onOpenTicket={id => setTicketRequest({ id, n: Date.now() })}
-        onOpenTask={id => setTaskRequest({ id, n: Date.now() })} />
+        onOpenTask={id => setTaskRequest({ id, n: Date.now() })}
+        onOpenSuggestion={openSuggestion} />
       <IssuesStrip issues={issues} />
+      <SuggestedList ref={suggestedRef} reloadKey={feedKey} highlightId={highlight}
+        onAdded={() => { setRefreshKey(k => k + 1); bumpFeed() }} />
       {gmail && !gmail.ready && <GmailConnect status={gmail} onConnected={loadGmail} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">

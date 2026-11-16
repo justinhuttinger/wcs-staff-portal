@@ -37,15 +37,17 @@ export function ClubPicker({ value, onChange }) {
   )
 }
 
-// Create or edit a task. `task` null = new.
-export default function TaskEditor({ task, categories, onClose, onSaved }) {
+// Create or edit a task. `task` null = new. `initial` pre-fills a new task;
+// `saveWith(body)` replaces the default create (used by Add from a suggestion).
+export default function TaskEditor({ task, categories, onClose, onSaved, initial, saveWith, heading }) {
+  const start = task || initial
   const [form, setForm] = useState({
-    title: task?.title || '',
-    description: task?.description || '',
-    category_id: task?.category_id || '',
-    priority: task?.priority || 'medium',
-    due_date: task?.due_date || '',
-    clubs: task?.clubs || [],
+    title: start?.title || '',
+    description: start?.description || '',
+    category_id: start?.category_id || '',
+    priority: start?.priority || 'medium',
+    due_date: start?.due_date || '',
+    clubs: start?.clubs || [],
     status: task?.status || 'todo',
     minutes_override: task?.minutes_override ? String(task.minutes_override) : '',
   })
@@ -60,13 +62,13 @@ export default function TaskEditor({ task, categories, onClose, onSaved }) {
       const body = { ...rest, category_id: form.category_id || null, due_date: form.due_date || null, minutes_override: form.minutes_override ? Number(form.minutes_override) : null }
       // Status is only sent on edit, and only when it changed (keeps completed_at).
       if (task && status !== task.status) body.status = status
-      const { task: row } = task ? await hub.tasks.update(task.id, body) : await hub.tasks.create(body)
-      onSaved(row)
+      const result = task ? await hub.tasks.update(task.id, body) : await (saveWith ? saveWith(body) : hub.tasks.create(body))
+      onSaved(result.task, result)
     } catch (e) { setError(e.message); setSaving(false) }
   }
 
   return (
-    <Modal title={task ? 'Edit task' : 'New task'} onClose={onClose}
+    <Modal title={task ? 'Edit task' : (heading || 'New task')} onClose={onClose}
       subtitle={task ? `Added ${new Date(task.created_at).toLocaleDateString()}` : undefined}
       footer={(
         <>

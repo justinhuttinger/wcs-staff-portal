@@ -5,6 +5,7 @@ import { Modal, Field, TextInput, TextArea, Button, ErrorBanner } from '../adsma
 import Composer from './Composer'
 import DeliverablesGrid from './DeliverablesGrid'
 import IncomingTray from './IncomingTray'
+import EmailFiles from './EmailFiles'
 import PeoplePicker from './PeoplePicker'
 import { ago, dueLabel } from './dates'
 import { isGmailDisconnected } from './gmailState'
@@ -236,6 +237,7 @@ export default function TaskDetail({ task, gmailReady, onGmailLost, onClose, onE
       </div>
 
       <IncomingTray task={task} people={people} reloadKey={gridKey} onChanged={() => { setGridKey(k => k + 1); onRefresh() }} />
+      <EmailFiles taskId={task.id} />
       <DeliverablesGrid task={task} people={people} reloadKey={gridKey} onChanged={() => { setGridKey(k => k + 1); onRefresh() }} />
 
       {compose && <ComposeModal person={compose.person} kind={compose.kind} onClose={() => setCompose(null)} onSent={sent} onGmailLost={onGmailLost} />}

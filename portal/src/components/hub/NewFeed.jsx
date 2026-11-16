@@ -9,7 +9,7 @@ const ICON = { ticket: '🎫', deliverable: '📎', reply: '✉', tray: '📥', 
 // it; it disappears once opened (tickets) or once its own flag clears
 // (deliverable viewed, reply seen, file filed). Reloads when reloadKey changes
 // and every minute.
-export default function NewFeed({ reloadKey = 0, onOpenTicket, onOpenTask }) {
+export default function NewFeed({ reloadKey = 0, onOpenTicket, onOpenTask, onOpenSuggestion }) {
   const [items, setItems] = useState(null)
   const [failed, setFailed] = useState(false)
 
@@ -32,6 +32,10 @@ export default function NewFeed({ reloadKey = 0, onOpenTicket, onOpenTask }) {
     if (item.ticketId) {
       setItems(list => list.filter(x => x.key !== item.key))
       onOpenTicket(item.ticketId)
+    } else if (item.suggestionId) {
+      setItems(list => list.filter(x => x.key !== item.key))
+      hub.suggestions.seen(item.suggestionId).catch(() => {})
+      onOpenSuggestion?.(item.suggestionId)
     } else if (item.taskId) {
       onOpenTask(item.taskId)
     }
