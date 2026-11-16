@@ -45,7 +45,8 @@ import PinPicker from './components/PinPicker'
 import QuickActions from './components/QuickActions'
 import PointsChip from './components/PointsChip'
 import { getTheme, THEME_EVENT, getBackgroundPrefs, DEFAULT_BACKGROUND, DEFAULT_BACKGROUND_DIM } from './lib/theme'
-import { getPinned, togglePin, PINNED_EVENT } from './lib/pinnedTabs'
+import { getPinned, setPinned, togglePin, PINNED_EVENT } from './lib/pinnedTabs'
+import { swapTicketsForHub, HUB_PIN_SWAP_KEY } from './lib/hubPin'
 import { useOpenTicketCount } from './lib/useOpenTicketCount'
 import { hydrateUiPrefs, startUiPrefsSync } from './lib/uiPrefs'
 import { appsForLocation } from './lib/apps'
@@ -154,7 +155,8 @@ export default function App() {
   // header has no pins. Re-reads when the Tickets view opens or closes, so
   // working a ticket updates the bar on the way back.
   // Declared up here because App returns early for the login screen below.
-  const openTickets = useOpenTicketCount(press && !!user, showTicketsBoard)
+  // The owner's Hub shows the count too, so it reads it in any theme.
+  const openTickets = useOpenTicketCount((press || canHub) && !!user, showTicketsBoard)
   // corporate sees all clubs portal-wide (same as Drive/report gating)
   const seesAllClubs = ['admin', 'corporate'].includes(user?.staff?.role)
   // Analytics is manager+. Managers see only their assigned clubs (enforced
@@ -199,8 +201,20 @@ export default function App() {
   useEffect(() => {
     if (!user?.staff?.id) return
     startUiPrefsSync()
-    hydrateUiPrefs().then(url => setBackgroundUrl(url || null))
-  }, [user?.staff?.id])
+    hydrateUiPrefs().then(url => {
+      setBackgroundUrl(url || null)
+      // Once per browser, after the server's pins have landed: the owner's bar
+      // gets Hub where Tickets was (Hub carries the open-ticket count).
+      if (canUseHub(user?.staff)) {
+        try {
+          if (!localStorage.getItem(HUB_PIN_SWAP_KEY)) {
+            setPinned(swapTicketsForHub(getPinned()))
+            localStorage.setItem(HUB_PIN_SWAP_KEY, '1')
+          }
+        } catch {}
+      }
+    })
+  }, [user?.staff?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!press || !user?.staff?.id) return
@@ -690,7 +704,7 @@ export default function App() {
     .map(p => (p.kind === 'app' ? p : { ...p, open: () => { handleBackToPortal(); p.open() } }))
     // Counts are per-pin rather than a prop on the nav, so a second tab that
     // wants one later is a line here and nothing else.
-    .map(p => (p.key === 'tool:ticketing' && openTickets ? { ...p, badge: openTickets } : p))
+    .map(p => ((p.key === 'tool:ticketing' || p.key === 'tool:hub') && openTickets ? { ...p, badge: openTickets } : p))
 
   // Which view is open, named the way the pin catalog names it, so a pinned
   // tab can light up when you are inside it.
@@ -946,7 +960,8 @@ export default function App() {
       ) : showFollowUps && canFollowUps ? (
         <FollowUpsView onBack={() => setShowFollowUps(false)} />
       ) : showHub && canHub ? (
-        <HubView onBack={() => setShowHub(false)} />
+        <HubView onBack={() => setShowHub(false)} openTickets={openTickets}
+          onOpenTickets={() => { setShowHub(false); setShowTicketsBoard(true) }} />
       ) : (
         <main className={`flex-1 flex items-start pt-1 pb-12${press ? ' press-single' : ''}`}>
           <ToolGrid only={press ? (boardMode === 'apps' ? 'apps' : 'tools') : undefined} exclude={press ? NAV_OWNED_TILES : undefined} driveInTools={press} abcUrl={abcUrl} location={location} visibleTools={user.visible_tools} locationId={user.staff.locations?.find(l => l.is_primary)?.id} onCalendar={() => setShowCalendar(true)} onTrainerAvail={() => setShowTrainerAvail(true)} onLeaderboard={() => setShowLeaderboard(true)} onHR={() => setShowHR(true)} onHelpCenter={() => setShowHelpCenter(true)} onTicketsBoard={() => setShowTicketsBoard(true)} onDrive={() => setShowDriveHub(true)} onCommunicationNotes={() => setShowCommunicationNotes(true)} onReporting={() => { window.location.hash = '#reporting'; setShowReporting(true) }} onMarketingSection={openMarketing} onEventCalendar={() => setShowEventCalendar(true)} onMemos={() => setShowMemos(true)} onInventory={() => setShowInventory(true)} onForms={() => setShowForms(true)} onQuizzes={() => setShowQuizzes(true)} onNps={() => setShowNps(true)} onGroupX={() => setShowGroupX(true)} onFacility={() => setShowFacility(true)} onTill={() => setShowTill(true)} onCoaching={() => setShowCoaching(true)} onGhlScripts={() => setShowGhlScripts(true)} onAdsManager={() => setShowAdsManager(true)} onWorkflowTransfer={canWorkflowTransfer ? () => setShowWorkflowTransfer(true) : undefined} onFollowUps={canFollowUps ? () => setShowFollowUps(true) : undefined} onHub={canHub ? () => setShowHub(true) : undefined} userRole={user.staff?.role} userName={user.staff?.display_name || user.staff?.first_name || ''} marketingAddon={!!user.staff?.marketing_addon} marketingCaps={mAccess} customReports={user.staff?.custom_reports || []} />
