@@ -50,7 +50,8 @@ function freeRanges(busy, from) {
 
 // days: [{ date, busy: [[startMin, endMin], ...] }] in order (weekdays only).
 // items: already ordered; { key, title, minutes, blocks }.
-function planWeek({ days, items, startToday = null }) {
+// alreadyToday: item keys that already have a (kept, in-progress) block today.
+function planWeek({ days, items, startToday = null, alreadyToday = [] }) {
   const parts = []
   for (const it of items) {
     const n = Math.max(1, it.blocks || 1)
@@ -61,13 +62,16 @@ function planWeek({ days, items, startToday = null }) {
     const from = dayIndex === 0 && startToday != null ? Math.max(DAY_START, startToday) : DAY_START
     const ranges = freeRanges(d.busy || [], from)
     let capLeft = DAILY_CAP
-    const usedToday = new Set()
+    const usedToday = new Set(dayIndex === 0 ? alreadyToday : [])
     for (const [rs, re] of ranges) {
       let pos = rs
       for (;;) {
         const room = Math.min(re - pos, capLeft)
         const pick = parts.find(p => !p.placed && p.minutes <= room && !usedToday.has(p.key)
-          && (p.part === 1 || (parts.find(q => q.key === p.key && q.part === p.part - 1)?.placed?.dayIndex ?? Infinity) < dayIndex))
+          // Split work starts only if its later parts still have days left.
+          && (p.part === 1
+            ? dayIndex + (p.of - 1) < days.length
+            : (parts.find(q => q.key === p.key && q.part === p.part - 1)?.placed?.dayIndex ?? Infinity) < dayIndex))
         if (!pick) break
         pick.placed = { dayIndex }
         usedToday.add(pick.key)
@@ -78,8 +82,11 @@ function planWeek({ days, items, startToday = null }) {
       if (capLeft <= 0) break
     }
   })
-  const unfit = [...new Set(parts.filter(p => !p.placed).map(p => p.key))]
-  return { blocks, unfit }
+  // unfit: nothing placed; partial: started but a later part didn't fit.
+  const keys = [...new Set(parts.map(p => p.key))]
+  const unfit = keys.filter(k => parts.every(p => p.key !== k || !p.placed))
+  const partial = keys.filter(k => !unfit.includes(k) && parts.some(p => p.key === k && !p.placed))
+  return { blocks, unfit, partial }
 }
 
 // "YYYY-MM-DDTHH:MM:00-08:00" for a Pacific wall-clock minute on a date.
@@ -111,11 +118,21 @@ function busyByDay(events, replacing) {
     if (e.transparency === 'transparent') continue
     if (/^\s*daily planning\s*$/i.test(e.summary || '')) continue
     if (e.id && replacing.has(e.id)) continue
+    if ((e.attendees || []).some(a => a.self && a.responseStatus === 'declined')) continue
     const s = laParts(e.start.dateTime)
     const t = laParts(e.end.dateTime)
-    const end = t.date === s.date ? t.minute : 24 * 60
-    if (!out.has(s.date)) out.set(s.date, [])
-    out.get(s.date).push([s.minute, end])
+    const add = (date, from, to) => {
+      if (to <= from) return
+      if (!out.has(date)) out.set(date, [])
+      out.get(date).push([from, to])
+    }
+    if (t.date === s.date) add(s.date, s.minute, t.minute)
+    else {
+      // Spans midnight or several days: block every day it covers.
+      add(s.date, s.minute, 24 * 60)
+      for (let d = addDays(s.date, 1); d < t.date; d = addDays(d, 1)) add(d, 0, 24 * 60)
+      add(t.date, 0, t.minute)
+    }
   }
   return out
 }
@@ -124,8 +141,12 @@ function busyByDay(events, replacing) {
 function cleanEstimate(e) {
   let minutes = Number(e?.minutes) || 60
   let blocks = Math.min(3, Math.max(1, Math.round(Number(e?.blocks) || 1)))
-  if (minutes > 90) { blocks = Math.min(3, Math.max(blocks, Math.ceil(minutes / 90))); minutes = 90 }
-  else minutes = minutes <= 30 ? 30 : minutes <= 60 ? 60 : 90
+  const snap = m => (m <= 30 ? 30 : m <= 60 ? 60 : 90)
+  if (minutes > 90) {
+    // Split the total over the fewest 90-min-max blocks (2h = 2 x 60, 3h = 2 x 90).
+    blocks = Math.min(3, Math.max(blocks, Math.ceil(minutes / 90)))
+    minutes = snap(Math.ceil(minutes / blocks))
+  } else minutes = snap(minutes)
   return { minutes, blocks }
 }
 

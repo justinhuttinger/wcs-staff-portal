@@ -38,7 +38,7 @@ export default function PlanWeekButton() {
           footer={<Button variant="ghost" onClick={() => setOpen(false)}>Done</Button>}>
           <ErrorBanner error={error} />
           {busy && <Spinner label="Reading your calendar and planning…" />}
-          {result && result.added.length === 0 && <p className="text-sm text-text-muted">Nothing to schedule right now.</p>}
+          {result && result.added.length === 0 && !result.unfit?.length && <p className="text-sm text-text-muted">Nothing to schedule right now.</p>}
           {[...byDay.entries()].map(([date, list]) => (
             <div key={date} className="space-y-1">
               <p className="text-xs font-bold uppercase tracking-widest text-text-muted">{dayLabel(date)}</p>
@@ -51,6 +51,12 @@ export default function PlanWeekButton() {
               ))}
             </div>
           ))}
+          {result?.partial?.length > 0 && (
+            <div className="rounded-lg border border-border bg-bg p-3">
+              <p className="text-xs font-semibold text-text-primary mb-1">Started, rest didn't fit ({result.partial.length})</p>
+              <p className="text-xs text-text-muted">{result.partial.join(' · ')}</p>
+            </div>
+          )}
           {result?.unfit?.length > 0 && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
               <p className="text-xs font-semibold text-amber-800 mb-1">Didn't fit this week ({result.unfit.length})</p>

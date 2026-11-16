@@ -28,7 +28,7 @@ async function cal(token, url, init = {}) {
   if (!res.ok && !(init.method === 'DELETE' && (res.status === 404 || res.status === 410))) {
     const body = await res.text().catch(() => '')
     const e = new Error(`Calendar ${res.status}: ${body.slice(0, 200)}`)
-    if (res.status === 401 || res.status === 403) e.notConnected = true
+    if (res.status === 401 || (res.status === 403 && !/rateLimit|quota/i.test(body))) e.notConnected = true
     throw e
   }
   return res.status === 204 ? null : res.json().catch(() => null)
@@ -44,11 +44,11 @@ async function estimate(items) {
   }, required: ['n', 'minutes', 'blocks'], additionalProperties: false } } }, required: ['items'], additionalProperties: false }
   try {
     const r = await claude.messages.create({
-      model: 'claude-opus-5-5', max_tokens: 4000,
+      model: 'claude-opus-5-5', max_tokens: 8000,
       output_config: { effort: 'low', format: { type: 'json_schema', schema } },
       messages: [{ role: 'user', content: `Estimate desk time for each item for a gym owner's week. Use 30 for quick (email, check, reply, approve), 60 for normal (build, investigate, draft, fix), 90 for big (rollout, new system, multi-step). Work bigger than 90 minutes: minutes 90 and blocks 2 or 3. Return one entry per item number.\n\n${lines.join('\n')}` }],
     })
-    if (r.stop_reason === 'refusal') return out
+    if (r.stop_reason === 'refusal' || r.stop_reason === 'max_tokens') return out
     const text = r.content.filter(b => b.type === 'text').map(b => b.text).join('')
     for (const e of JSON.parse(text).items || []) {
       const it = items[e.n - 1]
@@ -74,16 +74,19 @@ router.post('/plan', async (req, res) => {
       const summary = await dl.summaryByTask(waitingIds)
       for (const [id, s] of summary) if (s.newItems > 0) review.add(id)
     }
-    const tickets = must(await supabaseAdmin.from('tickets').select('id, title, status, created_at').in('status', ['open', 'in_progress']).limit(300))
+    const tickets = must(await supabaseAdmin.from('tickets').select('id, title, status, priority, created_at').in('status', ['open', 'in_progress'])
+      .order('created_at', { ascending: true }).limit(300))
+    const ticketPriority = p => (p === 'urgent' || p === 'high' ? 'high' : p === 'low' ? 'low' : 'medium')
 
     const items = [
       ...tasks.filter(t => t.status === 'todo' || review.has(t.id)).map(t => ({
         key: `task:${t.id}`, kind: 'task', refId: t.id, title: t.title, detail: t.description,
         due: t.due_date, priority: t.priority, created_at: t.created_at, override: t.minutes_override,
       })),
-      ...tickets.map(t => ({ key: `ticket:${t.id}`, kind: 'ticket', refId: t.id, title: t.title || 'Ticket', due: null, priority: 'medium', created_at: t.created_at })),
+      ...tickets.map(t => ({ key: `ticket:${t.id}`, kind: 'ticket', refId: t.id, title: t.title || 'Ticket', due: null, priority: ticketPriority(t.priority), created_at: t.created_at })),
     ]
-    const est = await estimate(items.filter(i => !i.override))
+    const ordered = orderItems(items, laParts(new Date().toISOString()).date)
+    const est = await estimate(ordered.filter(i => !i.override).slice(0, 60))
     for (const i of items) Object.assign(i, i.override ? cleanEstimate({ minutes: i.override }) : (est.get(i.key) || { minutes: 60, blocks: 1 }))
 
     // ---- the window: next 5 weekdays, today from the next quarter hour ----
@@ -98,6 +101,9 @@ router.post('/plan', async (req, res) => {
 
     // ---- clear our own future blocks, then read the calendar ----
     const old = must(await supabaseAdmin.from('hub_plan_events').select('event_id').eq('owner_staff_id', owner).gt('starts_at', now.toISOString()))
+    const kept = must(await supabaseAdmin.from('hub_plan_events').select('ref_kind, ref_id, starts_at').eq('owner_staff_id', owner)
+      .lte('starts_at', now.toISOString()).gte('starts_at', new Date(laIso(nowLa.date, 0)).toISOString()))
+    const alreadyToday = kept.map(k => `${k.ref_kind}:${k.ref_id}`)
     const replacing = new Set(old.map(o => o.event_id))
     const timeMin = now.toISOString()
     const timeMax = new Date(laIso(days[days.length - 1], DAY_END)).toISOString()
@@ -116,8 +122,7 @@ router.post('/plan', async (req, res) => {
     if (replacing.size) must(await supabaseAdmin.from('hub_plan_events').delete().in('event_id', [...replacing]))
 
     // ---- plan and create ----
-    const ordered = orderItems(items, nowLa.date)
-    const { blocks, unfit } = planWeek({ days: days.map(d => ({ date: d, busy: busy.get(d) || [] })), items: ordered, startToday })
+    const { blocks, unfit, partial } = planWeek({ days: days.map(d => ({ date: d, busy: busy.get(d) || [] })), items: ordered, startToday, alreadyToday })
     const byKey = new Map(items.map(i => [i.key, i]))
     const added = []
     for (const b of blocks) {
@@ -135,12 +140,16 @@ router.post('/plan', async (req, res) => {
         end: { dateTime: laIso(b.date, b.end), timeZone: 'America/Los_Angeles' },
         reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 5 }] },
       }) })
-      must(await supabaseAdmin.from('hub_plan_events').insert({
+      const { error: trackErr } = ev?.id ? await supabaseAdmin.from('hub_plan_events').insert({
         event_id: ev.id, owner_staff_id: owner, ref_kind: it.kind, ref_id: it.refId, starts_at: new Date(laIso(b.date, b.start)).toISOString(),
-      }))
+      }) : { error: new Error('Calendar returned no event id') }
+      if (trackErr) {
+        if (ev?.id) await cal(accessToken, `${CAL}/${encodeURIComponent(ev.id)}`, { method: 'DELETE' }).catch(() => {})
+        throw trackErr
+      }
       added.push({ title: summary, date: b.date, start: b.start, end: b.end, kind: it.kind })
     }
-    res.json({ added, unfit: unfit.map(k => byKey.get(k)?.title).filter(Boolean), cleared: replacing.size })
+    res.json({ added, unfit: unfit.map(k => byKey.get(k)?.title).filter(Boolean), partial: partial.map(k => byKey.get(k)?.title).filter(Boolean), cleared: replacing.size })
   } catch (e) {
     if (e.notConnected) return res.status(412).json({ error: 'Connect Google first (Hub > Connect Gmail)', code: 'gmail_not_connected' })
     console.error('[HubPlan]', e.message)

@@ -90,3 +90,33 @@ test('cleanEstimate keeps sizes to 30/60/90 and 1-3 blocks', () => {
   assert.deepEqual(cleanEstimate(null), { minutes: 60, blocks: 1 })
   assert.deepEqual(cleanEstimate({ minutes: 180 }), { minutes: 90, blocks: 2 })
 })
+
+test('busyByDay: a multi-day timed event blocks every day it covers', () => {
+  const ev = [{ summary: 'Conference', start: { dateTime: '2026-11-16T15:00:00Z' }, end: { dateTime: '2026-11-18T23:00:00Z' } }] // Mon 7:00 -> Wed 15:00 PT
+  const busy = busyByDay(ev, new Set())
+  assert.deepEqual(busy.get('2026-11-16'), [[7 * 60, 24 * 60]])
+  assert.deepEqual(busy.get('2026-11-17'), [[0, 24 * 60]])
+  assert.deepEqual(busy.get('2026-11-18'), [[0, 15 * 60]])
+})
+
+test('busyByDay: meetings the owner declined are free', () => {
+  const ev = [{ summary: 'X', attendees: [{ self: true, responseStatus: 'declined' }], start: { dateTime: '2026-11-17T17:00:00Z' }, end: { dateTime: '2026-11-17T18:00:00Z' } }]
+  assert.equal(busyByDay(ev, new Set()).get('2026-11-17'), undefined)
+})
+
+test('cleanEstimate: a 2-hour override is two 1-hour blocks, 3 hours is two 90s', () => {
+  assert.deepEqual(cleanEstimate({ minutes: 120 }), { minutes: 60, blocks: 2 })
+  assert.deepEqual(cleanEstimate({ minutes: 180 }), { minutes: 90, blocks: 2 })
+})
+
+test('split work only starts when its remaining parts have days left; partly placed work is reported as partial', () => {
+  const r = planWeek({ days: [day('2026-11-20')], items: [{ key: 'x', title: 'X', minutes: 60, blocks: 2 }, { key: 'y', title: 'Y', minutes: 30, blocks: 1 }] })
+  assert.deepEqual(r.blocks.map(b => b.key), ['y'])
+  assert.deepEqual(r.unfit, ['x'])
+  assert.deepEqual(r.partial, [])
+})
+
+test('an item that already has a block today is not scheduled again today', () => {
+  const r = planWeek({ days: [day('2026-11-17'), day('2026-11-18')], items: [{ key: 'a', title: 'A', minutes: 60, blocks: 1 }], alreadyToday: ['a'] })
+  assert.deepEqual(r.blocks.map(b => b.date), ['2026-11-18'])
+})
