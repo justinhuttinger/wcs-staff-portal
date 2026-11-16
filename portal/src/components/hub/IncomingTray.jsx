@@ -49,11 +49,22 @@ export default function IncomingTray({ task, people, reloadKey, onChanged }) {
       {items.map(item => (
         <div key={item.id} className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-text-muted">From {item.person_name.split(' ')[0]}:</span>
-          <button onClick={() => view(item.id)} className="text-xs font-semibold text-text-primary hover:text-wcs-red truncate max-w-[200px]">{item.file_name}</button>
-          {item.suggested_slot_id && pick[item.id] === item.suggested_slot_id && <span className="text-[10px] text-text-muted">suggested</span>}
-          <Select value={pick[item.id] || ''} onChange={e => setPick({ ...pick, [item.id]: e.target.value })} className="!w-auto !py-1 !text-xs ml-auto"
-            options={[{ value: '', label: 'Choose a slot…' }, ...fileSlots(item.mime).map(s => ({ value: s.id, label: s.label }))]} />
-          <Button className="!px-3 !py-1 !text-xs" disabled={!pick[item.id]} onClick={() => file(item)}>File</Button>
+          {item.too_large ? (
+            <>
+              <span className="text-xs font-semibold text-text-primary truncate max-w-[200px]">{item.file_name}</span>
+              <span className="text-[11px] text-amber-700">too large to pull in</span>
+              {item.thread_id && <a href={`https://mail.google.com/mail/u/0/#all/${item.thread_id}`} target="_blank" rel="noreferrer"
+                className="text-xs text-text-muted hover:text-text-primary ml-auto">Open in Gmail</a>}
+            </>
+          ) : (
+            <>
+              <button onClick={() => view(item.id)} className="text-xs font-semibold text-text-primary hover:text-wcs-red truncate max-w-[200px]">{item.file_name}</button>
+              {item.suggested_slot_id && pick[item.id] === item.suggested_slot_id && <span className="text-[10px] text-text-muted">suggested</span>}
+              <Select value={pick[item.id] || ''} onChange={e => setPick({ ...pick, [item.id]: e.target.value })} className="!w-auto !py-1 !text-xs ml-auto"
+                options={[{ value: '', label: 'Choose a slot…' }, ...fileSlots(item.mime).map(s => ({ value: s.id, label: s.label }))]} />
+              <Button className="!px-3 !py-1 !text-xs" disabled={!pick[item.id]} onClick={() => file(item)}>File</Button>
+            </>
+          )}
           <button onClick={() => discard(item)} className="text-[11px] text-text-muted hover:text-red-600">Discard</button>
         </div>
       ))}

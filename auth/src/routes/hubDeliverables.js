@@ -187,18 +187,22 @@ async function ownTrayItem(req, id) {
 router.get('/tasks/:id/tray', async (req, res) => {
   try {
     const task = await ownTask(req, req.params.id)
-    const { data: people } = await supabaseAdmin.from('hub_task_people').select('id, name').eq('task_id', task.id)
+    const { data: people } = await supabaseAdmin.from('hub_task_people').select('id, name, gmail_thread_id').eq('task_id', task.id)
     const ids = (people || []).map(p => p.id)
     const { data: items } = ids.length
       ? await supabaseAdmin.from('hub_tray_items').select('*').in('person_id', ids).order('created_at')
       : { data: [] }
-    res.json({ items: (items || []).map(i => ({ ...i, person_name: people.find(p => p.id === i.person_id)?.name || '' })) })
+    res.json({ items: (items || []).map(i => {
+      const p = people.find(x => x.id === i.person_id)
+      return { ...i, person_name: p?.name || '', thread_id: p?.gmail_thread_id || null }
+    }) })
   } catch (e) { sendError(res, e) }
 })
 
 router.get('/tray/:id/url', async (req, res) => {
   try {
     const { item } = await ownTrayItem(req, req.params.id)
+    if (!item.storage_path) return res.status(400).json({ error: 'Too large to pull in; open it in Gmail' })
     res.json({ url: await dl.signedUrl(item.storage_path) })
   } catch (e) { sendError(res, e) }
 })
@@ -208,6 +212,7 @@ router.get('/tray/:id/url', async (req, res) => {
 router.post('/tray/:id/file', async (req, res) => {
   try {
     const { item, task } = await ownTrayItem(req, req.params.id)
+    if (!item.storage_path) return res.status(400).json({ error: 'Too large to pull in; open it in Gmail' })
     const { slot, deliverable, task: slotTask } = await ownSlot(req, req.body?.slotId)
     if (slotTask.id !== task.id) return res.status(400).json({ error: 'That slot is on another task' })
     if (!kindAccepts(deliverable.kind, item.mime)) return res.status(400).json({ error: deliverable.kind === 'text' ? 'That slot takes text' : 'That slot takes images only' })
@@ -227,9 +232,9 @@ router.post('/tray/:id/file', async (req, res) => {
 router.delete('/tray/:id', async (req, res) => {
   try {
     const { item } = await ownTrayItem(req, req.params.id)
-    await supabaseAdmin.storage.from(dl.BUCKET).remove([item.storage_path])
     const { error } = await supabaseAdmin.from('hub_tray_items').delete().eq('id', item.id)
     if (error) throw error
+    if (item.storage_path) await supabaseAdmin.storage.from(dl.BUCKET).remove([item.storage_path])
     res.json({ ok: true })
   } catch (e) { sendError(res, e) }
 })
@@ -250,7 +255,7 @@ router.post('/people/:pid/use-reply-text', async (req, res) => {
       const { accessToken, email } = await getStaffGoogleAccessToken(req.staff.id)
       const owner = String(email || req.staff.email).toLowerCase()
       const messages = await gmail.getThreadFull(accessToken, person.gmail_thread_id)
-      const theirs = messages.filter(m => !gmail.emailFrom(gmail.headerValue(m.payload?.headers, 'From')).includes(owner))
+      const theirs = messages.filter(m => gmail.emailFrom(gmail.headerValue(m.payload?.headers, 'From')) !== owner)
       const last = theirs.sort((a, b) => Number(b.internalDate) - Number(a.internalDate))[0]
       if (last) text = gmail.stripQuoted(gmail.extractPlainText(last.payload))
     } catch (e) {

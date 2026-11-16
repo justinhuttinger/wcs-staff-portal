@@ -193,24 +193,34 @@ async function openSlotsFor(personId) {
   })
 }
 
-// "message:attachment" keys already filed or in the tray for this person.
+// "message:part" keys already handled for this person (filed, trayed,
+// discarded or deleted all count: handled once, never again).
 async function knownGmailKeys(personId) {
-  const keys = new Set()
-  const dels = must(await supabaseAdmin.from('hub_deliverables').select('id').eq('person_id', personId))
-  if (dels.length) {
-    const slots = must(await supabaseAdmin.from('hub_slots').select('id').in('deliverable_id', dels.map(d => d.id)))
-    for (const ids of chunk(slots.map(s => s.id), 150)) {
-      const items = must(await supabaseAdmin.from('hub_slot_items').select('gmail_message_id, gmail_attachment_id')
-        .in('slot_id', ids).not('gmail_message_id', 'is', null))
-      for (const i of items) keys.add(`${i.gmail_message_id}:${i.gmail_attachment_id}`)
-    }
-  }
-  const tray = must(await supabaseAdmin.from('hub_tray_items').select('gmail_message_id, gmail_attachment_id').eq('person_id', personId))
-  for (const t of tray) keys.add(`${t.gmail_message_id}:${t.gmail_attachment_id}`)
-  return keys
+  const rows = must(await supabaseAdmin.from('hub_gmail_seen').select('message_id, part_id').eq('person_id', personId))
+  return new Set(rows.map(r => `${r.message_id}:${r.part_id}`))
 }
 
-async function addTrayItem({ taskId, personId, file, gmail, suggestedSlotId }) {
+async function markGmailSeen(personId, key) {
+  const i = key.indexOf(':')
+  const { error } = await supabaseAdmin.from('hub_gmail_seen')
+    .insert({ person_id: personId, message_id: key.slice(0, i), part_id: key.slice(i + 1) })
+  if (error && error.code !== '23505') throw error
+}
+
+// Mime types already waiting in this person's tray (they compete for slots).
+async function pendingTrayFor(personId) {
+  return must(await supabaseAdmin.from('hub_tray_items').select('mime').eq('person_id', personId).eq('too_large', false))
+}
+
+async function addTrayItem({ taskId, personId, file, gmail, suggestedSlotId, tooLarge = false, meta = {} }) {
+  if (tooLarge) {
+    const { error } = await supabaseAdmin.from('hub_tray_items').insert({
+      person_id: personId, gmail_message_id: gmail.messageId, gmail_attachment_id: gmail.attachmentId,
+      storage_path: null, too_large: true, file_name: meta.name, mime: meta.mime, size_bytes: meta.size,
+    })
+    if (error && error.code !== '23505') throw error
+    return
+  }
   await ensureBucket()
   const path = `${taskId}/tray/${crypto.randomUUID()}-${safeName(file.originalname)}`
   const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, file.buffer, { contentType: file.mimetype, upsert: false })
@@ -245,7 +255,7 @@ async function trayCountByTask(taskIds) {
 }
 
 module.exports = {
-  openSlotsFor, knownGmailKeys, addTrayItem, trayCountByTask,
+  openSlotsFor, knownGmailKeys, markGmailSeen, pendingTrayFor, addTrayItem, trayCountByTask,
   BUCKET, resyncSlots, loadTaskDeliverables, summaryByTask, openSlotLabels, refreshPersonDelivered,
   uploadLink, addSlotItem, removeSlotItem, signedUrl, clubNames,
 }

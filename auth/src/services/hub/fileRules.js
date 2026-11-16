@@ -15,7 +15,9 @@ function isFilableAttachment(att) {
 // Auto-file only when exactly one open slot can take an attachment AND no
 // other attachment in this batch could also go there. Everything else goes to
 // the owner's tray: a wrong club's slot is worse than one click.
-function decideFiling(attachments, openSlots) {
+// pending: attachments already waiting in the tray for this person; they still
+// compete for the slots they fit, so a newcomer can't jump the queue.
+function decideFiling(attachments, openSlots, pending = []) {
   const fits = attachments.map(att => ({ att, slots: openSlots.filter(s => kindAccepts(s.kind, att.mime)) }))
   const auto = []
   const tray = []
@@ -23,7 +25,8 @@ function decideFiling(attachments, openSlots) {
     if (f.slots.length !== 1) { tray.push(f.att); continue }
     const slotId = f.slots[0].id
     const rivals = fits.filter(o => o !== f && o.slots.some(s => s.id === slotId))
-    if (rivals.length) tray.push(f.att)
+    const waiting = pending.filter(p => kindAccepts(f.slots[0].kind, p.mime))
+    if (rivals.length || waiting.length) tray.push(f.att)
     else auto.push({ att: f.att, slotId })
   }
   return { auto, tray }

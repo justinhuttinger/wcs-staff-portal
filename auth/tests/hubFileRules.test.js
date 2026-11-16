@@ -46,7 +46,24 @@ test('listAttachments finds attachment parts and flags inline ones', () => {
     ] },
   ] } }
   assert.deepEqual(listAttachments(msg), [
-    { attachmentId: 'A1', filename: 'eugene.jpg', mimeType: 'image/jpeg', size: 900000, inline: false },
-    { attachmentId: 'A2', filename: 'logo.png', mimeType: 'image/png', size: 6000, inline: true },
+    { attachmentId: 'A1', partId: null, filename: 'eugene.jpg', mimeType: 'image/jpeg', size: 900000, inline: false },
+    { attachmentId: 'A2', partId: null, filename: 'logo.png', mimeType: 'image/png', size: 6000, inline: true },
   ])
+})
+
+test('listAttachments keys on the stable part id and skips nameless body parts', () => {
+  const msg = { id: 'm1', payload: { mimeType: 'multipart/mixed', partId: '', parts: [
+    { partId: '0', mimeType: 'text/html', filename: '', body: { attachmentId: 'BIGHTML', size: 90000 } },
+    { partId: '1', mimeType: 'image/jpeg', filename: 'a.jpg', headers: [], body: { attachmentId: 'VOLATILE', size: 900000 } },
+  ] } }
+  const atts = listAttachments(msg)
+  assert.equal(atts.length, 1)
+  assert.equal(atts[0].partId, '1')
+  assert.equal(atts[0].attachmentId, 'VOLATILE')
+})
+
+test('decideFiling: an image still waiting in the tray is a rival for the same slot', () => {
+  const r = decideFiling([{ id: 'c', mime: 'image/jpeg', size: 5e5 }], [{ id: 's1', kind: 'image' }], [{ mime: 'image/png' }])
+  assert.equal(r.auto.length, 0)
+  assert.equal(r.tray.length, 1)
 })

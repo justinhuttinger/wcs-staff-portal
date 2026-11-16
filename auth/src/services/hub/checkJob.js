@@ -11,6 +11,7 @@ const gmail = require('../followUps/gmail')
 const { OWNER_EMAILS } = require('../../lib/ownerGate')
 const dl = require('./deliverables')
 const { runCheck } = require('./check')
+const { kindAccepts } = require('./slots')
 
 const MODEL = 'claude-opus-5-5'
 const apiKey = process.env.ANTHROPIC_API_KEY
@@ -23,8 +24,8 @@ const SUGGEST_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { attachment_id: { type: 'string' }, slot_id: { type: ['string', 'null'] } },
-        required: ['attachment_id', 'slot_id'],
+        properties: { attachment: { type: 'string' }, slot: { anyOf: [{ type: 'string' }, { type: 'null' }] } },
+        required: ['attachment', 'slot'],
         additionalProperties: false,
       },
     },
@@ -37,10 +38,13 @@ const SUGGEST_SCHEMA = {
 // suggestion: the owner files every tray item himself.
 async function suggest({ attachments, slots }) {
   if (!claude) return new Map()
+  // Short ids (a1, s1) so the model never has to echo Gmail's long ones.
+  const attIds = attachments.map((a, i) => [`a${i + 1}`, a])
+  const slotIds = slots.map((s, i) => [`s${i + 1}`, s])
   const lines = [
-    'A person replied to an email with attachments. Match each attachment to the open slot it most likely fills, using the file name and the email text. Use null when unsure. Never put two attachments in one slot.',
-    '', 'Open slots:', ...slots.map(s => `- ${s.id}: ${s.label} (${s.kind})`),
-    '', 'Attachments:', ...attachments.map(a => `- ${a.attachmentId}: "${a.name}" (${a.mime}). Email text: ${String(a.snippet || '').slice(0, 300)}`),
+    'A person replied to an email with attachments. Match each attachment to the open slot it most likely fills, using the file name and the email text. Use null when unsure. Never put two attachments in one slot. An image slot only takes images.',
+    '', 'Open slots:', ...slotIds.map(([id, s]) => `- ${id}: ${s.label} (${s.kind})`),
+    '', 'Attachments:', ...attIds.map(([id, a]) => `- ${id}: "${a.name}" (${a.mime}). Email text: ${String(a.snippet || '').slice(0, 300)}`),
   ]
   const response = await claude.messages.create({
     model: MODEL,
@@ -50,10 +54,12 @@ async function suggest({ attachments, slots }) {
   })
   if (response.stop_reason === 'refusal') return new Map()
   const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('')
-  const valid = new Set(slots.map(s => s.id))
   const out = new Map()
   for (const it of JSON.parse(text).items || []) {
-    if (it.slot_id && valid.has(it.slot_id)) out.set(it.attachment_id, it.slot_id)
+    const att = attIds.find(([id]) => id === it.attachment)?.[1]
+    const slot = slotIds.find(([id]) => id === it.slot)?.[1]
+    // Only suggest a slot that can actually take the file.
+    if (att && slot && kindAccepts(slot.kind, att.mime)) out.set(att.key, slot.id)
   }
   return out
 }
@@ -71,6 +77,8 @@ const db = {
     return people.map(person => ({ person, task: tasks.find(t => t.id === person.task_id) }))
   },
   knownKeys: personId => dl.knownGmailKeys(personId),
+  markSeen: (personId, key) => dl.markGmailSeen(personId, key),
+  pendingTray: personId => dl.pendingTrayFor(personId),
   openSlots: personId => dl.openSlotsFor(personId),
   updatePerson: async (id, patch) => { must(await supabaseAdmin.from('hub_task_people').update(patch).eq('id', id)) },
   fileAttachment: async ({ task, slotId, att, bytes, messageId }) => {
@@ -78,16 +86,17 @@ const db = {
       await dl.addSlotItem({
         taskId: task.id, slotId, source: 'email', isNew: true,
         file: { buffer: bytes, originalname: att.name, mimetype: att.mime, size: bytes.length },
-        gmail: { messageId, attachmentId: att.attachmentId },
+        gmail: { messageId, attachmentId: att.partId },
       })
     } catch (e) {
       if (e.code !== '23505') throw e // a concurrent run already filed it
     }
   },
-  trayAttachment: ({ task, person, att, bytes, messageId, suggestedSlotId }) => dl.addTrayItem({
-    taskId: task.id, personId: person.id, suggestedSlotId,
-    file: { buffer: bytes, originalname: att.name, mimetype: att.mime, size: bytes.length },
-    gmail: { messageId, attachmentId: att.attachmentId },
+  trayAttachment: ({ task, person, att, bytes, tooLarge, messageId, suggestedSlotId }) => dl.addTrayItem({
+    taskId: task.id, personId: person.id, suggestedSlotId, tooLarge: !!tooLarge,
+    meta: { name: att.name, mime: att.mime, size: att.size },
+    file: bytes ? { buffer: bytes, originalname: att.name, mimetype: att.mime, size: bytes.length } : null,
+    gmail: { messageId, attachmentId: att.partId },
   }),
   refreshDelivered: personId => dl.refreshPersonDelivered(personId),
 }

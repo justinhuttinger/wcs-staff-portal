@@ -152,15 +152,18 @@ async function sendEmail(accessToken, { toName, toEmail, subject, body, threadId
 }
 
 // Attachment parts of a full-format message. Inline = has a Content-ID or an
-// inline disposition (usually a signature image).
+// inline disposition (usually a signature image). partId is stable across
+// fetches; attachmentId is NOT (Gmail issues a new one each time), so it is
+// only for downloading. Parts without a filename are message bodies.
 function listAttachments(message) {
   const out = []
   const walk = part => {
     if (!part) return
-    if (part.body?.attachmentId) {
+    if (part.body?.attachmentId && part.filename) {
       const disp = headerValue(part.headers, 'Content-Disposition')
       out.push({
         attachmentId: part.body.attachmentId,
+        partId: part.partId ?? null,
         filename: part.filename || 'attachment',
         mimeType: part.mimeType || 'application/octet-stream',
         size: Number(part.body.size || 0),
