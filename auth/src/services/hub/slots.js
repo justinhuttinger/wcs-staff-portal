@@ -68,6 +68,14 @@ function planOwners(slots, people) {
   return out
 }
 
+// A saved person's clubs as they apply to one task: only the task's clubs,
+// or all of theirs when the task has none.
+function personClubsFor(contactClubs, taskClubs) {
+  const mine = Array.isArray(contactClubs) ? contactClubs : []
+  if (!taskClubs || !taskClubs.length) return [...mine]
+  return mine.filter(c => taskClubs.includes(c))
+}
+
 function slotLabel(deliverable, club, clubNames) {
   if (!club) return deliverable.name
   return `${clubNames[club] || club} ${deliverable.name}`
@@ -104,4 +112,4 @@ function chunk(list, size) {
   return out
 }
 
-module.exports = { ownerForClub, planOwners, preValidate, chunk, planSlots, kindAccepts, newUploadToken, validateUploadTarget, slotLabel, allFilled, withUploadLink }
+module.exports = { personClubsFor, ownerForClub, planOwners, preValidate, chunk, planSlots, kindAccepts, newUploadToken, validateUploadTarget, slotLabel, allFilled, withUploadLink }

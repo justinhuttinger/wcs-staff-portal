@@ -120,3 +120,11 @@ test('planOwners fills only unowned slots and never overrides a manual owner', (
     { id: 's3', club: 'eugene', person_id: null },
   ], people), [{ id: 's1', person_id: 'steve' }])
 })
+
+test("personClubsFor: a saved person's clubs narrowed to the task's clubs", () => {
+  const { personClubsFor } = require('../src/services/hub/slots')
+  assert.deepEqual(personClubsFor(['salem', 'keizer'], ['salem', 'eugene', 'keizer']), ['salem', 'keizer'])
+  assert.deepEqual(personClubsFor(['salem', 'keizer'], ['eugene']), [])
+  assert.deepEqual(personClubsFor(['salem'], []), ['salem'])
+  assert.deepEqual(personClubsFor(null, ['salem']), [])
+})

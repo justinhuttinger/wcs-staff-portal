@@ -3,7 +3,7 @@
 // upload links, and store files. Rules live in ./slots (unit-tested).
 const crypto = require('crypto')
 const { supabaseAdmin } = require('../supabase')
-const { planSlots, newUploadToken, slotLabel, allFilled, chunk } = require('./slots')
+const { planSlots, planOwners, newUploadToken, slotLabel, allFilled, chunk } = require('./slots')
 
 const BUCKET = 'hub-task-files'
 const PORTAL_URL = process.env.PORTAL_URL || 'https://portal.wcstrength.com'
@@ -32,7 +32,7 @@ async function slotsWithFill(deliverableIds) {
   // Batched so long id lists never make an over-long request URL.
   const slots = []
   for (const ids of chunk(deliverableIds, 150)) {
-    slots.push(...must(await supabaseAdmin.from('hub_slots').select('id, deliverable_id, club').in('deliverable_id', ids)))
+    slots.push(...must(await supabaseAdmin.from('hub_slots').select('id, deliverable_id, club, person_id').in('deliverable_id', ids)))
   }
   if (!slots.length) return []
   const items = []
@@ -63,8 +63,33 @@ async function resyncSlots(task) {
       if (victim) must(await supabaseAdmin.from('hub_slots').delete().eq('id', victim.id))
     }
   }
-  // New or removed slots can change who has delivered everything.
-  for (const pid of new Set(dels.map(d => d.person_id).filter(Boolean))) await refreshPersonDelivered(pid)
+  // New slots get owners from the clubs people cover; that also refreshes
+  // who has delivered everything.
+  await applyOwners(task)
+}
+
+// Give every unowned slot on the task to the person covering its club, then
+// refresh "delivered" for everyone on the task.
+async function applyOwners(task) {
+  const people = must(await supabaseAdmin.from('hub_task_people').select('id, clubs, created_at').eq('task_id', task.id))
+  const dels = must(await supabaseAdmin.from('hub_deliverables').select('id').eq('task_id', task.id))
+  if (dels.length) {
+    const slots = must(await supabaseAdmin.from('hub_slots').select('id, club, person_id').in('deliverable_id', dels.map(d => d.id)))
+    for (const u of planOwners(slots, people)) {
+      must(await supabaseAdmin.from('hub_slots').update({ person_id: u.person_id }).eq('id', u.id))
+    }
+  }
+  for (const p of people) await refreshPersonDelivered(p.id)
+}
+
+// The slots a person owns (with fill state) and their deliverables.
+async function personSlots(personId) {
+  const own = must(await supabaseAdmin.from('hub_slots').select('id, deliverable_id, club, person_id').eq('person_id', personId))
+  if (!own.length) return { slots: [], dels: [] }
+  const delIds = [...new Set(own.map(s => s.deliverable_id))]
+  const dels = must(await supabaseAdmin.from('hub_deliverables').select('*').in('id', delIds))
+  const all = await slotsWithFill(delIds)
+  return { slots: all.filter(s => s.person_id === personId), dels }
 }
 
 async function loadTaskDeliverables(task) {
@@ -103,9 +128,8 @@ async function summaryByTask(taskIds) {
 
 // Open slot labels a person still owes, e.g. ['Eugene Photo', 'Keizer Copy'].
 async function openSlotLabels(person, task) {
-  const dels = must(await supabaseAdmin.from('hub_deliverables').select('*').eq('person_id', person.id))
-  if (!dels.length) return []
-  const slots = await slotsWithFill(dels.map(d => d.id))
+  const { slots, dels } = await personSlots(person.id)
+  if (!slots.length) return []
   const names = await clubNames()
   return slots.filter(s => !s.filled).map(s => slotLabel(dels.find(d => d.id === s.deliverable_id), s.club, names))
 }
@@ -117,8 +141,7 @@ async function refreshPersonDelivered(personId) {
   const person = must(await supabaseAdmin.from('hub_task_people')
     .select('id, state, reply_seen, gmail_thread_id').eq('id', personId).maybeSingle())
   if (!person) return
-  const dels = must(await supabaseAdmin.from('hub_deliverables').select('id').eq('person_id', personId))
-  const slots = await slotsWithFill(dels.map(d => d.id))
+  const { slots } = await personSlots(personId)
   let next = person.state
   if (allFilled(slots)) {
     if (!(person.state === 'replied' && !person.reply_seen)) next = 'delivered'
@@ -183,9 +206,8 @@ async function signedUrl(path) {
 
 // Open slots a person owes, with kind and label (for filing and suggestions).
 async function openSlotsFor(personId) {
-  const dels = must(await supabaseAdmin.from('hub_deliverables').select('*').eq('person_id', personId))
-  if (!dels.length) return []
-  const slots = await slotsWithFill(dels.map(d => d.id))
+  const { slots, dels } = await personSlots(personId)
+  if (!slots.length) return []
   const names = await clubNames()
   return slots.filter(s => !s.filled).map(s => {
     const d = dels.find(x => x.id === s.deliverable_id)
@@ -255,6 +277,7 @@ async function trayCountByTask(taskIds) {
 }
 
 module.exports = {
+  applyOwners, personSlots,
   openSlotsFor, knownGmailKeys, markGmailSeen, pendingTrayFor, addTrayItem, trayCountByTask,
   BUCKET, resyncSlots, loadTaskDeliverables, summaryByTask, openSlotLabels, refreshPersonDelivered,
   uploadLink, addSlotItem, removeSlotItem, signedUrl, clubNames,
