@@ -3,6 +3,7 @@ import { hub } from '../../lib/api'
 import { CLUBS } from '../../config/locations'
 import { Modal, Field, TextInput, TextArea, Button, ErrorBanner } from '../adsmanager/ui'
 import Composer from './Composer'
+import DeliverablesGrid from './DeliverablesGrid'
 import { ago, dueLabel } from './dates'
 import { isGmailDisconnected } from './gmailState'
 
@@ -84,6 +85,22 @@ function History({ person }) {
   )
 }
 
+function CopyLink({ personId }) {
+  const [state, setState] = useState('')
+  const copy = async () => {
+    try {
+      const { url } = await hub.deliverables.uploadLink(personId)
+      await navigator.clipboard.writeText(url)
+      setState('Copied!'); setTimeout(() => setState(''), 1500)
+    } catch { setState('Copy failed') }
+  }
+  return (
+    <button onClick={copy} className={`text-xs px-1 transition-colors ${state === 'Copied!' ? 'text-green-600 font-semibold' : 'text-text-muted hover:text-text-primary'}`}>
+      {state || 'Copy upload link'}
+    </button>
+  )
+}
+
 function PersonCard({ p, closed, gmailReady, onCompose, onRemove }) {
   const [showHistory, setShowHistory] = useState(false)
   const pill = STATE_PILL[p.state] || STATE_PILL.new
@@ -116,6 +133,7 @@ function PersonCard({ p, closed, gmailReady, onCompose, onRemove }) {
               className="text-xs text-text-muted hover:text-text-primary px-1">Open in Gmail</a>
           </>
         )}
+        {!closed && <CopyLink personId={p.id} />}
         {!p.gmail_thread_id && (
           <button onClick={() => onRemove(p)} className="text-xs text-text-muted hover:text-red-600 ml-auto">Remove</button>
         )}
@@ -191,6 +209,8 @@ export default function TaskDetail({ task, gmailReady, onGmailLost, onClose, onE
           </div>
         )}
       </div>
+
+      <DeliverablesGrid task={task} people={people} onChanged={onRefresh} />
 
       {compose && <ComposeModal person={compose.person} kind={compose.kind} onClose={() => setCompose(null)} onSent={sent} onGmailLost={onGmailLost} />}
     </Modal>

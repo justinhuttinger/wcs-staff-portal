@@ -11,6 +11,8 @@ const { draftEmail } = require('../services/followUps/draft')
 const { applyReply } = require('../services/hub/personState')
 const { recordSend } = require('../services/hub/recordSend')
 const { PERSON_LIST_COLS } = require('../services/hub/taskModel')
+const dl = require('../services/hub/deliverables')
+const { withUploadLink } = require('../services/hub/slots')
 
 const router = Router()
 router.use(ownerOnly)
@@ -112,7 +114,10 @@ router.post('/people/:pid/draft', async (req, res) => {
       if (e.notConnected) throw e
       console.warn('[Hub] voice samples unavailable:', e.message)
     }
-    const draft = await draftEmail({ kind, project, history, ownerName: ownerName(req.staff), samples, openSlots: [] })
+    const openSlots = await dl.openSlotLabels(person, task)
+    const uploadUrl = openSlots.length ? await dl.uploadLink(person.id) : null
+    const draft = await draftEmail({ kind, project, history, ownerName: ownerName(req.staff), samples, openSlots, uploadUrl })
+    draft.body = withUploadLink(draft.body, uploadUrl)
     if (person.gmail_thread_id) draft.subject = gmail.replySubject(person.subject)
     res.json(draft)
   } catch (e) { sendError(res, e) }

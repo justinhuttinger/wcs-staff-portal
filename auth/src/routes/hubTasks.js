@@ -4,6 +4,7 @@ const { Router } = require('express')
 const { ownerOnly } = require('../lib/ownerGate')
 const { supabaseAdmin } = require('../services/supabase')
 const { cleanTaskInput, rowSignal, PERSON_LIST_COLS } = require('../services/hub/taskModel')
+const dl = require('../services/hub/deliverables')
 
 const router = Router()
 router.use(ownerOnly)
@@ -41,6 +42,8 @@ router.get('/tasks', async (req, res) => {
       if (error) throw error
       people = data || []
     }
+    // Only open tasks need the deliverables summary (keeps the list fast).
+    const summary = await dl.summaryByTask((tasks || []).filter(t => t.status === 'todo' || t.status === 'waiting').map(t => t.id))
     const byTask = new Map()
     for (const p of people) {
       if (!byTask.has(p.task_id)) byTask.set(p.task_id, [])
@@ -49,7 +52,7 @@ router.get('/tasks', async (req, res) => {
     res.json({
       tasks: (tasks || []).map(t => {
         const ps = byTask.get(t.id) || []
-        return { ...t, people: ps, signal: rowSignal(t, ps) }
+        return { ...t, people: ps, signal: rowSignal(t, ps, summary.get(t.id)) }
       }),
       categories: categories || [],
     })
@@ -89,7 +92,9 @@ router.patch('/tasks/:id', async (req, res) => {
     const { data: people } = await supabaseAdmin.from('hub_task_people')
       .select(PERSON_LIST_COLS)
       .eq('task_id', data.id)
-    res.json({ task: { ...data, people: people || [], signal: rowSignal(data, people || []) } })
+    if ('clubs' in fields) await dl.resyncSlots(data)
+    const summary = await dl.summaryByTask([data.id])
+    res.json({ task: { ...data, people: people || [], signal: rowSignal(data, people || [], summary.get(data.id)) } })
   } catch (e) { sendError(res, e) }
 })
 

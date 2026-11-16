@@ -42,7 +42,7 @@ Rules:
 - Address the recipient by first name.`
 }
 
-function buildPrompt({ kind, project, history, today, openSlots = [] }) {
+function buildPrompt({ kind, project, history, today, openSlots = [], uploadUrl = null }) {
   const lines = [
     `Today is ${today}.`,
     `Recipient: ${project.recipient_name} <${project.recipient_email}>`,
@@ -51,6 +51,7 @@ function buildPrompt({ kind, project, history, today, openSlots = [] }) {
   if (project.details) lines.push(`More context: ${project.details}`)
   if (project.due_date) lines.push(`Due date: ${project.due_date}`)
   if (openSlots.length) lines.push(`Still owed by them: ${openSlots.join(', ')}`)
+  if (uploadUrl) lines.push(`They can upload each item here, no login needed. Put this link on its own line in the email: ${uploadUrl}`)
   if (kind === 'ask') {
     if (history.length) {
       lines.push('', 'Emails already sent in this thread, oldest first:')
@@ -94,7 +95,7 @@ function buildPrompt({ kind, project, history, today, openSlots = [] }) {
   return lines.join('\n')
 }
 
-async function draftEmail({ kind, project, history = [], ownerName, samples = [], openSlots = [] }) {
+async function draftEmail({ kind, project, history = [], ownerName, samples = [], openSlots = [], uploadUrl = null }) {
   if (!client) {
     const err = new Error('ANTHROPIC_API_KEY is not set on the API')
     err.status = 500
@@ -108,7 +109,7 @@ async function draftEmail({ kind, project, history = [], ownerName, samples = []
     fallbacks: 'default',
     output_config: { effort: 'medium', format: { type: 'json_schema', schema: DRAFT_SCHEMA } },
     system: buildSystem({ ownerName, samples }),
-    messages: [{ role: 'user', content: buildPrompt({ kind, project, history, today, openSlots }) }],
+    messages: [{ role: 'user', content: buildPrompt({ kind, project, history, today, openSlots, uploadUrl }) }],
   })
   if (response.stop_reason === 'refusal') {
     const err = new Error('Claude declined to write this one. Try rewording the request.')
