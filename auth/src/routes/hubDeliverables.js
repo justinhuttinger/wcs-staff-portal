@@ -6,6 +6,8 @@ const { ownerOnly } = require('../lib/ownerGate')
 const { supabaseAdmin } = require('../services/supabase')
 const { kindAccepts } = require('../services/hub/slots')
 const dl = require('../services/hub/deliverables')
+const gmail = require('../services/followUps/gmail')
+const { getStaffGoogleAccessToken } = require('../services/googleUserToken')
 
 const router = Router()
 router.use(ownerOnly)
@@ -168,6 +170,98 @@ router.post('/people/:pid/upload-link', async (req, res) => {
     if (!person) throw notFound()
     await ownTask(req, person.task_id)
     res.json({ url: await dl.uploadLink(person.id) })
+  } catch (e) { sendError(res, e) }
+})
+
+// ---- Tray: attachments the Gmail check couldn't file on its own ----
+
+async function ownTrayItem(req, id) {
+  if (!UUID_RE.test(String(id))) throw notFound()
+  const { data: item } = await supabaseAdmin.from('hub_tray_items').select('*').eq('id', id).maybeSingle()
+  if (!item) throw notFound()
+  const { data: person } = await supabaseAdmin.from('hub_task_people').select('id, task_id, name').eq('id', item.person_id).maybeSingle()
+  if (!person) throw notFound()
+  return { item, person, task: await ownTask(req, person.task_id) }
+}
+
+router.get('/tasks/:id/tray', async (req, res) => {
+  try {
+    const task = await ownTask(req, req.params.id)
+    const { data: people } = await supabaseAdmin.from('hub_task_people').select('id, name').eq('task_id', task.id)
+    const ids = (people || []).map(p => p.id)
+    const { data: items } = ids.length
+      ? await supabaseAdmin.from('hub_tray_items').select('*').in('person_id', ids).order('created_at')
+      : { data: [] }
+    res.json({ items: (items || []).map(i => ({ ...i, person_name: people.find(p => p.id === i.person_id)?.name || '' })) })
+  } catch (e) { sendError(res, e) }
+})
+
+router.get('/tray/:id/url', async (req, res) => {
+  try {
+    const { item } = await ownTrayItem(req, req.params.id)
+    res.json({ url: await dl.signedUrl(item.storage_path) })
+  } catch (e) { sendError(res, e) }
+})
+
+// File a tray item into a slot on the same task. The owner chose it, so it is
+// not "new". The stored file is reused, not copied.
+router.post('/tray/:id/file', async (req, res) => {
+  try {
+    const { item, task } = await ownTrayItem(req, req.params.id)
+    const { slot, deliverable, task: slotTask } = await ownSlot(req, req.body?.slotId)
+    if (slotTask.id !== task.id) return res.status(400).json({ error: 'That slot is on another task' })
+    if (!kindAccepts(deliverable.kind, item.mime)) return res.status(400).json({ error: deliverable.kind === 'text' ? 'That slot takes text' : 'That slot takes images only' })
+    const { error } = await supabaseAdmin.from('hub_slot_items').insert({
+      slot_id: slot.id, storage_path: item.storage_path, file_name: item.file_name, mime: item.mime,
+      size_bytes: item.size_bytes, source: 'email', is_new: false,
+      gmail_message_id: item.gmail_message_id, gmail_attachment_id: item.gmail_attachment_id,
+    })
+    if (error && error.code !== '23505') throw error
+    const { error: delErr } = await supabaseAdmin.from('hub_tray_items').delete().eq('id', item.id)
+    if (delErr) throw delErr
+    await dl.refreshPersonDelivered(deliverable.person_id)
+    res.json({ deliverables: await dl.loadTaskDeliverables(task) })
+  } catch (e) { sendError(res, e) }
+})
+
+router.delete('/tray/:id', async (req, res) => {
+  try {
+    const { item } = await ownTrayItem(req, req.params.id)
+    await supabaseAdmin.storage.from(dl.BUCKET).remove([item.storage_path])
+    const { error } = await supabaseAdmin.from('hub_tray_items').delete().eq('id', item.id)
+    if (error) throw error
+    res.json({ ok: true })
+  } catch (e) { sendError(res, e) }
+})
+
+// Put the person's latest reply text (quotes stripped) into a text slot.
+router.post('/people/:pid/use-reply-text', async (req, res) => {
+  try {
+    if (!UUID_RE.test(String(req.params.pid))) throw notFound()
+    const { data: person } = await supabaseAdmin.from('hub_task_people').select('*').eq('id', req.params.pid).maybeSingle()
+    if (!person) throw notFound()
+    const task = await ownTask(req, person.task_id)
+    const { slot, deliverable, task: slotTask } = await ownSlot(req, req.body?.slotId)
+    if (slotTask.id !== task.id) return res.status(400).json({ error: 'That slot is on another task' })
+    if (deliverable.kind !== 'text') return res.status(400).json({ error: 'Pick a text slot' })
+    if (!person.gmail_thread_id) return res.status(400).json({ error: 'No reply to use' })
+    let text = ''
+    try {
+      const { accessToken, email } = await getStaffGoogleAccessToken(req.staff.id)
+      const owner = String(email || req.staff.email).toLowerCase()
+      const messages = await gmail.getThreadFull(accessToken, person.gmail_thread_id)
+      const theirs = messages.filter(m => !gmail.emailFrom(gmail.headerValue(m.payload?.headers, 'From')).includes(owner))
+      const last = theirs.sort((a, b) => Number(b.internalDate) - Number(a.internalDate))[0]
+      if (last) text = gmail.stripQuoted(gmail.extractPlainText(last.payload))
+    } catch (e) {
+      if (e.notConnected) return res.status(412).json({ error: 'Connect Gmail first', code: 'gmail_not_connected' })
+      throw e
+    }
+    text = text || person.last_reply_snippet || ''
+    if (!text.trim()) return res.status(400).json({ error: 'Their reply has no text' })
+    await dl.addSlotItem({ taskId: task.id, slotId: slot.id, text, source: 'email', isNew: false })
+    await dl.refreshPersonDelivered(deliverable.person_id)
+    res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
 })
 

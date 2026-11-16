@@ -151,6 +151,38 @@ async function sendEmail(accessToken, { toName, toEmail, subject, body, threadId
   return { id: sent.id, threadId: sent.threadId, messageIdHeader }
 }
 
+// Attachment parts of a full-format message. Inline = has a Content-ID or an
+// inline disposition (usually a signature image).
+function listAttachments(message) {
+  const out = []
+  const walk = part => {
+    if (!part) return
+    if (part.body?.attachmentId) {
+      const disp = headerValue(part.headers, 'Content-Disposition')
+      out.push({
+        attachmentId: part.body.attachmentId,
+        filename: part.filename || 'attachment',
+        mimeType: part.mimeType || 'application/octet-stream',
+        size: Number(part.body.size || 0),
+        inline: /^\s*inline/i.test(disp) || !!headerValue(part.headers, 'Content-ID'),
+      })
+    }
+    for (const p of part.parts || []) walk(p)
+  }
+  walk(message?.payload)
+  return out
+}
+
+async function getThreadFull(accessToken, threadId) {
+  const data = await gmailFetch(accessToken, `/threads/${encodeURIComponent(threadId)}?format=full`)
+  return data.messages || []
+}
+
+async function getAttachment(accessToken, messageId, attachmentId) {
+  const data = await gmailFetch(accessToken, `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`)
+  return Buffer.from(String(data.data || '').replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+}
+
 async function getThread(accessToken, threadId) {
   const data = await gmailFetch(accessToken,
     `/threads/${encodeURIComponent(threadId)}?format=metadata&metadataHeaders=From&metadataHeaders=Date`)
@@ -186,5 +218,5 @@ async function recentSentSamples(accessToken, cacheKey, { want = 8 } = {}) {
 module.exports = {
   buildRawMessage, encodeHeader, replySubject, extractPlainText, stripQuoted, latestReply,
   emailFrom, headerValue, decodeBase64url,
-  sendEmail, getThread, recentSentSamples,
+  sendEmail, getThread, getThreadFull, getAttachment, listAttachments, recentSentSamples,
 }

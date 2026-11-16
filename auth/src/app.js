@@ -350,6 +350,13 @@ app.listen(PORT, () => {
     console.error('[operandioSync] failed to start:', err.message)
   }
 
+  // Hub Gmail check every 10 minutes - opt-in via HUB_TASKS_SYNC_ENABLED=true.
+  try {
+    require('./services/hub/checkJob').start()
+  } catch (err) {
+    console.error('[HubCheck] failed to start:', err.message)
+  }
+
   // Memo images to iPad lock screens — opt-in via MEMO_IPAD_SYNC_ENABLED=true.
   try {
     require('./services/memoIpad/sync').start()

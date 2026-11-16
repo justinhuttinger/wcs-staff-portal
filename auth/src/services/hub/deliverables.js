@@ -89,12 +89,13 @@ async function summaryByTask(taskIds) {
     dels.push(...must(await supabaseAdmin.from('hub_deliverables').select('id, task_id').in('task_id', ids)))
   }
   const slots = await slotsWithFill(dels.map(d => d.id))
+  const trays = await trayCountByTask(taskIds)
   for (const id of taskIds) {
     const delIds = new Set(dels.filter(d => d.task_id === id).map(d => d.id))
     const mine = slots.filter(s => delIds.has(s.deliverable_id))
     out.set(id, {
       allIn: allFilled(mine),
-      newItems: mine.reduce((n, s) => n + s.items.filter(i => i.is_new).length, 0),
+      newItems: mine.reduce((n, s) => n + s.items.filter(i => i.is_new).length, 0) + (trays.get(id) || 0),
     })
   }
   return out
@@ -161,7 +162,12 @@ async function addSlotItem({ taskId, slotId, file, text, source, isNew, gmail })
     row.text_body = String(text || '').slice(0, 20000)
   }
   if (gmail) Object.assign(row, { gmail_message_id: gmail.messageId, gmail_attachment_id: gmail.attachmentId })
-  return must(await supabaseAdmin.from('hub_slot_items').insert(row).select('*').single())
+  const { data, error } = await supabaseAdmin.from('hub_slot_items').insert(row).select('*').single()
+  if (error) {
+    if (row.storage_path) await supabaseAdmin.storage.from(BUCKET).remove([row.storage_path])
+    throw error
+  }
+  return data
 }
 
 async function removeSlotItem(item) {
@@ -175,7 +181,71 @@ async function signedUrl(path) {
   return data.signedUrl
 }
 
+// Open slots a person owes, with kind and label (for filing and suggestions).
+async function openSlotsFor(personId) {
+  const dels = must(await supabaseAdmin.from('hub_deliverables').select('*').eq('person_id', personId))
+  if (!dels.length) return []
+  const slots = await slotsWithFill(dels.map(d => d.id))
+  const names = await clubNames()
+  return slots.filter(s => !s.filled).map(s => {
+    const d = dels.find(x => x.id === s.deliverable_id)
+    return { id: s.id, kind: d.kind, label: slotLabel(d, s.club, names) }
+  })
+}
+
+// "message:attachment" keys already filed or in the tray for this person.
+async function knownGmailKeys(personId) {
+  const keys = new Set()
+  const dels = must(await supabaseAdmin.from('hub_deliverables').select('id').eq('person_id', personId))
+  if (dels.length) {
+    const slots = must(await supabaseAdmin.from('hub_slots').select('id').in('deliverable_id', dels.map(d => d.id)))
+    for (const ids of chunk(slots.map(s => s.id), 150)) {
+      const items = must(await supabaseAdmin.from('hub_slot_items').select('gmail_message_id, gmail_attachment_id')
+        .in('slot_id', ids).not('gmail_message_id', 'is', null))
+      for (const i of items) keys.add(`${i.gmail_message_id}:${i.gmail_attachment_id}`)
+    }
+  }
+  const tray = must(await supabaseAdmin.from('hub_tray_items').select('gmail_message_id, gmail_attachment_id').eq('person_id', personId))
+  for (const t of tray) keys.add(`${t.gmail_message_id}:${t.gmail_attachment_id}`)
+  return keys
+}
+
+async function addTrayItem({ taskId, personId, file, gmail, suggestedSlotId }) {
+  await ensureBucket()
+  const path = `${taskId}/tray/${crypto.randomUUID()}-${safeName(file.originalname)}`
+  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, file.buffer, { contentType: file.mimetype, upsert: false })
+  if (error) throw error
+  const { error: insErr } = await supabaseAdmin.from('hub_tray_items').insert({
+    person_id: personId, gmail_message_id: gmail.messageId, gmail_attachment_id: gmail.attachmentId,
+    storage_path: path, file_name: file.originalname, mime: file.mimetype, size_bytes: file.size,
+    suggested_slot_id: suggestedSlotId,
+  })
+  if (insErr) {
+    await supabaseAdmin.storage.from(BUCKET).remove([path])
+    if (insErr.code !== '23505') throw insErr // a concurrent run already trayed it
+  }
+}
+
+// taskId -> number of tray items waiting on the owner.
+async function trayCountByTask(taskIds) {
+  const out = new Map()
+  if (!taskIds.length) return out
+  const people = []
+  for (const ids of chunk(taskIds, 150)) {
+    people.push(...must(await supabaseAdmin.from('hub_task_people').select('id, task_id').in('task_id', ids)))
+  }
+  for (const ids of chunk(people.map(p => p.id), 150)) {
+    const rows = must(await supabaseAdmin.from('hub_tray_items').select('person_id').in('person_id', ids))
+    for (const r of rows) {
+      const tid = people.find(p => p.id === r.person_id).task_id
+      out.set(tid, (out.get(tid) || 0) + 1)
+    }
+  }
+  return out
+}
+
 module.exports = {
+  openSlotsFor, knownGmailKeys, addTrayItem, trayCountByTask,
   BUCKET, resyncSlots, loadTaskDeliverables, summaryByTask, openSlotLabels, refreshPersonDelivered,
   uploadLink, addSlotItem, removeSlotItem, signedUrl, clubNames,
 }

@@ -87,7 +87,7 @@ function Cell({ slot, kind, onChanged, onError }) {
   )
 }
 
-export default function DeliverablesGrid({ task, people, onChanged }) {
+export default function DeliverablesGrid({ task, people, reloadKey = 0, onChanged }) {
   const [rows, setRows] = useState(null)
   const [form, setForm] = useState({ name: '', kind: 'image', person_id: '' })
   const [error, setError] = useState('')
@@ -96,9 +96,9 @@ export default function DeliverablesGrid({ task, people, onChanged }) {
   const load = useCallback(async () => {
     try { setRows((await hub.deliverables.list(task.id)).deliverables) } catch (e) { setError(e.message) }
   }, [task.id])
-  useEffect(() => { load() }, [load, task.clubs.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [load, task.clubs.join(','), reloadKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const changed = () => { load(); onChanged?.() }
+  const changed = () => { onChanged?.() }
   const add = async () => {
     setError('')
     try {

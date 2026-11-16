@@ -1836,6 +1836,11 @@ export const hub = {
     itemUrl: (id) => api(`/hub/slot-items/${id}/url`),
     itemSeen: (id) => api(`/hub/slot-items/${id}/seen`, { method: 'POST' }),
     uploadLink: (personId) => api(`/hub/people/${personId}/upload-link`, { method: 'POST' }),
+    tray: (taskId) => api(`/hub/tasks/${taskId}/tray`),
+    trayUrl: (id) => api(`/hub/tray/${id}/url`),
+    fileTray: (id, slotId) => api(`/hub/tray/${id}/file`, { method: 'POST', body: JSON.stringify({ slotId }) }),
+    discardTray: (id) => api(`/hub/tray/${id}`, { method: 'DELETE' }),
+    useReplyText: (personId, slotId) => api(`/hub/people/${personId}/use-reply-text`, { method: 'POST', body: JSON.stringify({ slotId }) }),
   },
   categories: {
     list: () => api('/hub/categories'),

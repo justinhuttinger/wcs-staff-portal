@@ -4,6 +4,7 @@ import { CLUBS } from '../../config/locations'
 import { Modal, Field, TextInput, TextArea, Button, ErrorBanner } from '../adsmanager/ui'
 import Composer from './Composer'
 import DeliverablesGrid from './DeliverablesGrid'
+import IncomingTray from './IncomingTray'
 import { ago, dueLabel } from './dates'
 import { isGmailDisconnected } from './gmailState'
 
@@ -147,6 +148,7 @@ export default function TaskDetail({ task, gmailReady, onGmailLost, onClose, onE
   const [people, setPeople] = useState(task.people || [])
   const [adding, setAdding] = useState({ name: '', email: '' })
   const [compose, setCompose] = useState(null)
+  const [gridKey, setGridKey] = useState(0)
   const [error, setError] = useState('')
   const closed = task.status === 'done' || task.status === 'dropped'
   const due = closed ? null : dueLabel(task.due_date)
@@ -210,7 +212,8 @@ export default function TaskDetail({ task, gmailReady, onGmailLost, onClose, onE
         )}
       </div>
 
-      <DeliverablesGrid task={task} people={people} onChanged={onRefresh} />
+      <IncomingTray task={task} people={people} reloadKey={gridKey} onChanged={() => { setGridKey(k => k + 1); onRefresh() }} />
+      <DeliverablesGrid task={task} people={people} reloadKey={gridKey} onChanged={() => { setGridKey(k => k + 1); onRefresh() }} />
 
       {compose && <ComposeModal person={compose.person} kind={compose.kind} onClose={() => setCompose(null)} onSent={sent} onGmailLost={onGmailLost} />}
     </Modal>
