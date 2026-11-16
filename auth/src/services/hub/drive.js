@@ -28,6 +28,42 @@ function hubFileName({ taskTitle, clubName, deliverable, person, ext, n = 1 }) {
   return `${base}${suffix}${e ? `.${e}` : ''}`
 }
 
+// How a file may be served from our API origin. Only raster images and PDFs
+// open in the browser; anything else (HTML, SVG, scripts...) is a download,
+// so a file someone sent can never run as a page on our domain.
+const INLINE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif', 'image/bmp', 'application/pdf'])
+function serveAs(mime) {
+  const m = String(mime || '').toLowerCase()
+  return INLINE_TYPES.has(m) ? { inline: true, type: m } : { inline: false, type: 'application/octet-stream' }
+}
+
+// 1-based position of each item within its slot, oldest first (for "(2)" names).
+function positionsBySlot(items) {
+  const bySlot = new Map()
+  for (const i of items) {
+    if (!bySlot.has(i.slot_id)) bySlot.set(i.slot_id, [])
+    bySlot.get(i.slot_id).push(i)
+  }
+  const out = new Map()
+  for (const list of bySlot.values()) {
+    list.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+    list.forEach((i, n) => out.set(i.id, n + 1))
+  }
+  return out
+}
+
+// Overlapping calls with the same key share one in-flight run (one Render
+// instance, so this stops two uploads creating two folders at once).
+function oncePerKey(fn) {
+  const inflight = new Map()
+  return key => {
+    if (inflight.has(key)) return inflight.get(key)
+    const p = Promise.resolve().then(() => fn(key)).finally(() => inflight.delete(key))
+    inflight.set(key, p)
+    return p
+  }
+}
+
 // Stores bytes in Drive, or calls fallback() when anything about Drive fails.
 async function storeFile({ ownerId, name, file, getToken, drive, fallback }) {
   try {
@@ -44,8 +80,8 @@ async function storeFile({ ownerId, name, file, getToken, drive, fallback }) {
 
 // ---------- Drive REST ----------
 
-async function driveFetch(token, url, init = {}) {
-  const res = await fetch(url, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init.headers || {}) } })
+async function driveFetch(token, url, init = {}, timeoutMs = 10_000) {
+  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs), headers: { Authorization: `Bearer ${token}`, ...(init.headers || {}) } })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     const e = new Error(`Drive ${res.status}: ${body.slice(0, 200)}`)
@@ -55,7 +91,7 @@ async function driveFetch(token, url, init = {}) {
   return res
 }
 
-async function ensureFolder(token, ownerId) {
+async function ensureFolderOnce(token, ownerId) {
   const { data: row } = await supabaseAdmin.from('hub_settings').select('drive_folder_id').eq('owner_staff_id', ownerId).maybeSingle()
   if (row?.drive_folder_id) {
     try {
@@ -88,7 +124,7 @@ async function upload(token, folderId, name, mime, buffer) {
   ])
   const r = await driveFetch(token, UPLOAD, {
     method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body,
-  })
+  }, 60_000)
   return r.json()
 }
 
@@ -106,7 +142,17 @@ async function trash(token, fileId) {
 
 // The file's bytes as a fetch Response (for streaming through share links).
 function download(token, fileId) {
-  return driveFetch(token, `${DRIVE}/files/${fileId}?alt=media`)
+  return driveFetch(token, `${DRIVE}/files/${fileId}?alt=media`, {}, 30_000)
+}
+
+// One folder check/create per owner at a time: overlapping uploads wait for
+// the same answer instead of each creating a folder.
+const folderCalls = new Map()
+function ensureFolder(token, ownerId) {
+  if (!folderCalls.has(ownerId)) {
+    folderCalls.set(ownerId, ensureFolderOnce(token, ownerId).finally(() => folderCalls.delete(ownerId)))
+  }
+  return folderCalls.get(ownerId)
 }
 
 async function folderUrl(ownerId) {
@@ -116,4 +162,4 @@ async function folderUrl(ownerId) {
 
 const realDrive = { ensureFolder, upload, rename, trash, download }
 
-module.exports = { hubFileName, storeFile, realDrive, folderUrl, FOLDER_NAME }
+module.exports = { hubFileName, storeFile, realDrive, folderUrl, FOLDER_NAME, serveAs, positionsBySlot, oncePerKey }

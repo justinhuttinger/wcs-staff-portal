@@ -10,9 +10,9 @@ const { supabaseAdmin } = require('../services/supabase')
 const dl = require('../services/hub/deliverables')
 const { newUploadToken } = require('../services/hub/slots')
 const { groupSubmissions, claudeBlock } = require('../services/hub/share')
-const { realDrive } = require('../services/hub/drive')
+const { realDrive, serveAs } = require('../services/hub/drive')
 const { getStaffGoogleAccessToken } = require('../services/googleUserToken')
-const { Readable } = require('stream')
+const { Readable, pipeline } = require('stream')
 
 const PORTAL_URL = process.env.PORTAL_URL || 'https://portal.wcstrength.com'
 const API_URL = process.env.AUTH_API_URL || 'https://api.wcstrength.com'
@@ -150,10 +150,15 @@ pub.get('/:token/files/:itemId', fileLimit, async (req, res) => {
     if (item.drive_file_id) {
       const { accessToken } = await getStaffGoogleAccessToken(task.owner_staff_id)
       const r = await realDrive.download(accessToken, item.drive_file_id)
-      res.setHeader('Content-Type', item.mime || r.headers.get('content-type') || 'application/octet-stream')
-      res.setHeader('Content-Disposition', `inline; filename="${String(item.file_name || 'file').replace(/[^\w. ()-]/g, '_')}"`)
+      const how = serveAs(item.mime)
+      const name = String(item.file_name || 'file').replace(/[^\w. ()-]/g, '_')
+      res.setHeader('Content-Type', how.type)
+      res.setHeader('Content-Disposition', `${how.inline ? 'inline' : 'attachment'}; filename="${name}"`)
+      res.setHeader('X-Content-Type-Options', 'nosniff')
+      res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox")
       res.setHeader('Cache-Control', 'private, max-age=3600')
-      return Readable.fromWeb(r.body).pipe(res)
+      // pipeline: a broken Drive stream or a closed tab ends cleanly, never crashes the API.
+      return pipeline(Readable.fromWeb(r.body), res, err => { if (err) console.warn('[HubShare] stream ended early:', err.message) })
     }
     res.redirect(302, await dl.signedUrl(item.storage_path))
   } catch (e) { fail(res, e) }

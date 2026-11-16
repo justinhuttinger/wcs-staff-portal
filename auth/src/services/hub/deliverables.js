@@ -4,7 +4,7 @@
 const crypto = require('crypto')
 const { supabaseAdmin } = require('../supabase')
 const { getStaffGoogleAccessToken } = require('../googleUserToken')
-const { hubFileName, storeFile, realDrive } = require('./drive')
+const { hubFileName, storeFile, realDrive, positionsBySlot } = require('./drive')
 const { planSlots, planOwners, affectedPeople, newUploadToken, slotLabel, allFilled, chunk } = require('./slots')
 
 const BUCKET = 'hub-task-files'
@@ -265,8 +265,11 @@ async function moveFilesToDrive(ownerId) {
   if (!tasks.length) return result
   const dels = must(await supabaseAdmin.from('hub_deliverables').select('id').in('task_id', tasks.map(t => t.id)))
   const slots = dels.length ? must(await supabaseAdmin.from('hub_slots').select('id').in('deliverable_id', dels.map(d => d.id))) : []
-  const items = slots.length ? must(await supabaseAdmin.from('hub_slot_items').select('id, slot_id, storage_path, file_name, mime')
-    .in('slot_id', slots.map(s => s.id)).not('storage_path', 'is', null)) : []
+  // All file items (for numbering), then just the ones still in portal storage.
+  const all = slots.length ? must(await supabaseAdmin.from('hub_slot_items').select('id, slot_id, storage_path, drive_file_id, file_name, mime, created_at')
+    .in('slot_id', slots.map(s => s.id)).is('text_body', null)) : []
+  const position = positionsBySlot(all)
+  const items = all.filter(i => i.storage_path)
   const { accessToken } = await getStaffGoogleAccessToken(ownerId)
   const folderId = await realDrive.ensureFolder(accessToken, ownerId)
   for (const it of items) {
@@ -275,11 +278,15 @@ async function moveFilesToDrive(ownerId) {
       if (error) throw error
       const buffer = Buffer.from(await blob.arrayBuffer())
       const ctx = await slotContext(it.slot_id)
-      const name = hubFileName({ ...ctx, n: Math.max(1, ctx.n - 1), ext: extOf(it.file_name) })
+      const name = hubFileName({ ...ctx, n: position.get(it.id) || 1, ext: extOf(it.file_name) })
       const up = await realDrive.upload(accessToken, folderId, name, it.mime, buffer)
-      must(await supabaseAdmin.from('hub_slot_items').update({
+      const { error: upErr } = await supabaseAdmin.from('hub_slot_items').update({
         drive_file_id: up.id, drive_url: up.webViewLink || `https://drive.google.com/file/d/${up.id}/view`, storage_path: null, file_name: name,
-      }).eq('id', it.id))
+      }).eq('id', it.id)
+      if (upErr) {
+        await realDrive.trash(accessToken, up.id).catch(() => {})
+        throw upErr
+      }
       await supabaseAdmin.storage.from(BUCKET).remove([it.storage_path])
       result.moved++
     } catch (e) {
