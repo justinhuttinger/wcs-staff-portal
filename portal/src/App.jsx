@@ -855,7 +855,7 @@ export default function App() {
 
       <div className="relative z-10 flex-1 flex flex-col">
       {showAdmin ? (
-        <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} onLocationChange={(loc) => { setLocationOverride(loc); localStorage.setItem('wcs_location_override', loc) }} userRole={user?.staff?.role} />
+        <AdminPanel onBack={() => setShowAdmin(false)} isElectron={isElectron} onLocationChange={(loc) => { setLocationOverride(loc); localStorage.setItem('wcs_location_override', loc) }} userRole={user?.staff?.role} canHub={canHub} />
       ) : showProfile ? (
         <ProfileView user={user} onBackgroundUrlChange={setBackgroundUrl} />
       ) : showCalendar ? (
