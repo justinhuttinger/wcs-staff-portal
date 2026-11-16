@@ -37,13 +37,15 @@ export default function TasksCalendar({ tasks, onOpen }) {
           {DOW.map(d => <div key={d} className="px-2 py-1">{d}</div>)}
         </div>
         <div className="grid grid-cols-7">
-          {cells.map(c => {
+          {cells.map((c, idx) => {
             const list = byDay.get(c.key) || []
             const open = expanded === c.key
             const shown = open ? list : list.slice(0, MAX_PER_DAY)
             const past = c.key < today
+            const lastCol = idx % 7 === 6
+            const lastRow = idx >= cells.length - 7
             return (
-              <div key={c.key} className={`min-h-[92px] border-b border-r border-border p-1 space-y-0.5 ${c.inMonth ? '' : 'bg-bg/50'}`}>
+              <div key={c.key} className={`min-h-[92px] border-border p-1 space-y-0.5 ${lastCol ? '' : 'border-r'} ${lastRow ? '' : 'border-b'} ${c.inMonth ? '' : 'bg-bg/50 opacity-70'}`}>
                 <div className={`text-[11px] font-semibold px-1 ${c.key === today ? 'text-wcs-red' : c.inMonth ? 'text-text-primary' : 'text-text-muted'}`}>
                   {Number(c.key.slice(8))}
                 </div>

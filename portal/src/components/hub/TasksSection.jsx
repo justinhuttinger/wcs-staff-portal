@@ -73,7 +73,7 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
   const [showClosed, setShowClosed] = useState(false)
   const [sort, setSort] = useState('due')
   // List or calendar; remembered per browser.
-  const [view, setView] = useState(() => { try { return localStorage.getItem('hub-tasks-view') || 'list' } catch { return 'list' } })
+  const [view, setView] = useState(() => { try { return localStorage.getItem('hub-tasks-view') === 'calendar' ? 'calendar' : 'list' } catch { return 'list' } })
   const switchView = v => { setView(v); try { localStorage.setItem('hub-tasks-view', v) } catch { /* ignore */ } }
 
   const load = useCallback(async () => {
@@ -156,7 +156,10 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
             action={<Button onClick={() => setEditing(null)}>New task</Button>} />
         </div>
       )}
-      {view === 'calendar' && tasks && <TasksCalendar tasks={visible} onOpen={t => setOpenId(t.id)} />}
+      {view === 'calendar' && tasks && tasks.length > 0 && visible.length === 0 && (
+        <div className={`${CARD} p-3 text-xs text-text-muted`}>Nothing matches these filters.</div>
+      )}
+      {view === 'calendar' && tasks && tasks.length > 0 && <TasksCalendar tasks={visible} onOpen={t => setOpenId(t.id)} />}
       {view === 'list' && tasks && tasks.length > 0 && groups.length === 0 && (
         <div className={`${CARD} p-4 text-sm text-text-muted`}>Nothing matches these filters.</div>
       )}
