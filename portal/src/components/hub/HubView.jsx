@@ -3,36 +3,21 @@ import { followUps, hub } from '../../lib/api'
 import TasksSection from './TasksSection'
 import GmailConnect from './GmailConnect'
 import SavedPeople from './SavedPeople'
+import OpenTickets from './OpenTickets'
+import IssuesStrip from './IssuesStrip'
 import { isGmailDisconnected, markGmailLost } from './gmailState'
 
-// The owner's private Hub. Tasks is the first section; more sections
-// (suggestions, alerts) slot into SECTIONS later.
+// The owner's private Hub, laid out as a dashboard: issues across the top,
+// open tickets on the left, tasks on the right. Below the lg breakpoint the
+// columns stack (tickets, then tasks).
 const CARD = 'bg-surface/95 backdrop-blur-sm rounded-xl border border-border'
-const SECTIONS = [{ key: 'tasks', label: 'Tasks' }]
 
-function TicketsCard({ count, onOpen }) {
-  return (
-    <button onClick={onOpen}
-      className={`${CARD} w-full px-5 py-4 flex items-center justify-between gap-3 text-left hover:border-wcs-red/40 transition-colors`}>
-      <div>
-        <p className="text-xs font-bold uppercase tracking-widest text-text-muted">Tickets</p>
-        <p className="text-sm text-text-primary mt-0.5">
-          {count == null ? 'Checking…' : count === 0 ? 'Nothing open' : `${count} open ticket${count === 1 ? '' : 's'} waiting`}
-        </p>
-      </div>
-      <div className="flex items-center gap-3">
-        {count > 0 && <span className="text-2xl font-bold tabular-nums text-wcs-red">{count}</span>}
-        <span className="text-sm font-semibold text-text-muted">Open tickets →</span>
-      </div>
-    </button>
-  )
-}
-
-export default function HubView({ onBack, openTickets, onOpenTickets }) {
-  const [section, setSection] = useState('tasks')
+export default function HubView({ onBack }) {
   const [gmail, setGmail] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [showPeople, setShowPeople] = useState(false)
+  // Filled by the Alerts project; the strip renders nothing while empty.
+  const [issues] = useState([])
 
   // Gmail status, then a reply check so the list opens current.
   const loadGmail = useCallback(async () => {
@@ -51,8 +36,9 @@ export default function HubView({ onBack, openTickets, onOpenTickets }) {
   }, [])
   const onGmailLost = useCallback(() => setGmail(markGmailLost), [])
   useEffect(() => { loadGmail() }, [loadGmail])
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
       <div className={`${CARD} px-5 py-4 flex items-center justify-between gap-3 flex-wrap`}>
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="text-text-muted hover:text-text-primary text-sm">← Back</button>
@@ -63,21 +49,21 @@ export default function HubView({ onBack, openTickets, onOpenTickets }) {
         </div>
         <button onClick={() => setShowPeople(true)}
           className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-bg border border-border text-text-primary hover:bg-border/40">Saved people</button>
-        {SECTIONS.length > 1 && (
-          <div className="flex items-center gap-1">
-            {SECTIONS.map(s => (
-              <button key={s.key} onClick={() => setSection(s.key)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${section === s.key ? 'bg-wcs-red text-white' : 'text-text-muted hover:text-text-primary'}`}>
-                {s.label}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
+
+      <IssuesStrip issues={issues} />
       {gmail && !gmail.ready && <GmailConnect status={gmail} onConnected={loadGmail} />}
-      {onOpenTickets && <TicketsCard count={openTickets} onOpen={onOpenTickets} />}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+        <div className="lg:col-span-1">
+          <OpenTickets />
+        </div>
+        <div className="lg:col-span-2">
+          <TasksSection gmailReady={!!gmail?.ready} refreshKey={refreshKey} onGmailLost={onGmailLost} />
+        </div>
+      </div>
+
       {showPeople && <SavedPeople onClose={() => setShowPeople(false)} />}
-      {section === 'tasks' && <TasksSection gmailReady={!!gmail?.ready} refreshKey={refreshKey} onGmailLost={onGmailLost} />}
     </div>
   )
 }
