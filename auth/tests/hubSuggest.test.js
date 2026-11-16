@@ -205,3 +205,30 @@ test('runSuggestions: a database error mid-run still records what was handled', 
   assert.equal(h.state.seen.has('m1'), true)
   assert.equal(h.state.seen.has('m2'), false)
 })
+
+// ---------- texts ----------
+const { cleanTextInput, textMergeTarget, hashKey } = require('../src/services/hub/suggest')
+
+test('cleanTextInput: needs text; trims name/text; phone keeps digits and +', () => {
+  assert.equal(cleanTextInput({ name: 'Alex', phone: '1', text: '   ' }).error, 'Text is required')
+  const c = cleanTextInput({ name: ' Alex ', phone: '+1 (503) 555-0100', text: 'x'.repeat(3000) })
+  assert.deepEqual([c.name, c.phone, c.text.length], ['Alex', '+15035550100', 2000])
+  assert.equal(cleanTextInput({ text: 'hi' }).name, 'Someone')
+})
+
+test('textMergeTarget: same phone within 30 minutes', () => {
+  const now = Date.parse('2026-11-16T12:00:00Z')
+  const rows = [{ id: 'a', guess: { phone: '+15035550100' }, last_message_at: '2026-11-16T11:31:00Z' }]
+  assert.equal(textMergeTarget(rows, '+15035550100', now)?.id, 'a')
+  assert.equal(textMergeTarget(rows, '+15035550199', now), null)
+  assert.equal(textMergeTarget([{ ...rows[0], last_message_at: '2026-11-16T11:29:00Z' }], '+15035550100', now), null)
+  assert.equal(textMergeTarget(rows, '', now), null)
+})
+
+test('hashKey: stable sha256 hex', () => {
+  assert.equal(hashKey('abc'), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
+})
+
+test('cleanTextInput: names with s keep their letters, line breaks become spaces', () => {
+  assert.equal(cleanTextInput({ name: 'Jess\nSmith', text: 'hi' }).name, 'Jess Smith')
+})

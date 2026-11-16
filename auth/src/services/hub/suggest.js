@@ -248,4 +248,30 @@ function askerPersonFields(suggestion, threadMessages, ownerEmail) {
   }
 }
 
-module.exports = { isAutomated, prefilter, cleanGuess, mergeAction, ownerRepliedAfter, recipientsToCc, addresses, fromName, runSuggestions, askerPersonFields }
+// ---------- texts (iPhone Shortcut) ----------
+
+const TEXT_MERGE_MS = 30 * 60 * 1000
+
+function hashKey(key) {
+  return require('crypto').createHash('sha256').update(String(key)).digest('hex')
+}
+
+function cleanTextInput(body) {
+  const b = body && typeof body === 'object' ? body : {}
+  const text = String(b.text || '').trim().slice(0, 2000)
+  if (!text) return { error: 'Text is required' }
+  return {
+    name: String(b.name || '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Someone',
+    phone: String(b.phone || '').replace(/[^0-9+]/g, '').slice(0, 20),
+    text,
+  }
+}
+
+// Several texts in a row from the same number become one suggestion.
+function textMergeTarget(openTextRows, phone, nowMs) {
+  if (!phone) return null
+  return (openTextRows || []).find(r => r.guess?.phone === phone
+    && nowMs - Date.parse(r.last_message_at || r.received_at) <= TEXT_MERGE_MS) || null
+}
+
+module.exports = { isAutomated, prefilter, cleanGuess, mergeAction, ownerRepliedAfter, recipientsToCc, addresses, fromName, runSuggestions, askerPersonFields, hashKey, cleanTextInput, textMergeTarget }

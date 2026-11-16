@@ -273,6 +273,7 @@ app.use('/hub', require('./routes/hubPlan'))
 app.use('/hub-share', require('./routes/hubShare').pub)
 // Public: the no-login deliverable upload page (token per person per task).
 app.use('/hub-upload', require('./routes/hubUploadPublic'))
+app.use('/hub-text', require('./routes/hubTextPublic'))
 app.use('/inventory', require('./routes/inventory'))
 app.use('/till', require('./routes/till'))
 app.use('/member-app', require('./routes/memberApp'))
