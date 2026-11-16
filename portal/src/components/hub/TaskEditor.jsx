@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { hub } from '../../lib/api'
 import { CLUBS } from '../../config/locations'
 import { Modal, Field, TextInput, TextArea, Select, Button, ErrorBanner } from '../adsmanager/ui'
+import { statusOptions, canSubmitOnEnter } from './taskForm'
 
 const PRIORITY_OPTIONS = [
   { value: 'high', label: 'High' },
@@ -36,6 +37,7 @@ export default function TaskEditor({ task, categories, onClose, onSaved }) {
     priority: task?.priority || 'medium',
     due_date: task?.due_date || '',
     clubs: task?.clubs || [],
+    status: task?.status || 'todo',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -44,7 +46,10 @@ export default function TaskEditor({ task, categories, onClose, onSaved }) {
   const save = async () => {
     setSaving(true); setError('')
     try {
-      const body = { ...form, category_id: form.category_id || null, due_date: form.due_date || null }
+      const { status, ...rest } = form
+      const body = { ...rest, category_id: form.category_id || null, due_date: form.due_date || null }
+      // Status is only sent on edit, and only when it changed (keeps completed_at).
+      if (task && status !== task.status) body.status = status
       const { task: row } = task ? await hub.tasks.update(task.id, body) : await hub.tasks.create(body)
       onSaved(row)
     } catch (e) { setError(e.message); setSaving(false) }
@@ -62,7 +67,7 @@ export default function TaskEditor({ task, categories, onClose, onSaved }) {
       <ErrorBanner error={error} onDismiss={() => setError('')} />
       <Field label="Title" required>
         <TextInput value={form.title} onChange={set('title')} autoFocus
-          onKeyDown={e => { if (e.key === 'Enter' && form.title.trim()) save() }} />
+          onKeyDown={e => { if (canSubmitOnEnter({ key: e.key, title: form.title, saving })) save() }} />
       </Field>
       <Field label="Description">
         <TextArea rows={4} value={form.description} onChange={set('description')} />
@@ -79,6 +84,11 @@ export default function TaskEditor({ task, categories, onClose, onSaved }) {
           <TextInput type="date" value={form.due_date} onChange={set('due_date')} />
         </Field>
       </div>
+      {task && (
+        <Field label="Status">
+          <Select value={form.status} onChange={set('status')} options={statusOptions()} className="sm:max-w-[200px]" />
+        </Field>
+      )}
       <Field label="Clubs">
         <ClubPicker value={form.clubs} onChange={clubs => setForm({ ...form, clubs })} />
       </Field>
