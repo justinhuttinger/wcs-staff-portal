@@ -82,18 +82,21 @@ function resolveCall(called, mountList) {
   if (!mount) return 'is not under any router mounted in auth/src/app.js'
 
   const rest = called.slice(mount.prefix.length) || '/'
-  const { paths, nested } = routesIn(mount.file)
+  // Express falls through to every router mounted on the same prefix.
+  const sameMount = sorted.filter(m => m.prefix === mount.prefix)
+  const owns = file => {
+    const { paths, nested } = routesIn(file)
+    if (nested.some(n => rest === n || rest.startsWith(n + '/'))) return true
+    if (paths.some(p => toRegex(p).test(rest))) return true
+    // A path built from an interpolated id ends at the literal prefix and keeps
+    // its trailing slash -- api(`/ticketing/types/${id}`) is captured as
+    // '/ticketing/types/'. A route with a param one segment deeper is the match.
+    const stem = rest.endsWith('/') && rest !== '/' ? rest.slice(0, -1) : rest
+    return paths.some(p => p === stem || p.startsWith(stem === '/' ? '/' : stem + '/'))
+  }
+  if (sameMount.some(m => owns(m.file))) return null
 
-  if (nested.some(n => rest === n || rest.startsWith(n + '/'))) return null
-  if (paths.some(p => toRegex(p).test(rest))) return null
-
-  // A path built from an interpolated id ends at the literal prefix and keeps
-  // its trailing slash -- api(`/ticketing/types/${id}`) is captured as
-  // '/ticketing/types/'. A route with a param one segment deeper is the match.
-  const stem = rest.endsWith('/') && rest !== '/' ? rest.slice(0, -1) : rest
-  if (paths.some(p => p === stem || p.startsWith(stem === '/' ? '/' : stem + '/'))) return null
-
-  return `resolves to ${mount.prefix} (${path.basename(mount.file)}) but that router has no ${rest}`
+  return `resolves to ${mount.prefix} (${sameMount.map(m => path.basename(m.file)).join(', ')}) but no router there has ${rest}`
 }
 
 test('the parsers actually found something', () => {
@@ -129,4 +132,14 @@ test('a path under the wrong router is caught, not just an unknown prefix', () =
     '/reports/revenue/analysis should resolve'
   )
   assert.ok(resolveCall('/nope/at/all', mountList))
+})
+
+// Express falls through to the next router mounted on the same prefix, so a
+// route in the second /hub router is real. But a path in neither still fails.
+test('two routers on one prefix: either may own the path, neither means broken', () => {
+  const mountList = mounts()
+  assert.ok(mountList.filter(m => m.prefix === '/hub').length >= 2, 'expected two routers mounted at /hub')
+  assert.equal(resolveCall('/hub/check-replies', mountList), null)
+  assert.equal(resolveCall('/hub/tasks', mountList), null)
+  assert.match(String(resolveCall('/hub/no-such-thing', mountList)), /has \/no-such-thing/)
 })

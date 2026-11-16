@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { followUps, hub } from '../../lib/api'
 import TasksSection from './TasksSection'
+import GmailConnect from './GmailConnect'
 
 // The owner's private Hub. Tasks is the first section; more sections
 // (suggestions, alerts) slot into SECTIONS later.
@@ -26,6 +28,21 @@ function TicketsCard({ count, onOpen }) {
 
 export default function HubView({ onBack, openTickets, onOpenTickets }) {
   const [section, setSection] = useState('tasks')
+  const [gmail, setGmail] = useState(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  // Gmail status, then a reply check so the list opens current.
+  const loadGmail = useCallback(async () => {
+    try {
+      const s = await followUps.status()
+      setGmail(s)
+      if (s.ready) {
+        const { updated } = await hub.checkReplies()
+        if (updated?.length) setRefreshKey(k => k + 1)
+      }
+    } catch { setGmail(g => g || { ready: false }) }
+  }, [])
+  useEffect(() => { loadGmail() }, [loadGmail])
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
       <div className={`${CARD} px-5 py-4 flex items-center justify-between gap-3 flex-wrap`}>
@@ -47,8 +64,9 @@ export default function HubView({ onBack, openTickets, onOpenTickets }) {
           </div>
         )}
       </div>
+      {gmail && !gmail.ready && <GmailConnect status={gmail} onConnected={loadGmail} />}
       {onOpenTickets && <TicketsCard count={openTickets} onOpen={onOpenTickets} />}
-      {section === 'tasks' && <TasksSection />}
+      {section === 'tasks' && <TasksSection gmailReady={!!gmail?.ready} refreshKey={refreshKey} />}
     </div>
   )
 }
