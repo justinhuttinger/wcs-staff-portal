@@ -2,31 +2,31 @@ import { useState, useEffect, useCallback } from 'react'
 import { ticketing } from '../../lib/api'
 import TicketDetail from '../admin/ticketing/TicketDetail'
 import { ErrorBanner, Spinner } from '../adsmanager/ui'
-import { openTicketsFirst } from './ticketFilter'
+import { openTicketsFirst, LIVE_STATUSES } from './ticketFilter'
 import { ago } from './dates'
 
 const CARD = 'bg-surface/95 backdrop-blur-sm rounded-xl border border-border'
 const STATUS = {
   open: { text: 'Open', tone: 'text-wcs-red bg-wcs-red/10 border-wcs-red/30' },
   in_progress: { text: 'In progress', tone: 'text-amber-700 bg-amber-500/10 border-amber-500/30' },
+  complete: { text: 'Complete', tone: 'text-green-700 bg-green-500/10 border-green-500/30' },
 }
 
-// Left column of the Hub: every ticket still being worked. Clicking one opens
-// it right here (same screen as the ticket board), Back returns to the list.
-export default function OpenTickets({ onCount }) {
+// Left column of the Hub: every ticket not closed. Clicking one opens it (same
+// screen as the ticket board) across the full width; Back returns to the list.
+export default function OpenTickets({ onOpenChange }) {
   const [rows, setRows] = useState(null)
   const [openId, setOpenId] = useState(null)
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
     try {
-      const { tickets } = await ticketing.list()
-      const live = openTicketsFirst(tickets)
-      setRows(live)
-      onCount?.(live.length)
+      const lists = await Promise.all(LIVE_STATUSES.map(status => ticketing.list({ status })))
+      setRows(openTicketsFirst(lists.flatMap(l => l.tickets || [])))
     } catch (e) { setError(e.message) }
-  }, [onCount])
+  }, [])
   useEffect(() => { load() }, [load])
+  useEffect(() => { onOpenChange?.(!!openId) }, [openId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (openId) {
     return (

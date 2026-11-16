@@ -16,6 +16,8 @@ export default function HubView({ onBack }) {
   const [gmail, setGmail] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [showPeople, setShowPeople] = useState(false)
+  // An open ticket takes the full width; the tasks column waits underneath.
+  const [ticketOpen, setTicketOpen] = useState(false)
   // Filled by the Alerts project; the strip renders nothing while empty.
   const [issues] = useState([])
 
@@ -55,10 +57,10 @@ export default function HubView({ onBack }) {
       {gmail && !gmail.ready && <GmailConnect status={gmail} onConnected={loadGmail} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-        <div className="lg:col-span-1">
-          <OpenTickets />
+        <div className={ticketOpen ? 'lg:col-span-3' : 'lg:col-span-1'}>
+          <OpenTickets onOpenChange={setTicketOpen} />
         </div>
-        <div className="lg:col-span-2">
+        <div className={ticketOpen ? 'lg:col-span-3' : 'lg:col-span-2'}>
           <TasksSection gmailReady={!!gmail?.ready} refreshKey={refreshKey} onGmailLost={onGmailLost} />
         </div>
       </div>
