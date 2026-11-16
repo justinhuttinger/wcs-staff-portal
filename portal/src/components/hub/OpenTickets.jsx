@@ -35,7 +35,7 @@ export default function OpenTickets({ onOpenChange, openRequest, onClosed }) {
   if (openId) {
     return (
       <div className={`${CARD} p-3`}>
-        <TicketDetail ticketId={openId} onBack={() => { setOpenId(null); load(); onClosed?.() }} onChanged={load} />
+        <TicketDetail key={openId} ticketId={openId} onBack={() => { setOpenId(null); load(); onClosed?.() }} onChanged={load} />
       </div>
     )
   }

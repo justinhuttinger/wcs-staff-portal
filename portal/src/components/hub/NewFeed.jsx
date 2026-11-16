@@ -11,9 +11,10 @@ const ICON = { ticket: '🎫', deliverable: '📎', reply: '✉', tray: '📥', 
 // and every minute.
 export default function NewFeed({ reloadKey = 0, onOpenTicket, onOpenTask }) {
   const [items, setItems] = useState(null)
+  const [failed, setFailed] = useState(false)
 
   const load = useCallback(() => {
-    hub.newFeed().then(r => setItems(r.items)).catch(() => setItems(i => i || []))
+    hub.newFeed().then(r => { setItems(r.items); setFailed(false) }).catch(() => setFailed(true))
   }, [])
   useEffect(() => { load() }, [load, reloadKey])
   useEffect(() => {
@@ -21,14 +22,15 @@ export default function NewFeed({ reloadKey = 0, onOpenTicket, onOpenTask }) {
     return () => clearInterval(t)
   }, [load])
 
-  if (!items) return null
+  if (!items) {
+    return failed ? <div className={`${CARD} px-5 py-2.5 text-xs text-text-muted`}>Couldn't load what's new. Retrying…</div> : null
+  }
   if (!items.length) {
     return <div className={`${CARD} px-5 py-2.5 text-xs text-text-muted`}>Nothing new</div>
   }
   const open = item => {
     if (item.ticketId) {
       setItems(list => list.filter(x => x.key !== item.key))
-      hub.markTicketSeen(item.ticketId).catch(() => {})
       onOpenTicket(item.ticketId)
     } else if (item.taskId) {
       onOpenTask(item.taskId)

@@ -27,7 +27,8 @@ function buildFeed({ since, seenTicketIds = new Set(), tickets = [], items = [],
     out.push({ key: `tray:${t.personId}`, kind: 'tray', at: t.at, taskId: t.taskId,
       text: `${t.count} file${t.count === 1 ? '' : 's'} from ${first(t.name)} need${t.count === 1 ? 's' : ''} a slot`, sub: t.taskTitle })
   }
-  return out.sort((a, b) => String(b.at).localeCompare(String(a.at)))
+  // Newest first; an entry without a time goes last.
+  return out.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
 }
 
 module.exports = { buildFeed }

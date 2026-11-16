@@ -35,7 +35,8 @@ router.get('/new', async (req, res) => {
     const since = await feedSince(owner)
     const [tickets, seen, tasks] = await Promise.all([
       supabaseAdmin.from('tickets').select('id, title, status, created_at, type_id')
-        .gt('created_at', since).in('status', ['open', 'in_progress']).limit(200).then(must),
+        .gt('created_at', since).in('status', ['open', 'in_progress'])
+        .order('created_at', { ascending: false }).limit(200).then(must),
       supabaseAdmin.from('hub_seen_tickets').select('ticket_id').eq('owner_staff_id', owner).then(must),
       supabaseAdmin.from('hub_tasks').select('id, title').eq('owner_staff_id', owner).in('status', ['todo', 'waiting']).then(must),
     ])

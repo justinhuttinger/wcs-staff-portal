@@ -39,3 +39,12 @@ test('all kinds merge newest first, each pointing at what it opens', () => {
 test('nothing new gives an empty list', () => {
   assert.deepEqual(buildFeed({ since, seenTicketIds: new Set() }), [])
 })
+
+test('an entry with no time sorts last, not first', () => {
+  const feed = buildFeed({
+    since, seenTicketIds: new Set(),
+    replies: [{ personId: 'p1', name: 'Pat Doe', at: null, taskId: 'k1', taskTitle: 'T' }],
+    items: [{ id: 'i1', at: '2026-11-16T15:00:00Z', person: 'Sam Lee', label: 'Salem Photo', taskId: 'k1', taskTitle: 'T' }],
+  })
+  assert.deepEqual(feed.map(f => f.kind), ['deliverable', 'reply'])
+})
