@@ -7,7 +7,7 @@ import { ClubPicker } from './TaskEditor'
 const CLUB_NAME = slug => CLUBS.find(c => c.slug === slug)?.name || slug
 
 // The owner's saved people: name, email and the clubs they cover.
-export default function SavedPeople({ onClose }) {
+export default function SavedPeople({ onClose, inline = false }) {
   const [contacts, setContacts] = useState(null)
   const [editing, setEditing] = useState(null) // contact being edited, or {} for new
   const [error, setError] = useState('')
@@ -29,9 +29,8 @@ export default function SavedPeople({ onClose }) {
     try { await hub.contacts.remove(c.id); load() } catch (e) { setError(e.message) }
   }
 
-  return (
-    <Modal title="Saved people" subtitle="People you ask for things, with their clubs" onClose={onClose}
-      footer={<Button variant="ghost" onClick={onClose}>Done</Button>}>
+  const body = (
+    <>
       <ErrorBanner error={error} onDismiss={() => setError('')} />
       {editing ? (
         <div className="space-y-3">
@@ -64,6 +63,23 @@ export default function SavedPeople({ onClose }) {
           <Button variant="secondary" onClick={() => setEditing({ name: '', email: '', clubs: [] })}>+ New person</Button>
         </>
       )}
+    </>
+  )
+  if (inline) {
+    return (
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-bold text-text-primary">Saved people</h3>
+          <p className="text-xs text-text-muted">People you ask for things, with their clubs</p>
+        </div>
+        {body}
+      </div>
+    )
+  }
+  return (
+    <Modal title="Saved people" subtitle="People you ask for things, with their clubs" onClose={onClose}
+      footer={<Button variant="ghost" onClick={onClose}>Done</Button>}>
+      {body}
     </Modal>
   )
 }

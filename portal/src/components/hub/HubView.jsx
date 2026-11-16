@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { followUps, hub } from '../../lib/api'
 import TasksSection from './TasksSection'
 import GmailConnect from './GmailConnect'
-import SavedPeople from './SavedPeople'
 import OpenTickets from './OpenTickets'
 import IssuesStrip from './IssuesStrip'
 import NewFeed from './NewFeed'
@@ -16,7 +15,6 @@ const CARD = 'bg-surface/95 backdrop-blur-sm rounded-xl border border-border'
 export default function HubView({ onBack }) {
   const [gmail, setGmail] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [showPeople, setShowPeople] = useState(false)
   // An open ticket takes the full width; the tasks column waits underneath.
   const [ticketOpen, setTicketOpen] = useState(false)
   // New feed: what to open, and when to reload it (after something is closed).
@@ -55,8 +53,6 @@ export default function HubView({ onBack }) {
             <p className="text-xs text-text-muted">Just for you</p>
           </div>
         </div>
-        <button onClick={() => setShowPeople(true)}
-          className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-bg border border-border text-text-primary hover:bg-border/40">Saved people</button>
       </div>
 
       <NewFeed reloadKey={feedKey + refreshKey}
@@ -75,7 +71,6 @@ export default function HubView({ onBack }) {
         </div>
       </div>
 
-      {showPeople && <SavedPeople onClose={() => setShowPeople(false)} />}
     </div>
   )
 }

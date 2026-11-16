@@ -4,7 +4,6 @@ import { CLUBS } from '../../config/locations'
 import { Button, ErrorBanner, EmptyState, Spinner, Select } from '../adsmanager/ui'
 import TaskEditor from './TaskEditor'
 import TaskDetail from './TaskDetail'
-import CategoryManager from './CategoryManager'
 import { dueLabel, shortDate } from './dates'
 
 const CARD = 'bg-surface/95 backdrop-blur-sm rounded-xl border border-border'
@@ -66,7 +65,6 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
   const [editing, setEditing] = useState(undefined) // undefined closed, null new, task edit
   const [openId, setOpenId] = useState(null)
   useEffect(() => { if (openRequest?.id) setOpenId(openRequest.id) }, [openRequest])
-  const [showCats, setShowCats] = useState(false)
   const [clubFilter, setClubFilter] = useState([])
   const [catFilter, setCatFilter] = useState('')
   const [prioFilter, setPrioFilter] = useState('')
@@ -117,7 +115,6 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
       <div className={`${CARD} p-4 space-y-3`}>
         <div className="flex items-center gap-2 flex-wrap">
           <Button onClick={() => setEditing(null)}>New task</Button>
-          <Button variant="secondary" onClick={() => setShowCats(true)}>Categories</Button>
           <div className="flex items-center gap-2 ml-auto flex-wrap">
             <Select value={catFilter} onChange={e => setCatFilter(e.target.value)} className="!w-auto !py-1.5 !text-xs"
               options={[{ value: '', label: 'All categories' }, ...categories.map(c => ({ value: c.id, label: c.name })), { value: 'none', label: 'No category' }]} />
@@ -152,17 +149,21 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
         <div className={`${CARD} p-4 text-sm text-text-muted`}>Nothing matches these filters.</div>
       )}
 
-      {groups.map(g => (
-        <div key={g.id} className={`${CARD} overflow-hidden`}>
-          <div className="px-4 py-2 border-b border-border flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-text-primary">{g.name}</h3>
-            <span className="text-[11px] text-text-muted">{g.items.length}</span>
-          </div>
-          <div className="divide-y divide-border">
-            {g.items.map(t => <TaskRow key={t.id} t={t} onOpen={row => setOpenId(row.id)} onToggleDone={toggleDone} />)}
-          </div>
+      {groups.length > 0 && (
+        <div className={`${CARD} overflow-hidden`}>
+          {groups.map(g => (
+            <div key={g.id}>
+              <div className="px-4 py-1 bg-bg/60 border-y border-border first:border-t-0 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-text-muted">{g.name}</span>
+                <span className="text-[10px] text-text-muted">{g.items.length}</span>
+              </div>
+              <div className="divide-y divide-border">
+                {g.items.map(t => <TaskRow key={t.id} t={t} onOpen={row => setOpenId(row.id)} onToggleDone={toggleDone} />)}
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
 
       {openId && tasks?.find(t => t.id === openId) && (
         <TaskDetail task={tasks.find(t => t.id === openId)} gmailReady={gmailReady} onGmailLost={onGmailLost} onClose={() => { setOpenId(null); onDetailClosed?.() }}
@@ -172,7 +173,6 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
         <TaskEditor task={editing} categories={categories} onClose={() => setEditing(undefined)}
           onSaved={row => { upsert(row); setEditing(undefined) }} />
       )}
-      {showCats && <CategoryManager categories={categories} onClose={() => setShowCats(false)} onChange={setCategories} />}
     </div>
   )
 }
