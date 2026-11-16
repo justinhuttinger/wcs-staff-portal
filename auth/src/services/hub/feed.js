@@ -5,7 +5,7 @@
 const LIVE_TICKET = new Set(['open', 'in_progress'])
 const first = name => String(name || '').split(' ')[0]
 
-function buildFeed({ since, seenTicketIds = new Set(), tickets = [], items = [], replies = [], tray = [] }) {
+function buildFeed({ since, seenTicketIds = new Set(), tickets = [], items = [], replies = [], tray = [], suggestions = [] }) {
   const out = []
   const sinceMs = since ? new Date(since).getTime() : 0
   for (const t of tickets) {
@@ -26,6 +26,11 @@ function buildFeed({ since, seenTicketIds = new Set(), tickets = [], items = [],
   for (const t of tray) {
     out.push({ key: `tray:${t.personId}`, kind: 'tray', at: t.at, taskId: t.taskId,
       text: `${t.count} file${t.count === 1 ? '' : 's'} from ${first(t.name)} need${t.count === 1 ? 's' : ''} a slot`, sub: t.taskTitle })
+  }
+  for (const s of suggestions) {
+    if (s.seen) continue
+    out.push({ key: `suggestion:${s.id}`, kind: 'suggestion', at: s.last_message_at || s.received_at, suggestionId: s.id,
+      text: `${first(s.from_name) || 'Someone'} asked · ${s.summary || s.subject || 'a request'}`, sub: s.source === 'text' ? 'Text' : 'Email' })
   }
   // Newest first; an entry without a time goes last.
   return out.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))

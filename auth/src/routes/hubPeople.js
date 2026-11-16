@@ -180,6 +180,8 @@ router.post('/people/:pid/send', async (req, res) => {
       toName: person.name, toEmail: person.email, subject, body,
       threadId: person.gmail_thread_id || undefined,
       inReplyTo: person.first_message_id_header || undefined,
+      // Tasks added from an email reply to everyone on the original ask.
+      cc: person.cc_emails || [],
     })
     // From here the email is gone: recordSend never throws, it warns instead.
     const result = await recordSend({

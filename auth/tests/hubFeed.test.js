@@ -48,3 +48,12 @@ test('an entry with no time sorts last, not first', () => {
   })
   assert.deepEqual(feed.map(f => f.kind), ['deliverable', 'reply'])
 })
+
+test('buildFeed: open, unseen suggestions show as "<first name> asked"', () => {
+  const out = buildFeed({ suggestions: [
+    { id: 's1', from_name: 'Alex Kim', summary: 'Needs approval', received_at: '2026-11-16T10:00:00Z', seen: false },
+    { id: 's2', from_name: 'Sam', summary: 'x', received_at: '2026-11-16T09:00:00Z', seen: true },
+  ] })
+  assert.equal(out.length, 1)
+  assert.deepEqual([out[0].key, out[0].kind, out[0].text, out[0].suggestionId], ['suggestion:s1', 'suggestion', 'Alex asked · Needs approval', 's1'])
+})

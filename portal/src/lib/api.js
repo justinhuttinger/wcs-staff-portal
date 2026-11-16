@@ -1835,6 +1835,16 @@ export const hub = {
   checkReplies: () => api('/hub/check-replies', { method: 'POST' }),
   newFeed: () => api('/hub/new'),
   planWeek: () => api('/hub/plan', { method: 'POST' }),
+  suggestions: {
+    list: () => api('/hub/suggestions'),
+    dismiss: (id) => api(`/hub/suggestions/${id}/dismiss`, { method: 'POST' }),
+    restore: (id) => api(`/hub/suggestions/${id}/restore`, { method: 'POST' }),
+    mute: (id) => api(`/hub/suggestions/${id}/mute`, { method: 'POST' }),
+    seen: (id) => api(`/hub/suggestions/${id}/seen`, { method: 'POST' }),
+    add: (id, body) => api(`/hub/suggestions/${id}/add`, { method: 'POST', body: JSON.stringify(body) }),
+  },
+  taskFiles: (taskId) => api(`/hub/tasks/${taskId}/files`),
+  openTaskFile: (fid) => api(`/hub/task-files/${fid}/open`),
   drive: {
     status: () => api('/hub/drive'),
     move: () => api('/hub/drive/move', { method: 'POST' }),

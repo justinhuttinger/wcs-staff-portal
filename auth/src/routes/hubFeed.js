@@ -40,6 +40,9 @@ router.get('/new', async (req, res) => {
       supabaseAdmin.from('hub_seen_tickets').select('ticket_id').eq('owner_staff_id', owner).then(must),
       supabaseAdmin.from('hub_tasks').select('id, title').eq('owner_staff_id', owner).in('status', ['todo', 'waiting']).then(must),
     ])
+    const suggestions = must(await supabaseAdmin.from('hub_suggestions')
+      .select('id, source, from_name, subject, summary, received_at, last_message_at, seen')
+      .eq('owner_staff_id', owner).eq('status', 'open').eq('seen', false).limit(100))
     const typeIds = [...new Set(tickets.map(t => t.type_id).filter(Boolean))]
     const types = typeIds.length ? must(await supabaseAdmin.from('ticket_types').select('id, name').in('id', typeIds)) : []
     const typeName = Object.fromEntries(types.map(t => [t.id, t.name]))
@@ -88,7 +91,7 @@ router.get('/new', async (req, res) => {
       items: buildFeed({
         since, seenTicketIds: new Set(seen.map(s => s.ticket_id)),
         tickets: tickets.map(t => ({ ...t, type_name: typeName[t.type_id] })),
-        items, replies, tray,
+        items, replies, tray, suggestions,
       }),
     })
   } catch (e) {

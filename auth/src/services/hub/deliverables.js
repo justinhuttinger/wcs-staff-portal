@@ -358,6 +358,35 @@ async function addTrayItem({ taskId, personId, file, gmail, suggestedSlotId, too
   }
 }
 
+// A file pulled in from the email a task was added from ("From their email").
+// Never routed to a slot or the tray. Too-large files keep only their name.
+async function addTaskFile({ taskId, ownerId, file, meta = {}, gmail, tooLarge = false }) {
+  const base = { task_id: taskId, gmail_message_id: gmail.messageId, gmail_part_id: String(gmail.partId) }
+  if (tooLarge || !file) {
+    const { error } = await supabaseAdmin.from('hub_task_files').insert({
+      ...base, too_large: true, file_name: meta.name, mime: meta.mime, size_bytes: meta.size,
+    })
+    if (error && error.code !== '23505') throw error
+    return
+  }
+  const task = must(await supabaseAdmin.from('hub_tasks').select('title').eq('id', taskId).single())
+  const name = hubFileName({ taskTitle: task.title, clubName: null, deliverable: 'from email', person: file.originalname.replace(/\.[^.]+$/, ''), ext: extOf(file.originalname) })
+  const stored = await storeHubFile({ ownerId, name, file, fallbackPath: `${taskId}/email/${crypto.randomUUID()}-${safeName(file.originalname)}` })
+  const { error } = await supabaseAdmin.from('hub_task_files').insert({
+    ...base, ...stored, file_name: file.originalname, mime: file.mimetype, size_bytes: file.size,
+  })
+  if (error) {
+    await discardStored(stored, ownerId)
+    if (error.code !== '23505') throw error
+  }
+}
+
+async function taskFiles(taskId) {
+  return must(await supabaseAdmin.from('hub_task_files')
+    .select('id, file_name, mime, size_bytes, too_large, drive_url, storage_path, gmail_message_id, created_at')
+    .eq('task_id', taskId).order('created_at', { ascending: true }))
+}
+
 // taskId -> number of tray items waiting on the owner.
 async function trayCountByTask(taskIds) {
   const out = new Map()
@@ -379,7 +408,7 @@ async function trayCountByTask(taskIds) {
 module.exports = {
   slotContext, openUrl, moveFilesToDrive, discardStored,
   applyOwners, personSlots,
-  openSlotsFor, knownGmailKeys, markGmailSeen, pendingTrayFor, addTrayItem, trayCountByTask,
+  openSlotsFor, knownGmailKeys, markGmailSeen, pendingTrayFor, addTrayItem, trayCountByTask, addTaskFile, taskFiles,
   BUCKET, resyncSlots, loadTaskDeliverables, summaryByTask, openSlotLabels, refreshPersonDelivered,
   uploadLink, addSlotItem, removeSlotItem, signedUrl, clubNames,
 }

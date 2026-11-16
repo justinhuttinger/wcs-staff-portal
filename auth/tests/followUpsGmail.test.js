@@ -62,3 +62,11 @@ test('latestReply: ignores the owner and returns the newest other message', () =
   assert.deepEqual(latestReply(thread, OWNER.toUpperCase()), { at: 4000, snippet: 'second' })
   assert.equal(latestReply(thread.filter(m => m.snippet === 'ask'), OWNER), null)
 })
+
+test('buildRawMessage: Cc header for reply-all, none when empty', () => {
+  const dec = raw => Buffer.from(raw.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+  const withCc = dec(buildRawMessage({ toName: 'Alex', toEmail: 'alex@example.com', subject: 'S', body: 'b', cc: ['b@example.com', 'c@example.com'] }))
+  assert.match(withCc, /\r\nCc: b@example.com, c@example.com\r\n/)
+  const without = dec(buildRawMessage({ toName: 'Alex', toEmail: 'alex@example.com', subject: 'S', body: 'b', cc: [] }))
+  assert.doesNotMatch(without, /\nCc:/)
+})

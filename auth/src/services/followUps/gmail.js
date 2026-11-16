@@ -34,9 +34,11 @@ function formatAddress(name, email) {
 // Builds a plain-text RFC 2822 message and returns it base64url-encoded, ready
 // for messages.send. inReplyTo is the first email's Message-ID header; passing
 // it (plus the Gmail threadId) keeps nudges in one conversation everywhere.
-function buildRawMessage({ toName, toEmail, subject, body, inReplyTo }) {
+function buildRawMessage({ toName, toEmail, subject, body, inReplyTo, cc = [] }) {
+  const ccList = (cc || []).map(e => String(e).replace(/[\r\n,<>"]/g, '').trim()).filter(Boolean)
   const headers = [
     `To: ${formatAddress(toName, toEmail)}`,
+    ...(ccList.length ? [`Cc: ${ccList.join(', ')}`] : []),
     `Subject: ${encodeHeader(subject)}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset="UTF-8"',
@@ -136,8 +138,8 @@ async function gmailFetch(accessToken, path, init = {}) {
   return data
 }
 
-async function sendEmail(accessToken, { toName, toEmail, subject, body, threadId, inReplyTo }) {
-  const raw = buildRawMessage({ toName, toEmail, subject, body, inReplyTo })
+async function sendEmail(accessToken, { toName, toEmail, subject, body, threadId, inReplyTo, cc }) {
+  const raw = buildRawMessage({ toName, toEmail, subject, body, inReplyTo, cc })
   const sent = await gmailFetch(accessToken, '/messages/send', {
     method: 'POST',
     body: JSON.stringify(threadId ? { raw, threadId } : { raw }),
@@ -174,6 +176,24 @@ function listAttachments(message) {
   }
   walk(message?.payload)
   return out
+}
+
+// Inbox message ids received after a unix time (seconds), newest first, capped (ids only, so a big cap is cheap).
+async function listInboxSince(accessToken, afterSeconds, { cap = 2000 } = {}) {
+  const out = []
+  let pageToken = ''
+  do {
+    const q = new URLSearchParams({ q: 'in:inbox after:' + Math.max(0, Math.floor(afterSeconds)), maxResults: '100' })
+    if (pageToken) q.set('pageToken', pageToken)
+    const data = await gmailFetch(accessToken, '/messages?' + q)
+    out.push(...(data.messages || []))
+    pageToken = data.nextPageToken || ''
+  } while (pageToken && out.length < cap)
+  return out.slice(0, cap)
+}
+
+async function getMessageFull(accessToken, id) {
+  return gmailFetch(accessToken, '/messages/' + encodeURIComponent(id) + '?format=full')
 }
 
 async function getThreadFull(accessToken, threadId) {
@@ -221,5 +241,5 @@ async function recentSentSamples(accessToken, cacheKey, { want = 8 } = {}) {
 module.exports = {
   buildRawMessage, encodeHeader, replySubject, extractPlainText, stripQuoted, latestReply,
   emailFrom, headerValue, decodeBase64url,
-  sendEmail, getThread, getThreadFull, getAttachment, listAttachments, recentSentSamples,
+  sendEmail, getThread, getThreadFull, listInboxSince, getMessageFull, getAttachment, listAttachments, recentSentSamples,
 }
