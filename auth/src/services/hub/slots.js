@@ -77,6 +77,18 @@ function personClubsFor(contactClubs, taskClubs) {
   return mine.filter(c => taskClubs.includes(c))
 }
 
+// People whose "delivered" can change when these owner updates apply: the
+// previous and the new owner of every slot that changes hands.
+function affectedPeople(slots, updates) {
+  const before = new Map(slots.map(s => [s.id, s.person_id || null]))
+  const ids = new Set()
+  for (const u of updates) {
+    if (before.get(u.id)) ids.add(before.get(u.id))
+    if (u.person_id) ids.add(u.person_id)
+  }
+  return [...ids]
+}
+
 function slotLabel(deliverable, club, clubNames) {
   if (!club) return deliverable.name
   return `${clubNames[club] || club} ${deliverable.name}`
@@ -113,4 +125,4 @@ function chunk(list, size) {
   return out
 }
 
-module.exports = { personClubsFor, ownerForClub, planOwners, preValidate, chunk, planSlots, kindAccepts, newUploadToken, validateUploadTarget, slotLabel, allFilled, withUploadLink }
+module.exports = { affectedPeople, personClubsFor, ownerForClub, planOwners, preValidate, chunk, planSlots, kindAccepts, newUploadToken, validateUploadTarget, slotLabel, allFilled, withUploadLink }

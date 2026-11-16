@@ -132,3 +132,10 @@ test("personClubsFor: a saved person's clubs narrowed to the task's clubs", () =
   assert.deepEqual(personClubsFor(['salem'], []), ['salem'])
   assert.deepEqual(personClubsFor(null, ['salem']), [])
 })
+
+test('affectedPeople: only the old and new owners of slots that changed', () => {
+  const { affectedPeople } = require('../src/services/hub/slots')
+  const slots = [{ id: 's1', person_id: 'p-a' }, { id: 's2', person_id: null }, { id: 's3', person_id: 'p-c' }]
+  assert.deepEqual(affectedPeople(slots, [{ id: 's1', person_id: 'p-b' }, { id: 's2', person_id: 'p-a' }]).sort(), ['p-a', 'p-b'])
+  assert.deepEqual(affectedPeople(slots, []), [])
+})
