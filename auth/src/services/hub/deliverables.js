@@ -3,6 +3,8 @@
 // upload links, and store files. Rules live in ./slots (unit-tested).
 const crypto = require('crypto')
 const { supabaseAdmin } = require('../supabase')
+const { getStaffGoogleAccessToken } = require('../googleUserToken')
+const { hubFileName, storeFile, realDrive, positionsBySlot } = require('./drive')
 const { planSlots, planOwners, affectedPeople, newUploadToken, slotLabel, allFilled, chunk } = require('./slots')
 
 const BUCKET = 'hub-task-files'
@@ -38,7 +40,7 @@ async function slotsWithFill(deliverableIds) {
   const items = []
   for (const ids of chunk(slots.map(s => s.id), 150)) {
     items.push(...must(await supabaseAdmin.from('hub_slot_items')
-      .select('id, slot_id, file_name, mime, size_bytes, text_body, source, is_new, created_at, storage_path')
+      .select('id, slot_id, file_name, mime, size_bytes, text_body, source, is_new, created_at, storage_path, drive_file_id, drive_url')
       .in('slot_id', ids).order('created_at', { ascending: true })))
   }
   return slots.map(s => {
@@ -179,29 +181,120 @@ function safeName(name) {
 }
 
 // Stores a file or text in a slot. Returns the new item row.
+const extOf = name => (String(name || '').match(/\.([A-Za-z0-9]{1,8})$/) || [])[1] || ''
+
+// Who/what a slot is, for naming its files: task title, club, deliverable,
+// owner of the slot, the task's owner, and how many items it already has.
+async function slotContext(slotId) {
+  const slot = must(await supabaseAdmin.from('hub_slots').select('id, club, person_id, deliverable_id').eq('id', slotId).single())
+  const del = must(await supabaseAdmin.from('hub_deliverables').select('name, task_id').eq('id', slot.deliverable_id).single())
+  const [task, person, names, count] = await Promise.all([
+    supabaseAdmin.from('hub_tasks').select('title, owner_staff_id').eq('id', del.task_id).single().then(must),
+    slot.person_id ? supabaseAdmin.from('hub_task_people').select('name').eq('id', slot.person_id).maybeSingle().then(must) : null,
+    clubNames(),
+    supabaseAdmin.from('hub_slot_items').select('id', { count: 'exact', head: true }).eq('slot_id', slotId).then(r => r.count || 0),
+  ])
+  return {
+    ownerId: task.owner_staff_id, taskTitle: task.title, clubName: slot.club ? (names[slot.club] || slot.club) : null,
+    deliverable: del.name, person: person?.name || '', n: count + 1,
+  }
+}
+
+// Drive first (one owner folder, renamed file); portal storage if Drive fails.
+async function storeHubFile({ ownerId, name, file, fallbackPath }) {
+  return storeFile({
+    ownerId, name, file, getToken: getStaffGoogleAccessToken, drive: realDrive,
+    fallback: async () => {
+      await ensureBucket()
+      const { error } = await supabaseAdmin.storage.from(BUCKET).upload(fallbackPath, file.buffer, { contentType: file.mimetype, upsert: false })
+      if (error) throw error
+      return { storage_path: fallbackPath }
+    },
+  })
+}
+
+// Best effort: a stored file whose row couldn't be saved, or that was removed.
+async function discardStored(stored, ownerId) {
+  try {
+    if (stored.storage_path) await supabaseAdmin.storage.from(BUCKET).remove([stored.storage_path])
+    if (stored.drive_file_id) {
+      const { accessToken } = await getStaffGoogleAccessToken(ownerId)
+      await realDrive.trash(accessToken, stored.drive_file_id)
+    }
+  } catch (e) { console.warn('[Hub] could not remove stored file', e.message) }
+}
+
 async function addSlotItem({ taskId, slotId, file, text, source, isNew, gmail }) {
   const row = { slot_id: slotId, source, is_new: isNew }
+  let ownerId = null
   if (file) {
-    await ensureBucket()
-    const path = `${taskId}/${slotId}/${crypto.randomUUID()}-${safeName(file.originalname)}`
-    const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, file.buffer, { contentType: file.mimetype, upsert: false })
-    if (error) throw error
-    Object.assign(row, { storage_path: path, file_name: file.originalname, mime: file.mimetype, size_bytes: file.size })
+    const ctx = await slotContext(slotId)
+    ownerId = ctx.ownerId
+    const name = hubFileName({ ...ctx, ext: extOf(file.originalname) })
+    const stored = await storeHubFile({ ownerId, name, file, fallbackPath: `${taskId}/${slotId}/${crypto.randomUUID()}-${safeName(file.originalname)}` })
+    Object.assign(row, stored, { file_name: stored.drive_file_id ? name : file.originalname, mime: file.mimetype, size_bytes: file.size })
   } else {
     row.text_body = String(text || '').slice(0, 20000)
   }
   if (gmail) Object.assign(row, { gmail_message_id: gmail.messageId, gmail_attachment_id: gmail.attachmentId })
   const { data, error } = await supabaseAdmin.from('hub_slot_items').insert(row).select('*').single()
   if (error) {
-    if (row.storage_path) await supabaseAdmin.storage.from(BUCKET).remove([row.storage_path])
+    await discardStored(row, ownerId)
     throw error
   }
   return data
 }
 
-async function removeSlotItem(item) {
-  if (item.storage_path) await supabaseAdmin.storage.from(BUCKET).remove([item.storage_path])
+async function removeSlotItem(item, ownerId) {
   must(await supabaseAdmin.from('hub_slot_items').delete().eq('id', item.id))
+  await discardStored(item, ownerId)
+}
+
+// Where the owner opens a file: its Drive page, or a 1-hour portal link.
+async function openUrl(item) {
+  if (item.drive_url) return item.drive_url
+  if (item.storage_path) return signedUrl(item.storage_path)
+  return null
+}
+
+// One-time move of the owner's portal-stored files into his Drive folder,
+// named like new uploads. Items that fail stay where they are.
+async function moveFilesToDrive(ownerId) {
+  const tasks = must(await supabaseAdmin.from('hub_tasks').select('id').eq('owner_staff_id', ownerId))
+  const result = { moved: 0, failed: 0 }
+  if (!tasks.length) return result
+  const dels = must(await supabaseAdmin.from('hub_deliverables').select('id').in('task_id', tasks.map(t => t.id)))
+  const slots = dels.length ? must(await supabaseAdmin.from('hub_slots').select('id').in('deliverable_id', dels.map(d => d.id))) : []
+  // All file items (for numbering), then just the ones still in portal storage.
+  const all = slots.length ? must(await supabaseAdmin.from('hub_slot_items').select('id, slot_id, storage_path, drive_file_id, file_name, mime, created_at')
+    .in('slot_id', slots.map(s => s.id)).is('text_body', null)) : []
+  const position = positionsBySlot(all)
+  const items = all.filter(i => i.storage_path)
+  const { accessToken } = await getStaffGoogleAccessToken(ownerId)
+  const folderId = await realDrive.ensureFolder(accessToken, ownerId)
+  for (const it of items) {
+    try {
+      const { data: blob, error } = await supabaseAdmin.storage.from(BUCKET).download(it.storage_path)
+      if (error) throw error
+      const buffer = Buffer.from(await blob.arrayBuffer())
+      const ctx = await slotContext(it.slot_id)
+      const name = hubFileName({ ...ctx, n: position.get(it.id) || 1, ext: extOf(it.file_name) })
+      const up = await realDrive.upload(accessToken, folderId, name, it.mime, buffer)
+      const { error: upErr } = await supabaseAdmin.from('hub_slot_items').update({
+        drive_file_id: up.id, drive_url: up.webViewLink || `https://drive.google.com/file/d/${up.id}/view`, storage_path: null, file_name: name,
+      }).eq('id', it.id)
+      if (upErr) {
+        await realDrive.trash(accessToken, up.id).catch(() => {})
+        throw upErr
+      }
+      await supabaseAdmin.storage.from(BUCKET).remove([it.storage_path])
+      result.moved++
+    } catch (e) {
+      console.warn('[HubDrive] move failed', it.id, e.message)
+      result.failed++
+    }
+  }
+  return result
 }
 
 async function signedUrl(path) {
@@ -249,17 +342,18 @@ async function addTrayItem({ taskId, personId, file, gmail, suggestedSlotId, too
     if (error && error.code !== '23505') throw error
     return
   }
-  await ensureBucket()
-  const path = `${taskId}/tray/${crypto.randomUUID()}-${safeName(file.originalname)}`
-  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, file.buffer, { contentType: file.mimetype, upsert: false })
-  if (error) throw error
+  // Named after the task and sender until the owner files it into a slot.
+  const task = must(await supabaseAdmin.from('hub_tasks').select('title, owner_staff_id').eq('id', taskId).single())
+  const person = must(await supabaseAdmin.from('hub_task_people').select('name').eq('id', personId).maybeSingle())
+  const name = hubFileName({ taskTitle: task.title, clubName: null, deliverable: `from ${person?.name || 'someone'}`, person: file.originalname.replace(/\.[^.]+$/, ''), ext: extOf(file.originalname) })
+  const stored = await storeHubFile({ ownerId: task.owner_staff_id, name, file, fallbackPath: `${taskId}/tray/${crypto.randomUUID()}-${safeName(file.originalname)}` })
   const { error: insErr } = await supabaseAdmin.from('hub_tray_items').insert({
     person_id: personId, gmail_message_id: gmail.messageId, gmail_attachment_id: gmail.attachmentId,
-    storage_path: path, file_name: file.originalname, mime: file.mimetype, size_bytes: file.size,
+    ...stored, file_name: file.originalname, mime: file.mimetype, size_bytes: file.size,
     suggested_slot_id: suggestedSlotId,
   })
   if (insErr) {
-    await supabaseAdmin.storage.from(BUCKET).remove([path])
+    await discardStored(stored, task.owner_staff_id)
     if (insErr.code !== '23505') throw insErr // a concurrent run already trayed it
   }
 }
@@ -283,6 +377,7 @@ async function trayCountByTask(taskIds) {
 }
 
 module.exports = {
+  slotContext, openUrl, moveFilesToDrive, discardStored,
   applyOwners, personSlots,
   openSlotsFor, knownGmailKeys, markGmailSeen, pendingTrayFor, addTrayItem, trayCountByTask,
   BUCKET, resyncSlots, loadTaskDeliverables, summaryByTask, openSlotLabels, refreshPersonDelivered,

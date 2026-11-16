@@ -6,6 +6,7 @@ const { ownerOnly } = require('../lib/ownerGate')
 const { supabaseAdmin } = require('../services/supabase')
 const { kindAccepts } = require('../services/hub/slots')
 const dl = require('../services/hub/deliverables')
+const { hubFileName, realDrive, folderUrl } = require('../services/hub/drive')
 const gmail = require('../services/followUps/gmail')
 const { getStaffGoogleAccessToken } = require('../services/googleUserToken')
 
@@ -108,9 +109,8 @@ router.delete('/deliverables/:id', async (req, res) => {
     const { data: slots } = await supabaseAdmin.from('hub_slots').select('id').eq('deliverable_id', deliverable.id)
     const ids = (slots || []).map(s => s.id)
     if (ids.length) {
-      const { data: items } = await supabaseAdmin.from('hub_slot_items').select('storage_path').in('slot_id', ids)
-      const paths = (items || []).map(i => i.storage_path).filter(Boolean)
-      if (paths.length) await supabaseAdmin.storage.from(dl.BUCKET).remove(paths)
+      const { data: items } = await supabaseAdmin.from('hub_slot_items').select('storage_path, drive_file_id').in('slot_id', ids)
+      for (const it of items || []) await dl.discardStored(it, task.owner_staff_id)
     }
     const { error } = await supabaseAdmin.from('hub_deliverables').delete().eq('id', deliverable.id)
     if (error) throw error
@@ -162,7 +162,7 @@ router.patch('/slots/:id', async (req, res) => {
 router.delete('/slot-items/:id', async (req, res) => {
   try {
     const { item, deliverable, task } = await ownItem(req, req.params.id)
-    await dl.removeSlotItem(item)
+    await dl.removeSlotItem(item, task.owner_staff_id)
     await dl.applyOwners(task, { refreshAll: true })
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
@@ -171,8 +171,9 @@ router.delete('/slot-items/:id', async (req, res) => {
 router.get('/slot-items/:id/url', async (req, res) => {
   try {
     const { item } = await ownItem(req, req.params.id)
-    if (!item.storage_path) return res.status(400).json({ error: 'No file on this item' })
-    res.json({ url: await dl.signedUrl(item.storage_path) })
+    const url = await dl.openUrl(item)
+    if (!url) return res.status(400).json({ error: 'No file on this item' })
+    res.json({ url })
   } catch (e) { sendError(res, e) }
 })
 
@@ -224,8 +225,9 @@ router.get('/tasks/:id/tray', async (req, res) => {
 router.get('/tray/:id/url', async (req, res) => {
   try {
     const { item } = await ownTrayItem(req, req.params.id)
-    if (!item.storage_path) return res.status(400).json({ error: 'Too large to pull in; open it in Gmail' })
-    res.json({ url: await dl.signedUrl(item.storage_path) })
+    const url = await dl.openUrl(item)
+    if (!url) return res.status(400).json({ error: 'Too large to pull in; open it in Gmail' })
+    res.json({ url })
   } catch (e) { sendError(res, e) }
 })
 
@@ -234,12 +236,23 @@ router.get('/tray/:id/url', async (req, res) => {
 router.post('/tray/:id/file', async (req, res) => {
   try {
     const { item, task } = await ownTrayItem(req, req.params.id)
-    if (!item.storage_path) return res.status(400).json({ error: 'Too large to pull in; open it in Gmail' })
+    if (!item.storage_path && !item.drive_file_id) return res.status(400).json({ error: 'Too large to pull in; open it in Gmail' })
     const { slot, deliverable, task: slotTask } = await ownSlot(req, req.body?.slotId)
     if (slotTask.id !== task.id) return res.status(400).json({ error: 'That slot is on another task' })
     if (!kindAccepts(deliverable.kind, item.mime)) return res.status(400).json({ error: deliverable.kind === 'text' ? 'That slot takes text' : 'That slot takes images only' })
+    // A Drive file gets the slot's name now that we know where it belongs.
+    let fileName = item.file_name
+    if (item.drive_file_id) {
+      try {
+        const ctx = await dl.slotContext(slot.id)
+        fileName = hubFileName({ ...ctx, ext: (String(item.file_name).match(/\.([A-Za-z0-9]{1,8})$/) || [])[1] || '' })
+        const { accessToken } = await getStaffGoogleAccessToken(task.owner_staff_id)
+        await realDrive.rename(accessToken, item.drive_file_id, fileName)
+      } catch (e) { console.warn('[HubDrive] rename failed', e.message); fileName = item.file_name }
+    }
     const { error } = await supabaseAdmin.from('hub_slot_items').insert({
-      slot_id: slot.id, storage_path: item.storage_path, file_name: item.file_name, mime: item.mime,
+      slot_id: slot.id, storage_path: item.storage_path, drive_file_id: item.drive_file_id, drive_url: item.drive_url,
+      file_name: fileName, mime: item.mime,
       size_bytes: item.size_bytes, source: 'email', is_new: false,
       gmail_message_id: item.gmail_message_id, gmail_attachment_id: item.gmail_attachment_id,
     })
@@ -253,10 +266,10 @@ router.post('/tray/:id/file', async (req, res) => {
 
 router.delete('/tray/:id', async (req, res) => {
   try {
-    const { item } = await ownTrayItem(req, req.params.id)
+    const { item, task } = await ownTrayItem(req, req.params.id)
     const { error } = await supabaseAdmin.from('hub_tray_items').delete().eq('id', item.id)
     if (error) throw error
-    if (item.storage_path) await supabaseAdmin.storage.from(dl.BUCKET).remove([item.storage_path])
+    await dl.discardStored(item, task.owner_staff_id)
     res.json({ ok: true })
   } catch (e) { sendError(res, e) }
 })
@@ -290,6 +303,35 @@ router.post('/people/:pid/use-reply-text', async (req, res) => {
     await dl.applyOwners(task, { refreshAll: true })
     res.json({ deliverables: await dl.loadTaskDeliverables(task) })
   } catch (e) { sendError(res, e) }
+})
+
+// ---- Google Drive: folder link, and the one-time move of portal files ----
+
+router.get('/drive', async (req, res) => {
+  try {
+    const tasks = (await supabaseAdmin.from('hub_tasks').select('id').eq('owner_staff_id', req.staff.id)).data || []
+    let portalFiles = 0
+    if (tasks.length) {
+      const dels = (await supabaseAdmin.from('hub_deliverables').select('id').in('task_id', tasks.map(t => t.id))).data || []
+      const slots = dels.length ? ((await supabaseAdmin.from('hub_slots').select('id').in('deliverable_id', dels.map(d => d.id))).data || []) : []
+      if (slots.length) {
+        const { count } = await supabaseAdmin.from('hub_slot_items').select('id', { count: 'exact', head: true })
+          .in('slot_id', slots.map(s => s.id)).not('storage_path', 'is', null)
+        portalFiles = count || 0
+      }
+    }
+    res.json({ folderUrl: await folderUrl(req.staff.id), portalFiles })
+  } catch (e) { sendError(res, e) }
+})
+
+router.post('/drive/move', async (req, res) => {
+  try {
+    const result = await dl.moveFilesToDrive(req.staff.id)
+    res.json({ ...result, folderUrl: await folderUrl(req.staff.id) })
+  } catch (e) {
+    if (e.notConnected) return res.status(412).json({ error: 'Connect Gmail/Google first', code: 'gmail_not_connected' })
+    sendError(res, e)
+  }
 })
 
 module.exports = router
