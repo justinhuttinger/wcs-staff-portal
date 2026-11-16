@@ -4,6 +4,7 @@ import { CLUBS } from '../../config/locations'
 import { Button, ErrorBanner, EmptyState, Spinner, Select } from '../adsmanager/ui'
 import TaskEditor from './TaskEditor'
 import TaskDetail from './TaskDetail'
+import TasksCalendar from './TasksCalendar'
 import { dueLabel, shortDate } from './dates'
 
 const CARD = 'bg-surface/95 backdrop-blur-sm rounded-xl border border-border'
@@ -71,6 +72,9 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
   const [statusFilter, setStatusFilter] = useState('')
   const [showClosed, setShowClosed] = useState(false)
   const [sort, setSort] = useState('due')
+  // List or calendar; remembered per browser.
+  const [view, setView] = useState(() => { try { return localStorage.getItem('hub-tasks-view') === 'calendar' ? 'calendar' : 'list' } catch { return 'list' } })
+  const switchView = v => { setView(v); try { localStorage.setItem('hub-tasks-view', v) } catch { /* ignore */ } }
 
   const load = useCallback(async () => {
     try {
@@ -90,19 +94,20 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
     catch (e) { setError(e.message) }
   }
 
-  const groups = useMemo(() => {
-    const visible = (tasks || []).filter(t => {
+  const visible = useMemo(() => (tasks || []).filter(t => {
       const closed = t.status === 'done' || t.status === 'dropped'
       if (statusFilter) { if (t.status !== statusFilter) return false } else if (closed && !showClosed) return false
       if (clubFilter.length && !t.clubs.some(c => clubFilter.includes(c))) return false
       if (catFilter && (t.category_id || 'none') !== catFilter) return false
       if (prioFilter && t.priority !== prioFilter) return false
       return true
-    }).sort(SORTS[sort])
+    }).sort(SORTS[sort]), [tasks, clubFilter, catFilter, prioFilter, statusFilter, showClosed, sort])
+
+  const groups = useMemo(() => {
     const out = categories.map(c => ({ id: c.id, name: c.name, items: visible.filter(t => t.category_id === c.id) }))
     out.push({ id: 'none', name: 'No category', items: visible.filter(t => !t.category_id || !categories.some(c => c.id === t.category_id)) })
     return out.filter(g => g.items.length)
-  }, [tasks, categories, clubFilter, catFilter, prioFilter, statusFilter, showClosed, sort])
+  }, [visible, categories])
 
   const toggleClub = slug => setClubFilter(f => f.includes(slug) ? f.filter(s => s !== slug) : [...f, slug])
 
@@ -115,6 +120,12 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
       <div className={`${CARD} p-4 space-y-3`}>
         <div className="flex items-center gap-2 flex-wrap">
           <Button onClick={() => setEditing(null)}>New task</Button>
+          <div className="flex rounded-lg border border-border overflow-hidden">
+            {['list', 'calendar'].map(v => (
+              <button key={v} onClick={() => switchView(v)}
+                className={`px-3 py-1.5 text-xs font-semibold capitalize ${view === v ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted hover:text-text-primary'}`}>{v}</button>
+            ))}
+          </div>
           <div className="flex items-center gap-2 ml-auto flex-wrap">
             <Select value={catFilter} onChange={e => setCatFilter(e.target.value)} className="!w-auto !py-1.5 !text-xs"
               options={[{ value: '', label: 'All categories' }, ...categories.map(c => ({ value: c.id, label: c.name })), { value: 'none', label: 'No category' }]} />
@@ -145,11 +156,15 @@ export default function TasksSection({ gmailReady = false, refreshKey = 0, onGma
             action={<Button onClick={() => setEditing(null)}>New task</Button>} />
         </div>
       )}
-      {tasks && tasks.length > 0 && groups.length === 0 && (
+      {view === 'calendar' && tasks && tasks.length > 0 && visible.length === 0 && (
+        <div className={`${CARD} p-3 text-xs text-text-muted`}>Nothing matches these filters.</div>
+      )}
+      {view === 'calendar' && tasks && tasks.length > 0 && <TasksCalendar tasks={visible} onOpen={t => setOpenId(t.id)} />}
+      {view === 'list' && tasks && tasks.length > 0 && groups.length === 0 && (
         <div className={`${CARD} p-4 text-sm text-text-muted`}>Nothing matches these filters.</div>
       )}
 
-      {groups.length > 0 && (
+      {view === 'list' && groups.length > 0 && (
         <div className={`${CARD} overflow-hidden divide-y divide-border`}>
           {groups.map(g => (
             <div key={g.id}>
