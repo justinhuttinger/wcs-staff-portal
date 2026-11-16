@@ -29,13 +29,17 @@ function fail(res, e) {
   if (status === 500) console.error('[HubShare]', e.message)
 }
 
-async function submissionsFor(task, club = null) {
+async function submissionsFor(task, club = null, { withPaths = false } = {}) {
   const [deliverables, people, names] = await Promise.all([
     dl.loadTaskDeliverables(task),
     supabaseAdmin.from('hub_task_people').select('id, name').eq('task_id', task.id).then(must),
     dl.clubNames(),
   ])
-  return groupSubmissions({ deliverables, clubNames: names, people, clubOrder: task.clubs || [], club })
+  const groups = groupSubmissions({ deliverables, clubNames: names, people, clubOrder: task.clubs || [], club })
+  if (!withPaths) return { groups }
+  const paths = new Map()
+  for (const d of deliverables) for (const s of d.slots) for (const i of s.items) if (i.storage_path) paths.set(i.id, i.storage_path)
+  return { groups, paths }
 }
 
 async function tokenFor(taskId, create) {
@@ -65,7 +69,7 @@ owner.get('/tasks/:id/submissions', async (req, res) => {
   try {
     const task = await ownTask(req)
     const club = req.query.club ? String(req.query.club) : null
-    const groups = await submissionsFor(task, club)
+    const { groups } = await submissionsFor(task, club)
     const token = await tokenFor(task.id, false)
     res.json({
       groups,
@@ -106,11 +110,18 @@ pub.get('/:token', async (req, res) => {
   try {
     const task = await taskForToken(req.params.token)
     if (!task) return res.status(404).json({ error: 'This link is not valid' })
-    const groups = await submissionsFor(task)
+    const { groups, paths } = await submissionsFor(task, null, { withPaths: true })
     const link = fileUrl(req.params.token)
+    // One batch of 1-hour URLs for inline images.
+    const imageIds = groups.flatMap(g => g.items).filter(i => i.isFile && /^image\//.test(i.mime || '') && paths.has(i.id)).map(i => i.id)
+    const signed = new Map()
+    if (imageIds.length) {
+      const { data } = await supabaseAdmin.storage.from(dl.BUCKET).createSignedUrls(imageIds.map(id => paths.get(id)), 60 * 60)
+      ;(data || []).forEach((row, n) => { if (row?.signedUrl) signed.set(imageIds[n], row.signedUrl) })
+    }
     res.json({
       taskTitle: task.title,
-      groups: groups.map(g => ({ ...g, items: g.items.map(i => ({ ...i, url: i.isFile ? link(i.id) : null })) })),
+      groups: groups.map(g => ({ ...g, items: g.items.map(i => ({ ...i, url: i.isFile ? link(i.id) : null, imageUrl: signed.get(i.id) || null })) })),
     })
   } catch (e) { fail(res, e) }
 })

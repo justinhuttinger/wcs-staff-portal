@@ -148,7 +148,7 @@ export default function DeliverablesGrid({ task, people, reloadKey = 0, onChange
                 <th className="text-left px-3 py-2 text-[11px] font-semibold text-text-muted">Item</th>
                 {columns.map(({ club, removed }) => (
                   <th key={club || 'none'} className="text-left px-3 py-2 text-[11px] font-semibold text-text-muted border-l border-border">
-                    <button onClick={() => setViewing({ club, clubName: CLUB_NAME(club) || (removed ? 'Before clubs' : 'Received') })}
+                    <button onClick={() => setViewing({ club: club ?? (removed ? 'none' : null), clubName: CLUB_NAME(club) || (removed ? 'Before clubs' : 'Received') })}
                       className="hover:text-wcs-red hover:underline" title="See everything submitted for this club">
                       {CLUB_NAME(club) || (removed ? 'Before clubs' : 'Received')}{removed && club ? ' (removed)' : ''}
                     </button>

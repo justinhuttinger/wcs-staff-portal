@@ -10,13 +10,14 @@ function groupSubmissions({ deliverables, clubNames = {}, people = [], clubOrder
   for (const d of deliverables) {
     for (const s of d.slots || []) {
       const key = s.club ?? null
-      if (club && key !== club) continue
+      // club 'none' = only slots without a club; any other value = that club.
+      if (club === 'none' ? key !== null : (club && key !== club)) continue
       for (const it of s.items || []) {
         if (!byClub.has(key)) byClub.set(key, [])
         const person = people.find(p => p.id === s.person_id)?.name || ''
         byClub.get(key).push({
           id: it.id, deliverable: d.name, kind: d.kind, person,
-          isFile: it.text_body == null, fileName: it.file_name || null, text: it.text_body ?? null,
+          isFile: it.text_body == null, fileName: it.file_name || null, mime: it.mime || null, text: it.text_body ?? null,
           label: key ? `${clubNames[key] || key} ${d.name}` : d.name,
         })
       }

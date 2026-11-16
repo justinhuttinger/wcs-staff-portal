@@ -15,7 +15,8 @@ function CopyText({ text }) {
 }
 
 function Item({ item }) {
-  const isImage = item.isFile && item.kind === 'image'
+  // Only real images render inline (a HEIC or PDF in an image slot shows as a link).
+  const isImage = item.isFile && !!item.imageUrl
   return (
     <div className="rounded-xl border border-border bg-surface p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -26,7 +27,7 @@ function Item({ item }) {
       </div>
       {isImage && (
         <a href={item.url} target="_blank" rel="noreferrer">
-          <img src={item.url} alt={item.label} loading="lazy" className="w-full max-h-80 object-contain rounded-lg bg-bg" />
+          <img src={item.imageUrl} alt={item.label} loading="lazy" className="w-full max-h-80 object-contain rounded-lg bg-bg" />
         </a>
       )}
       {item.isFile && !isImage && (

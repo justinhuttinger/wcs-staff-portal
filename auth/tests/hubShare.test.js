@@ -48,3 +48,14 @@ test('claudeBlock: title, share link, club sections, file links and quoted text'
 test('claudeBlock with nothing submitted says so', () => {
   assert.match(claudeBlock({ taskTitle: 'T', shareUrl: 'u', groups: [], fileUrl: () => '' }), /Nothing submitted yet/)
 })
+
+test('groupSubmissions: club "none" means only club-less slots; mime passes through', () => {
+  const dels = [{ id: 'd1', name: 'Photo', kind: 'image', slots: [
+    { id: 'a', club: null, person_id: 'p1', items: [{ id: 'x1', file_name: 'old.jpg', text_body: null, mime: 'image/jpeg' }] },
+    { id: 'b', club: 'salem', person_id: 'p1', items: [{ id: 'x2', file_name: 'new.heic', text_body: null, mime: 'image/heic' }] },
+  ] }]
+  const only = groupSubmissions({ deliverables: dels, clubNames: { salem: 'Salem' }, people, clubOrder: ['salem'], club: 'none' })
+  assert.deepEqual(only.flatMap(g => g.items.map(i => i.id)), ['x1'])
+  const all = groupSubmissions({ deliverables: dels, clubNames: { salem: 'Salem' }, people, clubOrder: ['salem'] })
+  assert.equal(all.find(g => g.club === 'salem').items[0].mime, 'image/heic')
+})

@@ -38,7 +38,7 @@ async function slotsWithFill(deliverableIds) {
   const items = []
   for (const ids of chunk(slots.map(s => s.id), 150)) {
     items.push(...must(await supabaseAdmin.from('hub_slot_items')
-      .select('id, slot_id, file_name, mime, size_bytes, text_body, source, is_new, created_at')
+      .select('id, slot_id, file_name, mime, size_bytes, text_body, source, is_new, created_at, storage_path')
       .in('slot_id', ids).order('created_at', { ascending: true })))
   }
   return slots.map(s => {
