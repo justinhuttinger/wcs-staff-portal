@@ -1834,6 +1834,7 @@ export const hub = {
   },
   checkReplies: () => api('/hub/check-replies', { method: 'POST' }),
   newFeed: () => api('/hub/new'),
+  planWeek: () => api('/hub/plan', { method: 'POST' }),
   drive: {
     status: () => api('/hub/drive'),
     move: () => api('/hub/drive/move', { method: 'POST' }),
