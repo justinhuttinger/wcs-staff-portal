@@ -767,26 +767,42 @@ const PLAN_PICKER_CSS =
   '.row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;}' +
   '.sameday{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;cursor:pointer;user-select:none;}' +
   '.sameday input{width:18px;height:18px;cursor:pointer;}' +
-  '.busy{font-size:15px;font-weight:600;padding:8px 0;}'
+  '.busy{font-size:15px;font-weight:600;padding:8px 0;}' +
+  '.links{display:flex;gap:16px;}' +
+  '.current{font-size:16px;}.current .q{display:inline;margin:0;}' +
+  '.tile.small{padding:8px 16px;font-size:14px;}'
 
 const PAY_LABELS = { CC: 'Credit Card', ACH: 'Bank (ACH)', '': 'No billing method' }
 
+// The picker. On the plan screen (/eae.spr) it replaces ABC's plan box
+// outright. On the agreement form (/eae/*.spr) ABC's Plan tab shows the plan
+// dropdowns again: we hide that box and show "Plan: <name>  Change plan",
+// which opens the same picker.
 function updatePlanPicker() {
-  const doc = eaeDoc(/^\/eae\.spr$/i)
+  const doc = eaeDoc(/^\/eae(\.spr|\/[a-z]+\.spr)$/i)
   if (!doc) return
   const select = doc.getElementById('paymentPlan')
-  const form = doc.getElementById('selectPlanForm')
-  if (!select || !form || doc.querySelector('[data-wcs-plan-picker]')) return
+  if (!select) return
+  const onPlanScreen = /^\/eae\.spr$/i.test(doc.location.pathname)
+  const box = onPlanScreen ? doc.getElementById('selectPlanForm') : select.closest('.framebackground')
+  if (!box || !box.parentElement) return
+  if (doc.querySelector('[data-wcs-plan-picker]')) {
+    if (box.style.display !== 'none' && !box._wcsShowAbc) box.style.display = 'none'
+    return
+  }
   const plans = [...select.options].filter(o => o.value).map((o, i) => Object.assign(parsePlanName(o.text), { id: o.value, idx: i }))
   if (!plans.length) return
+  const current = select.selectedIndex >= 0 && select.options[select.selectedIndex].value
+    ? select.options[select.selectedIndex].text.trim() : ''
 
   const host = doc.createElement('div')
   host.setAttribute('data-wcs-plan-picker', '')
+  host.style.cssText = onPlanScreen ? '' : 'max-width:760px;'
   const root = host.attachShadow({ mode: 'closed' })
   root.innerHTML = '<style>' + PLAN_PICKER_CSS + '</style><div class="card"></div>'
   const card = root.querySelector('.card')
   const hasSameDay = plans.some(p => p.sameDay)
-  const state = { sameDay: false, picks: {} }
+  const state = { sameDay: false, picks: {}, open: onPlanScreen || !current }
 
   function make(tag, cls, text) {
     const e = doc.createElement(tag)
@@ -794,8 +810,15 @@ function updatePlanPicker() {
     if (text != null) e.textContent = text
     return e
   }
+  function linkButton(text, onClick) {
+    const b = make('button', 'link', text)
+    b.type = 'button'
+    b.addEventListener('click', onClick)
+    return b
+  }
 
   function choose(plan) {
+    if (plan.id === select.value && !onPlanScreen) { state.open = false; state.picks = {}; render(); return }
     card.textContent = ''
     card.appendChild(make('div', 'busy', 'Loading ' + plan.name + '...'))
     const category = doc.getElementById('paymentPlanCategory')
@@ -805,22 +828,36 @@ function updatePlanPicker() {
   }
 
   function showAbcList(show) {
-    form.style.display = show ? '' : 'none'
-    card.style.display = show ? 'none' : ''
+    box._wcsShowAbc = show
+    box.style.display = show ? '' : 'none'
+    host.style.display = show ? 'none' : ''
   }
 
   function render() {
     card.textContent = ''
+    if (!state.open) {
+      const top = make('div', 'top')
+      const label = make('div', 'current')
+      label.appendChild(make('span', 'q', 'Plan: '))
+      label.appendChild(doc.createTextNode(current))
+      top.appendChild(label)
+      const change = make('button', 'tile small', 'Change plan')
+      change.type = 'button'
+      change.addEventListener('click', () => { state.open = true; render() })
+      top.appendChild(change)
+      card.appendChild(top)
+      return
+    }
+
     const top = make('div', 'top')
-    top.appendChild(make('h3', 'title', 'Choose a plan'))
-    const abcLink = make('button', 'link', 'Use ABC plan list')
-    abcLink.type = 'button'
-    abcLink.addEventListener('click', () => showAbcList(true))
-    top.appendChild(abcLink)
+    top.appendChild(make('h3', 'title', onPlanScreen ? 'Choose a plan' : 'Change plan'))
+    const links = make('div', 'links')
+    if (!onPlanScreen && current) links.appendChild(linkButton('Keep current plan', () => { state.open = false; state.picks = {}; render() }))
+    links.appendChild(linkButton('Use ABC plan list', () => showAbcList(true)))
+    top.appendChild(links)
     card.appendChild(top)
 
     let pool = plans.filter(p => p.sameDay === state.sameDay)
-    const crumbs = make('div', 'crumbs')
     const steps = [['group', 'Membership type'], ['term', 'Term'], ['pay', 'How will they pay?'], ['id', 'Plan']]
     let question = null
     for (const [key, label] of steps) {
@@ -833,16 +870,16 @@ function updatePlanPicker() {
       question = { key, label, options }
       break
     }
-    for (const key of ['group', 'term', 'pay']) {
-      if (state.picks[key] != null && state.picks[key] !== '') crumbs.appendChild(make('span', 'crumb', key === 'pay' ? PAY_LABELS[state.picks[key]] : state.picks[key]))
-    }
+
     if (Object.keys(state.picks).length) {
-      const back = make('button', 'link', 'Start over')
-      back.type = 'button'
-      back.addEventListener('click', () => { state.picks = {}; render() })
-      crumbs.appendChild(back)
+      const crumbs = make('div', 'crumbs')
+      if (state.sameDay) crumbs.appendChild(make('span', 'crumb', 'Same Day Sale'))
+      for (const key of ['group', 'term', 'pay']) {
+        if (state.picks[key] != null && state.picks[key] !== '') crumbs.appendChild(make('span', 'crumb', key === 'pay' ? PAY_LABELS[state.picks[key]] : state.picks[key]))
+      }
+      crumbs.appendChild(linkButton('Start over', () => { state.picks = {}; render() }))
+      card.appendChild(crumbs)
     }
-    card.appendChild(crumbs)
 
     if (!question) {
       if (pool.length) choose(pool[0])
@@ -866,11 +903,11 @@ function updatePlanPicker() {
     if (hasSameDay && question.key === 'group') {
       const row = make('div', 'row')
       const label = make('label', 'sameday')
-      const box = make('input')
-      box.type = 'checkbox'
-      box.checked = state.sameDay
-      box.addEventListener('change', () => { state.sameDay = box.checked; state.picks = {}; render() })
-      label.appendChild(box)
+      const cb = make('input')
+      cb.type = 'checkbox'
+      cb.checked = state.sameDay
+      cb.addEventListener('change', () => { state.sameDay = cb.checked; state.picks = {}; render() })
+      label.appendChild(cb)
       label.appendChild(doc.createTextNode('Same Day Sale'))
       row.appendChild(label)
       card.appendChild(row)
@@ -878,7 +915,7 @@ function updatePlanPicker() {
   }
 
   render()
-  form.parentElement.insertBefore(host, form)
+  box.parentElement.insertBefore(host, box)
   showAbcList(false)
 }
 
@@ -912,24 +949,8 @@ function updateAgreementBilling() {
   if (!enable.checked) { enable.checked = true; fireAbcChange(doc, enable, false) }
   if (!same.checked) { same.checked = true; fireAbcChange(doc, same, false) }
   const group = doc.getElementById('billingClubAccount')
-  if (group && enable.checked && same.checked && group.style.display !== 'none') {
-    group.style.display = 'none'
-    if (!doc.querySelector('[data-wcs-club-account-note]')) {
-      // ABC's own card classes (its CSS overrides inline padding on divs).
-      const note = doc.createElement('div')
-      note.setAttribute('data-wcs-club-account-note', '')
-      note.className = group.className
-      const title = doc.createElement('div')
-      title.className = 'formgrouptitle'
-      title.textContent = 'Club Account'
-      const body = doc.createElement('div')
-      body.style.cssText = 'font-size:14px;padding:0 8px;'
-      body.textContent = 'On, billed the same as Primary ABC Billing.'
-      note.appendChild(title)
-      note.appendChild(body)
-      group.parentElement.insertBefore(note, group)
-    }
-  }
+  // Hidden entirely (Justin: "don't even show it").
+  if (group && enable.checked && same.checked && group.style.display !== 'none') group.style.display = 'none'
 }
 
 // --- Check-in alert cues ----------------------------------------------------
