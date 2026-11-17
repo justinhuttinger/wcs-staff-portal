@@ -754,25 +754,61 @@ function fireAbcChange(doc, el, skipInline) {
 
 const PLAN_PICKER_CSS =
   ':host{display:block;font-family:Roboto,Arial,sans-serif;color:#242128;}' +
-  '.card{background:#fff;border-radius:8px;padding:20px 24px;margin-bottom:16px;}' +
-  '.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;}' +
-  '.title{margin:0;font-size:18px;font-weight:700;}' +
-  '.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:28px;margin:6px 0 14px;font-size:14px;}' +
-  '.crumb{background:#ebebeb;border-radius:14px;padding:4px 10px;font-weight:600;}' +
-  '.q{margin:0 0 10px;font-size:14px;font-weight:700;}' +
-  '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;}' +
-  '.tile{border:2px solid #231f20;background:#fff;color:#231f20;border-radius:8px;padding:14px 10px;font:600 16px Roboto,Arial,sans-serif;cursor:pointer;text-align:center;}' +
-  '.tile:hover{background:#231f20;color:#fff;}' +
-  '.link{background:none;border:0;padding:0;color:#0a58ca;text-decoration:underline;font:14px Roboto,Arial,sans-serif;cursor:pointer;}' +
-  '.row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;}' +
-  '.sameday{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;cursor:pointer;user-select:none;}' +
-  '.sameday input{width:18px;height:18px;cursor:pointer;}' +
-  '.busy{font-size:15px;font-weight:600;padding:8px 0;}' +
-  '.links{display:flex;gap:16px;}' +
-  '.current{font-size:16px;}.current .q{display:inline;margin:0;}' +
-  '.tile.small{padding:8px 16px;font-size:14px;}'
+  '*{box-sizing:border-box;}' +
+  '.card{background:#fff;border-radius:12px;padding:24px 28px 26px;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.05);}' +
+  '.top{display:flex;align-items:center;justify-content:space-between;gap:12px;}' +
+  '.title{margin:0;font-family:' + DISPLAY_FONT + ';font-size:28px;font-weight:400;line-height:1;letter-spacing:.02em;text-transform:uppercase;}' +
+  '.links{display:flex;gap:18px;}' +
+  '.link{background:none;border:0;padding:0;color:#6b6b76;font:500 13px Roboto,Arial,sans-serif;cursor:pointer;}' +
+  '.link:hover{color:#242128;text-decoration:underline;}' +
+  // Stepper
+  '.steps{display:flex;gap:8px;margin:20px 0 22px;padding:0;list-style:none;}' +
+  '.step{flex:1;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#f4f4f6;min-width:0;}' +
+  '.step.done{cursor:pointer;}.step.done:hover{background:#ebebef;}' +
+  '.step.now{background:#fff;box-shadow:inset 0 0 0 2px #ff0000;}' +
+  '.dot{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:700 13px Roboto,Arial,sans-serif;background:#d9d9de;color:#fff;}' +
+  '.step.done .dot{background:#231f20;}.step.now .dot{background:#ff0000;}' +
+  '.slabel{display:flex;flex-direction:column;min-width:0;}' +
+  '.sname{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8a8a94;}' +
+  '.sval{font-size:14px;font-weight:600;color:#242128;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+  '.step.now .sname{color:#ff0000;}' +
+  // Question + tiles
+  '.qrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;}' +
+  '.q{margin:0;font-size:16px;font-weight:700;}' +
+  '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;}' +
+  '.tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;min-height:84px;padding:14px 16px;border:1.5px solid #dcdce2;border-radius:10px;background:#fff;color:#242128;text-align:left;cursor:pointer;' +
+  'font-family:Roboto,Arial,sans-serif;transition:border-color .12s,box-shadow .12s,transform .12s;}' +
+  '.tile:hover{border-color:#ff0000;box-shadow:0 4px 14px rgba(255,0,0,.12);transform:translateY(-1px);}' +
+  '.tile:active{transform:translateY(0);}' +
+  '.tile:focus-visible{outline:3px solid rgba(255,0,0,.35);outline-offset:2px;}' +
+  '.tname{font-size:17px;font-weight:700;line-height:1.2;}' +
+  '.tsub{font-size:12.5px;color:#6b6b76;line-height:1.3;}' +
+  '.ticon{width:26px;height:26px;color:#231f20;margin-bottom:2px;}' +
+  '.tile.wide{grid-column:1/-1;min-height:56px;}' +
+  // Same Day Sale switch
+  '.switch{display:inline-flex;align-items:center;gap:10px;font-size:14px;font-weight:600;cursor:pointer;user-select:none;}' +
+  '.switch input{position:absolute;opacity:0;pointer-events:none;}' +
+  '.track{position:relative;width:40px;height:22px;border-radius:11px;background:#d9d9de;transition:background .15s;}' +
+  '.track::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s;}' +
+  '.switch input:checked+.track{background:#ff0000;}.switch input:checked+.track::after{transform:translateX(18px);}' +
+  '.switch input:focus-visible+.track{outline:3px solid rgba(255,0,0,.35);outline-offset:2px;}' +
+  // Collapsed "Plan: X  Change plan" bar
+  '.current{display:flex;flex-direction:column;gap:2px;}' +
+  '.clabel{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8a8a94;}' +
+  '.cname{font-size:18px;font-weight:700;}' +
+  '.btn{border:0;border-radius:8px;background:#231f20;color:#fff;padding:10px 18px;font:600 14px Roboto,Arial,sans-serif;cursor:pointer;}' +
+  '.btn:hover{background:#000;}' +
+  '.card.compact{padding:18px 22px;}' +
+  '.busy{display:flex;align-items:center;gap:12px;font-size:15px;font-weight:600;padding:10px 0;}' +
+  '.spin{width:20px;height:20px;border-radius:50%;border:3px solid #eee;border-top-color:#ff0000;animation:spin .8s linear infinite;}' +
+  '@keyframes spin{to{transform:rotate(360deg);}}'
 
 const PAY_LABELS = { CC: 'Credit Card', ACH: 'Bank (ACH)', '': 'No billing method' }
+const PAY_SUBS = { CC: 'Dues charged to a card', ACH: 'Dues drafted from a bank', '': '' }
+const PAY_ICONS = {
+  CC: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 15h4"/></svg>',
+  ACH: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 4l9 5.5M4.5 10v8M9.5 10v8M14.5 10v8M19.5 10v8M3 20h18"/></svg>',
+}
 
 // The picker. On the plan screen (/eae.spr) it replaces ABC's plan box
 // outright. On the agreement form (/eae/*.spr) ABC's Plan tab shows the plan
@@ -795,14 +831,16 @@ function updatePlanPicker() {
   const current = select.selectedIndex >= 0 && select.options[select.selectedIndex].value
     ? select.options[select.selectedIndex].text.trim() : ''
 
+  ensureDisplayFont(doc)
   const host = doc.createElement('div')
   host.setAttribute('data-wcs-plan-picker', '')
-  host.style.cssText = onPlanScreen ? '' : 'max-width:760px;'
+  host.style.cssText = onPlanScreen ? '' : 'max-width:860px;'
   const root = host.attachShadow({ mode: 'closed' })
   root.innerHTML = '<style>' + PLAN_PICKER_CSS + '</style><div class="card"></div>'
   const card = root.querySelector('.card')
   const hasSameDay = plans.some(p => p.sameDay)
   const state = { sameDay: false, picks: {}, open: onPlanScreen || !current }
+  const STEPS = [['group', 'Membership', 'Pick a membership type'], ['term', 'Term', 'How long?'], ['pay', 'Payment', 'How will they pay?']]
 
   function make(tag, cls, text) {
     const e = doc.createElement(tag)
@@ -810,8 +848,8 @@ function updatePlanPicker() {
     if (text != null) e.textContent = text
     return e
   }
-  function linkButton(text, onClick) {
-    const b = make('button', 'link', text)
+  function button(cls, text, onClick) {
+    const b = make('button', cls, text)
     b.type = 'button'
     b.addEventListener('click', onClick)
     return b
@@ -819,8 +857,12 @@ function updatePlanPicker() {
 
   function choose(plan) {
     if (plan.id === select.value && !onPlanScreen) { state.open = false; state.picks = {}; render(); return }
+    card.className = 'card'
     card.textContent = ''
-    card.appendChild(make('div', 'busy', 'Loading ' + plan.name + '...'))
+    const busy = make('div', 'busy')
+    busy.appendChild(make('span', 'spin'))
+    busy.appendChild(doc.createTextNode('Loading ' + plan.name + '...'))
+    card.appendChild(busy)
     const category = doc.getElementById('paymentPlanCategory')
     if (category && category.value !== 'All') category.value = 'All'
     select.value = plan.id
@@ -833,85 +875,131 @@ function updatePlanPicker() {
     host.style.display = show ? 'none' : ''
   }
 
+  // What a tile's small grey line says.
+  function subFor(key, value, pool) {
+    if (key === 'group') {
+      const rows = pool.filter(p => p.group === value)
+      if (value === 'Other') return rows.length + ' other plan' + (rows.length === 1 ? '' : 's')
+      const terms = planChoices(rows, 'term')
+      // "1 Month · 3 Months · 6 Months · 12 Months" -> "1, 3, 6 or 12 months"
+      if (terms.length > 2 && terms.every(t => /^\d+ months?$/i.test(t))) {
+        const n = terms.map(t => parseInt(t, 10))
+        return n.slice(0, -1).join(', ') + ' or ' + n[n.length - 1] + ' months'
+      }
+      return terms.join(' · ')
+    }
+    if (key === 'term') {
+      const pays = planChoices(pool.filter(p => p.term === value), 'pay').filter(Boolean)
+      return pays.length === 2 ? 'Card or bank' : pays.length === 1 ? PAY_LABELS[pays[0]] + ' only' : ''
+    }
+    if (key === 'pay') return PAY_SUBS[value] || ''
+    return ''
+  }
+
   function render() {
     card.textContent = ''
     if (!state.open) {
+      card.className = 'card compact'
       const top = make('div', 'top')
-      const label = make('div', 'current')
-      label.appendChild(make('span', 'q', 'Plan: '))
-      label.appendChild(doc.createTextNode(current))
-      top.appendChild(label)
-      const change = make('button', 'tile small', 'Change plan')
-      change.type = 'button'
-      change.addEventListener('click', () => { state.open = true; render() })
-      top.appendChild(change)
+      const cur = make('div', 'current')
+      cur.appendChild(make('span', 'clabel', 'Plan'))
+      cur.appendChild(make('span', 'cname', current))
+      top.appendChild(cur)
+      top.appendChild(button('btn', 'Change plan', () => { state.open = true; render() }))
       card.appendChild(top)
       return
     }
+    card.className = 'card'
 
     const top = make('div', 'top')
     top.appendChild(make('h3', 'title', onPlanScreen ? 'Choose a plan' : 'Change plan'))
     const links = make('div', 'links')
-    if (!onPlanScreen && current) links.appendChild(linkButton('Keep current plan', () => { state.open = false; state.picks = {}; render() }))
-    links.appendChild(linkButton('Use ABC plan list', () => showAbcList(true)))
+    if (!onPlanScreen && current) links.appendChild(button('link', 'Keep current plan', () => { state.open = false; state.picks = {}; render() }))
+    links.appendChild(button('link', 'Use ABC plan list', () => showAbcList(true)))
     top.appendChild(links)
     card.appendChild(top)
 
+    // Walk the steps; the first one with more than one option is the question.
     let pool = plans.filter(p => p.sameDay === state.sameDay)
-    const steps = [['group', 'Membership type'], ['term', 'Term'], ['pay', 'How will they pay?'], ['id', 'Plan']]
+    const auto = {}
     let question = null
-    for (const [key, label] of steps) {
-      if (key in state.picks) {
-        pool = pool.filter(p => p[key] === state.picks[key])
-        continue
-      }
+    for (const [key, name, label] of STEPS.concat([['id', 'Plan', 'Pick the plan']])) {
+      if (key in state.picks) { pool = pool.filter(p => p[key] === state.picks[key]); continue }
       const options = planChoices(pool, key)
-      if (options.length <= 1) continue
-      question = { key, label, options }
+      if (options.length <= 1) { auto[key] = options[0]; continue }
+      question = { key, name, label, options }
       break
     }
-
-    if (Object.keys(state.picks).length) {
-      const crumbs = make('div', 'crumbs')
-      if (state.sameDay) crumbs.appendChild(make('span', 'crumb', 'Same Day Sale'))
-      for (const key of ['group', 'term', 'pay']) {
-        if (state.picks[key] != null && state.picks[key] !== '') crumbs.appendChild(make('span', 'crumb', key === 'pay' ? PAY_LABELS[state.picks[key]] : state.picks[key]))
-      }
-      crumbs.appendChild(linkButton('Start over', () => { state.picks = {}; render() }))
-      card.appendChild(crumbs)
-    }
-
     if (!question) {
       if (pool.length) choose(pool[0])
       else { state.picks = {}; render() }
       return
     }
 
-    card.appendChild(make('p', 'q', question.label))
-    const grid = make('div', 'grid')
-    for (const value of question.options) {
-      let text = value
-      if (question.key === 'pay') text = PAY_LABELS[value] || value
-      if (question.key === 'id') text = (plans.find(p => p.id === value) || {}).name || value
-      const tile = make('button', 'tile', text)
-      tile.type = 'button'
-      tile.addEventListener('click', () => { state.picks[question.key] = value; render() })
-      grid.appendChild(tile)
-    }
-    card.appendChild(grid)
+    // Stepper: done steps show the pick and jump back when clicked.
+    const steps = make('ol', 'steps')
+    const qIndex = STEPS.findIndex(s => s[0] === question.key)
+    STEPS.forEach(([key, name], i) => {
+      const isNow = key === question.key
+      const isDone = qIndex === -1 || i < qIndex
+      const li = make('li', 'step' + (isNow ? ' now' : isDone ? ' done' : ''))
+      li.appendChild(make('span', 'dot', isDone ? '✓' : String(i + 1)))
+      const lab = make('span', 'slabel')
+      lab.appendChild(make('span', 'sname', name))
+      let val = ''
+      if (isDone) {
+        const v = key in state.picks ? state.picks[key] : auto[key]
+        val = key === 'pay' ? (v ? PAY_LABELS[v] : 'None') : (v || '-')
+        if (key === 'group' && state.sameDay) val = 'Same Day · ' + val
+      } else if (isNow) {
+        val = 'Choose below'
+      }
+      if (val) lab.appendChild(make('span', 'sval', val))
+      li.appendChild(lab)
+      if (isDone) {
+        li.title = 'Change ' + name.toLowerCase()
+        li.addEventListener('click', () => {
+          for (const [k] of STEPS.slice(i)) delete state.picks[k]
+          delete state.picks.id
+          render()
+        })
+      }
+      steps.appendChild(li)
+    })
+    card.appendChild(steps)
 
+    const qrow = make('div', 'qrow')
+    qrow.appendChild(make('p', 'q', question.label))
     if (hasSameDay && question.key === 'group') {
-      const row = make('div', 'row')
-      const label = make('label', 'sameday')
+      const sw = make('label', 'switch')
       const cb = make('input')
       cb.type = 'checkbox'
       cb.checked = state.sameDay
       cb.addEventListener('change', () => { state.sameDay = cb.checked; state.picks = {}; render() })
-      label.appendChild(cb)
-      label.appendChild(doc.createTextNode('Same Day Sale'))
-      row.appendChild(label)
-      card.appendChild(row)
+      sw.appendChild(cb)
+      sw.appendChild(make('span', 'track'))
+      sw.appendChild(doc.createTextNode('Same Day Sale'))
+      qrow.appendChild(sw)
     }
+    card.appendChild(qrow)
+
+    const grid = make('div', 'grid')
+    for (const value of question.options) {
+      const tile = button('tile' + (question.key === 'id' ? ' wide' : ''), null, () => { state.picks[question.key] = value; render() })
+      if (question.key === 'pay' && PAY_ICONS[value]) {
+        const icon = make('span', 'ticon')
+        icon.innerHTML = PAY_ICONS[value] // static markup above, never page text
+        tile.appendChild(icon)
+      }
+      let text = value
+      if (question.key === 'pay') text = PAY_LABELS[value] || value
+      if (question.key === 'id') text = (plans.find(p => p.id === value) || {}).name || value
+      tile.appendChild(make('span', 'tname', text))
+      const sub = subFor(question.key, value, pool)
+      if (sub) tile.appendChild(make('span', 'tsub', sub))
+      grid.appendChild(tile)
+    }
+    card.appendChild(grid)
   }
 
   render()
