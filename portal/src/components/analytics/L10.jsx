@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { api } from '../../lib/api'
+import { api, exportL10ToSheet, getGoogleSheetsStatus, startGoogleSheetsAuth } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
 import DesktopLoading from '../DesktopLoading'
 import { TOOLBAR_SLOT_ID } from './toolbarSlot'
@@ -152,6 +152,146 @@ function Scorecard({ data, compare, compareLabel }) {
   )
 }
 
+/**
+ * The By Club table as sheet rows: one per club plus the total, and for every
+ * metric this period, the comparison, the change and the %. POS is followed by
+ * its four goods lines, which the on-screen table folds away. Raw numbers, not
+ * formatted ones, so the sheet sums and sorts.
+ */
+function clubSheet(data, compare, cmpDef) {
+  const cols = []
+  for (const m of data.metrics) {
+    cols.push({ key: m.key, label: m.label })
+    if (m.parts) for (const p of m.parts) cols.push({ key: `pos:${p}`, label: `POS ${p}` })
+  }
+  const header = ['Club']
+  for (const c of cols) {
+    header.push(c.label, `${c.label} (${cmpDef.label})`, `${c.label} Change`, `${c.label} Change %`)
+  }
+  const blank = v => (v === null || v === undefined ? null : v)
+  const body = [...data.rows, data.totals].map(r => {
+    const cmp = r[compare]
+    const line = [r.key === 'total' ? 'Total' : r.label]
+    for (const c of cols) {
+      const x = cmp[c.key] || {}
+      line.push(blank(x.value), blank(x.base), blank(x.delta), blank(x.pct))
+    }
+    return line
+  })
+  const meta = data.meta || {}
+  const title = `WCS L10 — By Club — ${meta.start} to ${meta.end} vs ${cmpDef.label}`
+  return { title, rows: [header, ...body] }
+}
+
+// Per-user Google connection, the same one Payroll's export uses. The OAuth
+// popup posts back on success; polling for close is the backup.
+function useGoogleSheets() {
+  const [google, setGoogle] = useState({ loaded: false, connected: false })
+  const [connecting, setConnecting] = useState(false)
+
+  async function refresh() {
+    try {
+      const st = await getGoogleSheetsStatus()
+      setGoogle({ loaded: true, connected: !!st.connected })
+    } catch {
+      setGoogle({ loaded: true, connected: false })
+    }
+  }
+
+  useEffect(() => { refresh() }, [])
+  useEffect(() => {
+    function onMessage(e) {
+      if (e.data && e.data.type === 'google-sheets-auth') refresh()
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
+  async function connect() {
+    if (connecting) return
+    setConnecting(true)
+    const { url } = await startGoogleSheetsAuth()
+    const popup = window.open(url, 'wcs-google-auth', 'width=520,height=720')
+    if (!popup) {
+      setConnecting(false)
+      throw new Error('Popup blocked. Allow popups for this site and try again.')
+    }
+    const timer = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(timer)
+        refresh()
+        setConnecting(false)
+      }
+    }, 800)
+  }
+
+  return { google, connecting, connect, refresh }
+}
+
+function SheetExport({ data, compare, cmpDef }) {
+  const { google, connecting, connect, refresh } = useGoogleSheets()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const [lastUrl, setLastUrl] = useState(null)
+
+  async function run() {
+    if (busy) return
+    setErr(null)
+    if (!google.connected) {
+      try { await connect() } catch (e) { setErr(e.message || 'Could not start Google sign-in') }
+      return
+    }
+    // Opened before the request, while the click still counts as a user
+    // gesture, so the browser does not block it as a popup.
+    const win = window.open('', '_blank')
+    setBusy(true)
+    try {
+      const result = await exportL10ToSheet(clubSheet(data, compare, cmpDef))
+      if (result?.url) {
+        setLastUrl(result.url)
+        if (win) win.location.href = result.url
+      } else if (win) win.close()
+    } catch (e) {
+      if (win) win.close()
+      const msg = e?.message || 'Export failed'
+      // The token can expire between loading the page and clicking export.
+      if (/google_not_connected/i.test(msg)) {
+        await refresh()
+        setErr('Google is not connected. Click Connect Google and try again.')
+      } else {
+        setErr(msg)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const label = busy
+    ? 'Exporting…'
+    : connecting
+      ? 'Connecting…'
+      : google.loaded && !google.connected ? 'Connect Google' : 'Export to Google Sheets'
+
+  return (
+    <div className="flex items-center gap-2">
+      {err && <span className="text-[11px] text-amber-600">{err}</span>}
+      {lastUrl && !err && (
+        <a href={lastUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-wcs-red underline">
+          Open last export
+        </a>
+      )}
+      <button
+        type="button"
+        onClick={run}
+        disabled={busy || connecting || !google.loaded}
+        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-bg border border-border text-text-primary hover:border-wcs-red hover:text-wcs-red disabled:opacity-50"
+      >
+        {label}
+      </button>
+    </div>
+  )
+}
+
 function ClubTable({ data, compare, compareShort }) {
   const metrics = data.metrics
   const rows = [...data.rows, data.totals]
@@ -253,7 +393,10 @@ export default function L10({ startDate, endDate, locationSlug, category, basis 
 
           <Scorecard data={data} compare={compare} compareLabel={cmpDef.label} />
 
-          <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide px-1 pt-2">By Club</h3>
+          <div className="flex items-center justify-between px-1 pt-2">
+            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide">By Club</h3>
+            <SheetExport data={data} compare={compare} cmpDef={cmpDef} />
+          </div>
           <ClubTable data={data} compare={compare} compareShort={cmpDef.short} />
 
           <ul className="text-[11px] text-text-muted px-1 space-y-0.5 list-disc pl-5">

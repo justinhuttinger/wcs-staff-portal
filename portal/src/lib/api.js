@@ -844,6 +844,13 @@ export async function exportPayrollToSheet(params = {}) {
   })
 }
 
+export async function exportL10ToSheet({ title, rows }) {
+  return api('/analytics/l10/export-sheet', {
+    method: 'POST',
+    body: JSON.stringify({ title, rows }),
+  })
+}
+
 // ---- Per-user Google Sheets connection ----
 export async function getGoogleSheetsStatus() {
   return api('/google-sheets/status')

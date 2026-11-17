@@ -126,4 +126,54 @@ router.get('/', async (req, res) => {
   }
 })
 
+// POST /analytics/l10/export-sheet  { title, rows }
+//
+// Writes the By Club table to a new Google Sheet in the caller's own Drive,
+// using the per-user Google connection Payroll's export uses.
+//
+// THE ROWS COME FROM THE PAGE, so the sheet is exactly the table on screen —
+// same window, same comparison, same clubs — rather than a second build that
+// could disagree with it. Safe to accept because the route is owner only and
+// the file lands in the owner's own Drive; the shape is still checked so a bad
+// body is a 400 and not a half-written sheet.
+const MAX_ROWS = 200
+const MAX_COLS = 120
+
+function validRows(rows) {
+  if (!Array.isArray(rows) || rows.length < 2 || rows.length > MAX_ROWS) return false
+  return rows.every(r => Array.isArray(r) && r.length <= MAX_COLS && r.every(c =>
+    c === null || typeof c === 'string' || (typeof c === 'number' && Number.isFinite(c))))
+}
+
+router.post('/export-sheet', async (req, res) => {
+  try {
+    const { exportToGoogleSheet } = require('../services/googleSheets')
+    const { getStaffGoogleAccessToken } = require('../services/googleUserToken')
+
+    const rows = req.body?.rows
+    if (!validRows(rows)) return res.status(400).json({ error: 'rows must be a 2D array of strings and numbers' })
+    const title = String(req.body?.title || 'WCS L10 — By Club').slice(0, 200)
+
+    let accessToken
+    try {
+      ({ accessToken } = await getStaffGoogleAccessToken(req.staff.id))
+    } catch (err) {
+      if (err.notConnected) {
+        return res.status(412).json({ error: 'google_not_connected', message: 'Connect your Google account first.' })
+      }
+      throw err
+    }
+
+    // The header is bolded by the helper; the Total row is the last one.
+    const result = await exportToGoogleSheet({ accessToken, title, rows, boldRowIndices: [rows.length - 1] })
+    res.json({ url: result.url, id: result.id })
+  } catch (err) {
+    if (err.notConnected) {
+      return res.status(412).json({ error: 'google_not_connected', message: err.message })
+    }
+    console.error('[analytics/l10/export-sheet] error:', err.message)
+    res.status(500).json({ error: err.message || 'Export failed' })
+  }
+})
+
 module.exports = router
