@@ -785,6 +785,7 @@ const PLAN_PICKER_CSS =
   '.tsub{font-size:12.5px;color:#6b6b76;line-height:1.3;}' +
   '.ticon{width:26px;height:26px;color:#231f20;margin-bottom:2px;}' +
   '.tile.wide{grid-column:1/-1;min-height:56px;}' +
+  '.tile.plain{min-height:64px;}' +
   // Same Day Sale switch
   '.switch{display:inline-flex;align-items:center;gap:10px;font-size:14px;font-weight:600;cursor:pointer;user-select:none;}' +
   '.switch input{position:absolute;opacity:0;pointer-events:none;}' +
@@ -875,25 +876,9 @@ function updatePlanPicker() {
     host.style.display = show ? 'none' : ''
   }
 
-  // What a tile's small grey line says.
-  function subFor(key, value, pool) {
-    if (key === 'group') {
-      const rows = pool.filter(p => p.group === value)
-      if (value === 'Other') return rows.length + ' other plan' + (rows.length === 1 ? '' : 's')
-      const terms = planChoices(rows, 'term')
-      // "1 Month · 3 Months · 6 Months · 12 Months" -> "1, 3, 6 or 12 months"
-      if (terms.length > 2 && terms.every(t => /^\d+ months?$/i.test(t))) {
-        const n = terms.map(t => parseInt(t, 10))
-        return n.slice(0, -1).join(', ') + ' or ' + n[n.length - 1] + ' months'
-      }
-      return terms.join(' · ')
-    }
-    if (key === 'term') {
-      const pays = planChoices(pool.filter(p => p.term === value), 'pay').filter(Boolean)
-      return pays.length === 2 ? 'Card or bank' : pays.length === 1 ? PAY_LABELS[pays[0]] + ' only' : ''
-    }
-    if (key === 'pay') return PAY_SUBS[value] || ''
-    return ''
+  // Only payment tiles get a small grey line (Justin: not membership or term).
+  function subFor(key, value) {
+    return key === 'pay' ? PAY_SUBS[value] || '' : ''
   }
 
   function render() {
@@ -995,8 +980,9 @@ function updatePlanPicker() {
       if (question.key === 'pay') text = PAY_LABELS[value] || value
       if (question.key === 'id') text = (plans.find(p => p.id === value) || {}).name || value
       tile.appendChild(make('span', 'tname', text))
-      const sub = subFor(question.key, value, pool)
+      const sub = subFor(question.key, value)
       if (sub) tile.appendChild(make('span', 'tsub', sub))
+      else tile.classList.add('plain')
       grid.appendChild(tile)
     }
     card.appendChild(grid)
