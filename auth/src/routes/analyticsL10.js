@@ -1,0 +1,129 @@
+const { Router } = require('express')
+const { ownerOnly } = require('../lib/ownerGate')
+const { supabaseAdmin } = require('../services/supabase')
+const { fetchAll } = require('../lib/supabaseFetchAll')
+const { wrap, wrapSWR } = require('../services/memoryCache')
+const { parseCategory, parseBasis, filterNote } = require('../lib/analyticsMemberFilters')
+const { CLUBS, CLUB_BY_SLUG } = require('../lib/salespersonPerformance')
+const { shiftedWindow, spanDays } = require('../lib/comparisonWindow')
+const { monthToDate, windowLabel } = require('../lib/snapshotWindow')
+const { latestRevenueDay, clampToRevenueEdge, edgeNote } = require('../lib/revenueDataEdge')
+const { buildL10 } = require('../lib/l10Report')
+
+// ---------------------------------------------------------------------------
+// L10 — Analytics (OWNER ONLY)
+//
+// Net Membership plus dues, PT, POS and total revenue, per club, against last
+// month or the six-month average. The shaping lives in lib/l10Report.
+//
+// GATED BY ownerOnly — admin role AND an email on FOLLOW_UPS_EMAILS, the same
+// list as the Hub. The portal hides the report with the same list, but hiding
+// a menu entry is not a gate; this is.
+//
+// ONE WINDOW FOR BOTH HALVES. Revenue is imported a day behind, so the window
+// is clamped to the last day of revenue — and the membership counts use the
+// clamped window too, so the two halves of a row never describe different days.
+// ---------------------------------------------------------------------------
+
+const router = Router()
+router.use(ownerOnly)
+
+const FRESH_MS = 10 * 60 * 1000
+const STALE_MS = 60 * 60 * 1000
+const PRIOR_MONTHS = 6
+
+const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))
+
+function slugForClubNumber(n) {
+  const raw = String(n ?? '')
+  const hit = CLUBS.find(c => c.clubNumber === raw || c.clubNumber === raw.replace(/^0+/, ''))
+  return hit ? hit.slug : null
+}
+
+router.get('/', async (req, res) => {
+  try {
+    const mtd = monthToDate()
+    const requestedStart = isDate(req.query.start) ? String(req.query.start) : mtd.start
+    const requestedEnd = isDate(req.query.end) ? String(req.query.end) : mtd.end
+    if (requestedStart > requestedEnd) return res.status(400).json({ error: 'start must not be after end' })
+
+    const clubsParam = String(req.query.clubs || 'all')
+    const slugs = clubsParam === 'all'
+      ? CLUBS.map(c => c.slug)
+      : clubsParam.split(',').map(s => s.trim().toLowerCase()).filter(s => CLUB_BY_SLUG[s])
+    if (slugs.length === 0) return res.status(400).json({ error: 'no valid clubs requested' })
+    const allClubs = slugs.length === CLUBS.length
+
+    const category = parseCategory(req.query.category)
+    const basis = parseBasis(req.query.basis)
+
+    const edge = await latestRevenueDay(supabaseAdmin, wrap)
+    const clamp = clampToRevenueEdge(requestedStart, requestedEnd, edge)
+    clamp.requestedEnd = requestedEnd
+    const start = clamp.start
+    const end = clamp.end
+
+    const windows = [{ start, end }]
+    for (let k = 1; k <= PRIOR_MONTHS; k++) windows.push(shiftedWindow(start, end, { months: k }))
+
+    const clubNumbers = allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber)
+    const revenueClubs = allClubs ? null : slugs
+
+    const cacheKey = ['analytics:l10', start, end, slugs.slice().sort().join('+'), category, basis].join('|')
+
+    const raw = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, () => Promise.all(windows.map(async w => {
+      const [membership, revenue] = await Promise.all([
+        fetchAll(supabaseAdmin.rpc('analytics_net_membership', {
+          p_start: w.start,
+          p_end: w.end,
+          p_clubs: clubNumbers,
+          p_segment: 'club',
+          p_exclude: true,
+          p_category: category,
+          p_basis: basis,
+        })),
+        fetchAll(supabaseAdmin.rpc('analytics_revenue_by_club', {
+          p_start: w.start, p_end: w.end, p_clubs: revenueClubs,
+        })),
+      ])
+      return { ...w, membership, revenue }
+    })))
+
+    const built = buildL10(raw, {
+      clubs: slugs.map(s => CLUB_BY_SLUG[s]),
+      slugForClubNumber,
+    })
+
+    res.json({
+      ...built,
+      meta: {
+        start,
+        end,
+        requestedEnd,
+        clampedToEdge: clamp.clamped,
+        noDataYet: clamp.empty,
+        spanDays: spanDays(start, end),
+        windowLabel: windowLabel(start, end),
+        lastMonthStart: windows[1].start,
+        lastMonthEnd: windows[1].end,
+        avgStart: windows[PRIOR_MONTHS].start,
+        avgEnd: windows[1].end,
+        clubs: slugs,
+        notes: {
+          filter: filterNote({ category, basis }),
+          dataEdge: edgeNote(clamp),
+          compare: 'Comparisons cover the same number of days as this window, shifted back by calendar month. The 6-month average is the mean of the six prior windows and never includes this one.',
+          dues: 'Dues Revenue is every dues product: Dues, A2 Exec Dues, First Month, Last Month, Paid In Full, Summer, Corporate, MBO and Gymstr Dues.',
+          pos: 'POS Revenue is goods only: Snacks, Drinks, Merchandise and Supplements. Dues and training paid at the desk stay in their own lines.',
+          total: 'Total Revenue is every profit center with refunds and chargebacks netted in, so it is not the sum of the lines above it.',
+          members: 'Member counts follow Net Membership: new members as of their join date, lost members under the conditional membership rule.',
+        },
+      },
+    })
+  } catch (err) {
+    console.error('[analytics/l10] error:', err.message)
+    res.status(500).json({ error: 'Failed to build L10' })
+  }
+})
+
+module.exports = router

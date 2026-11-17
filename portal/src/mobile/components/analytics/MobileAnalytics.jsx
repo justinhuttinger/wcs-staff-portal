@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ANALYTICS_REPORTS, REPORT_GROUPS, CORE_REPORTS, ungroupedReports, reportByKey,
+  ANALYTICS_REPORTS, REPORT_GROUPS, CORE_REPORTS, ungroupedReports, reportByKey, ownerAllows,
 } from '../../../components/AnalyticsView'
 import { isReportVisible } from '../../../components/analyticsReportCatalogue'
 import { TOOLBAR_SLOT_ID } from '../../../components/analytics/toolbarSlot'
@@ -55,11 +55,11 @@ import { LOCATION_NAMES } from '../../../config/locations'
  * by tone rather than by an outline, and it inverts correctly under Press
  * (white ground) without a second set of colours.
  */
-export function MobileAnalyticsHome({ locationSlug, onOpen }) {
+export function MobileAnalyticsHome({ locationSlug, onOpen, user }) {
   const [openGroups, setOpenGroups] = useState(() => new Set())
   const [search, setSearch] = useState('')
   const visibility = useReportVisibility()
-  const canSee = useCanSee(visibility, locationSlug)
+  const canSee = useCanSee(visibility, locationSlug, user)
   const favorites = useFavorites()
 
   // The core six, flat and always visible, exactly as desktop shows them. The
@@ -407,7 +407,7 @@ function ReportRow({ report, onOpen }) {
  */
 export function MobileAnalyticsReport({ reportKey, user, startDate, endDate, locationSlug }) {
   const report = reportByKey[reportKey]
-  if (!report) {
+  if (!report || !ownerAllows(reportKey, user?.staff)) {
     return (
       <div className="px-4 py-6">
         <div className="bg-surface rounded-2xl border border-border shadow-sm px-4 py-8 text-center text-sm text-text-muted">
@@ -507,7 +507,7 @@ function useReportVisibility() {
   return visibility
 }
 
-function useCanSee(visibility, locationSlug) {
+function useCanSee(visibility, locationSlug, user) {
   // 'all' means every club, not "no filter" — otherwise picking All would
   // bypass the toggles entirely.
   const slugs = useMemo(() => (
@@ -516,7 +516,7 @@ function useCanSee(visibility, locationSlug) {
       : String(locationSlug).split(',').map(x => x.trim()).filter(Boolean)
   ), [locationSlug])
   return useMemo(
-    () => (key) => isReportVisible(visibility, key, slugs),
-    [visibility, slugs]
+    () => (key) => ownerAllows(key, user?.staff) && isReportVisible(visibility, key, slugs),
+    [visibility, slugs, user]
   )
 }

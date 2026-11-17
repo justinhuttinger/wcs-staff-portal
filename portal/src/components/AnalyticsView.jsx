@@ -46,6 +46,8 @@ import KpiReport from './analytics/KpiReport'
 import PtSnapshot from './analytics/PtSnapshot'
 import WebJoins from './analytics/WebJoins'
 import MemberMap from './analytics/MemberMapLazy'
+import L10 from './analytics/L10'
+import { canUseHub } from '../config/followUps'
 import { TOOLBAR_SLOT_ID } from './analytics/toolbarSlot'
 import ReportRecords from './analytics/ReportRecords'
 import MemberFilters, { MemberFilterNote, MEMBER_CATEGORY_OPTIONS } from './analytics/MemberFilters'
@@ -76,6 +78,17 @@ import MemberFilters, { MemberFilterNote, MEMBER_CATEGORY_OPTIONS } from './anal
 // surfaces; a mobile-only copy would silently fall behind on the first one
 // somebody forgot to add twice.
 export const ANALYTICS_REPORTS = [
+  {
+    key: 'l10',
+    filters: ['category', 'basis'],
+    records: ['new-members', 'lost-members', 'revenue'],
+    label: 'L10',
+    desc: 'Members and Revenue vs Last Month / 6-Mo Avg',
+    Component: L10,
+    // The owner's alone: the same list as the Hub (config/followUps), hidden
+    // from everyone else's menu here and refused by the server regardless.
+    ownerOnly: true,
+  },
   {
     key: 'topline',
     filters: ['category', 'basis'],
@@ -449,7 +462,20 @@ export const REPORT_GROUPS = [
  * Derived here rather than retyped there, so a report added above appears in
  * the grid automatically and can never be toggled into a key nothing reads.
  */
-export const REPORT_META = ANALYTICS_REPORTS.map(r => ({ key: r.key, label: r.label }))
+// Owner-only reports are left out: they are already hidden from every club, and
+// a per-club toggle for something nobody else can open would be a switch that
+// does nothing.
+export const REPORT_META = ANALYTICS_REPORTS.filter(r => !r.ownerOnly).map(r => ({ key: r.key, label: r.label }))
+
+/**
+ * May this person see this report at all, before any per-club toggle?
+ * Everything is open to Analytics users except reports marked ownerOnly.
+ */
+export function ownerAllows(reportKey, staff) {
+  const r = ANALYTICS_REPORTS.find(x => x.key === reportKey)
+  if (!r || !r.ownerOnly) return true
+  return canUseHub(staff)
+}
 
 // The reports that get opened daily, flat at the top of the sidebar and outside
 // any category, in this order.
@@ -465,6 +491,8 @@ export const REPORT_META = ANALYTICS_REPORTS.map(r => ({ key: r.key, label: r.la
 // Revenue. Somebody browsing Member Counts should not find Club Snapshot
 // missing because it was promoted.
 export const CORE_REPORTS = [
+  // Owner only; everyone else's list skips it (ownerAllows).
+  'l10',
   'kpis',
   'club-snapshot',
   'daily-snapshot',
@@ -598,8 +626,8 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
   ), [locationSlug, seesAllClubs, clubOptions])
 
   const canSee = useCallback(
-    (key) => isReportVisible(visibility, key, scopedSlugs),
-    [visibility, scopedSlugs]
+    (key) => ownerAllows(key, user?.staff) && isReportVisible(visibility, key, scopedSlugs),
+    [visibility, scopedSlugs, user]
   )
   // A person's own starred reports. Held in state (not read from localStorage
   // on every render) and refreshed off the change event, so a star clicked in
@@ -701,11 +729,12 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
   // A report hidden by a club change must not leave a blank pane behind: fall
   // back to the default rather than rendering nothing and looking broken.
   useEffect(() => {
-    if (!visibility || !activeReport) return
+    if (!activeReport) return
+    if (!visibility && ownerAllows(activeReport, user?.staff)) return
     if (canSee(activeReport)) return
     const fallback = [...CORE_REPORTS, ...ANALYTICS_REPORTS.map(r => r.key)].find(canSee)
     if (fallback) setActiveReport(fallback)
-  }, [visibility, activeReport, canSee])
+  }, [visibility, activeReport, canSee, user])
 
   // Starred order is the order they were starred in, not alphabetical: a
   // shortlist someone built by hand should stay where they put it. Keys for
@@ -749,7 +778,9 @@ export default function AnalyticsView({ user, onBack, location, isAdmin, canAnal
       .sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }))
   }, [searchTerm, canSee])
 
-  const active = ANALYTICS_REPORTS.find(r => r.key === activeReport) || null
+  // An owner-only report reached by deep link must not mount for anyone else,
+  // even for the moment before the fallback below picks another report.
+  const active = ANALYTICS_REPORTS.find(r => r.key === activeReport && ownerAllows(r.key, user?.staff)) || null
   const showDateControls = active ? active.dates !== false : true
   const ActiveComponent = active?.Component || null
 
