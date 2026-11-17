@@ -22,3 +22,10 @@ test('ageLabel: minutes, hours, days', () => {
   assert.equal(ageLabel('2026-11-16T09:00:00Z', now), '3h')
   assert.equal(ageLabel('2026-11-13T12:00:00Z', now), '3d')
 })
+
+test('text suggestion: notes it came by text; no person implied', () => {
+  const f = suggestionToTaskForm({ source: 'text', from_name: 'Alex', summary: 'Approve Q1 schedule', snippet: 'need the Q1 schedule approved', guess: { phone: '+15035550100' } })
+  assert.equal(f.title, 'Approve Q1 schedule')
+  assert.equal(f.description, 'From Alex (text): "need the Q1 schedule approved"')
+  assert.equal('phone' in f, false)
+})

@@ -248,4 +248,50 @@ function askerPersonFields(suggestion, threadMessages, ownerEmail) {
   }
 }
 
-module.exports = { isAutomated, prefilter, cleanGuess, mergeAction, ownerRepliedAfter, recipientsToCc, addresses, fromName, runSuggestions, askerPersonFields }
+// ---------- texts (iPhone Shortcut) ----------
+
+const TEXT_MERGE_MS = 30 * 60 * 1000
+
+// Runs async jobs one at a time per key (e.g. one sender's burst of texts),
+// so each sees what the previous one wrote. One server instance, so in-memory.
+function keyedLock() {
+  const tails = new Map()
+  return (key, fn) => {
+    const prev = tails.get(key) || Promise.resolve()
+    const run = prev.then(fn, fn)
+    const tail = run.catch(() => {})
+    tails.set(key, tail)
+    tail.then(() => { if (tails.get(key) === tail) tails.delete(key) })
+    return run
+  }
+}
+
+// iMessage reactions that reach an Android/SMS path as text ("Loved “…”").
+const TAPBACK = /^(Liked|Loved|Laughed at|Emphasized|Disliked|Questioned) [“"]/
+function isTapback(text) {
+  return TAPBACK.test(String(text || '').trim())
+}
+
+function hashKey(key) {
+  return require('crypto').createHash('sha256').update(String(key)).digest('hex')
+}
+
+function cleanTextInput(body) {
+  const b = body && typeof body === 'object' ? body : {}
+  const text = String(b.text || '').trim().slice(0, 2000)
+  if (!text) return { error: 'Text is required' }
+  return {
+    name: String(b.name || '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Someone',
+    phone: String(b.phone || '').replace(/[^0-9+]/g, '').slice(0, 20),
+    text,
+  }
+}
+
+// Several texts in a row from the same number become one suggestion.
+function textMergeTarget(openTextRows, phone, nowMs) {
+  if (!phone) return null
+  return (openTextRows || []).find(r => r.guess?.phone === phone
+    && nowMs - Date.parse(r.last_message_at || r.received_at) <= TEXT_MERGE_MS) || null
+}
+
+module.exports = { isAutomated, prefilter, cleanGuess, mergeAction, ownerRepliedAfter, recipientsToCc, addresses, fromName, runSuggestions, askerPersonFields, hashKey, cleanTextInput, textMergeTarget, keyedLock, isTapback }

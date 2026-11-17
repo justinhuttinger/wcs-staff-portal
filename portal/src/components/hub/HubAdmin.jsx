@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { hub } from '../../lib/api'
 import { TextInput, Button, ErrorBanner } from '../adsmanager/ui'
 import SavedPeople from './SavedPeople'
+import TextShortcutCard from './TextShortcutCard'
 
 const CARD = 'bg-surface/95 backdrop-blur-sm rounded-xl border border-border'
 
@@ -108,13 +109,14 @@ function DriveCard() {
   )
 }
 
-// Admin > Hub: the owner's Hub settings (categories, saved people, Drive).
+// Admin > Hub: the owner's Hub settings (categories, saved people, Drive, texts).
 export default function HubAdmin() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
       <Categories />
       <div className={`${CARD} p-5`}><SavedPeople inline /></div>
       <DriveCard />
+      <TextShortcutCard />
     </div>
   )
 }

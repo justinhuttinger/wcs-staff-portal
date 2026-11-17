@@ -2,6 +2,8 @@ import * as apiCache from './apiCache'
 import { downscaleImage } from './downscaleImage'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+// Where the owner's iPhone Shortcut posts texts (Admin > Hub shows it).
+export const HUB_TEXT_URL = API_URL + '/hub-text'
 // Second backend service — prospects-documents (Render). Hosts the Online
 // Join admin + public API. Same Supabase JWT works as the auth header.
 const PROSPECTS_API_URL = import.meta.env.VITE_PROSPECTS_API_URL || 'https://prospects-documents.onrender.com'
@@ -1844,6 +1846,10 @@ export const hub = {
     add: (id, body) => api(`/hub/suggestions/${id}/add`, { method: 'POST', body: JSON.stringify(body) }),
   },
   taskFiles: (taskId) => api(`/hub/tasks/${taskId}/files`),
+  textKey: {
+    get: () => api('/hub/text-key'),
+    reset: () => api('/hub/text-key', { method: 'POST' }),
+  },
   openTaskFile: (fid) => api(`/hub/task-files/${fid}/open`),
   drive: {
     status: () => api('/hub/drive'),

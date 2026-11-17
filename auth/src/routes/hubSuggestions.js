@@ -12,6 +12,9 @@ const { askerPersonFields } = require('../services/hub/suggest')
 const { isFilableAttachment } = require('../services/hub/fileRules')
 const { personClubsFor } = require('../services/hub/slots')
 
+const crypto = require('crypto')
+const { hashKey } = require('../services/hub/suggest')
+
 const MAX_BYTES = 25 * 1024 * 1024
 const router = Router()
 router.use(ownerOnly)
@@ -207,6 +210,29 @@ async function attachAsker({ owner, task, suggestion }) {
     throw e
   }
 }
+
+// ---------- text key (iPhone Shortcut) ----------
+
+router.get('/text-key', async (req, res) => {
+  try {
+    const row = must(await supabaseAdmin.from('hub_settings').select('text_key_hash, text_key_created_at')
+      .eq('owner_staff_id', req.staff.id).maybeSingle())
+    res.json({ exists: !!row?.text_key_hash, created_at: row?.text_key_created_at || null })
+  } catch (e) { fail(res, e) }
+})
+
+// Creates or resets the key. Shown once; only its hash is stored, and the old
+// key stops working.
+router.post('/text-key', async (req, res) => {
+  try {
+    const key = crypto.randomBytes(24).toString('base64url')
+    const created_at = new Date().toISOString()
+    must(await supabaseAdmin.from('hub_settings').upsert(
+      { owner_staff_id: req.staff.id, text_key_hash: hashKey(key), text_key_created_at: created_at, updated_at: created_at },
+      { onConflict: 'owner_staff_id' }))
+    res.json({ key, created_at })
+  } catch (e) { fail(res, e) }
+})
 
 module.exports = router
 module.exports.loadSuggestion = loadSuggestion
