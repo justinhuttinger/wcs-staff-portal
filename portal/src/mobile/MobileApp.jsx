@@ -325,6 +325,7 @@ export default function MobileApp() {
             <MobileReportShell title="Analytics" user={user} hideDateRange flush>
               {({ locationSlug }) => (
                 <MobileAnalyticsHome
+                  user={user}
                   locationSlug={locationSlug}
                   onOpen={(key) => navigate('analytics/' + key)}
                 />

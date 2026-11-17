@@ -202,6 +202,8 @@ app.use('/analytics/checkins', require('./routes/analyticsCheckins'))
 app.use('/analytics/compliance', require('./routes/analyticsCompliance'))
 app.use('/analytics/pos-sales', require('./routes/analyticsPosSales'))
 app.use('/analytics/revenue', require('./routes/analyticsRevenue'))
+// Owner only (lib/ownerGate), not manager+ like its neighbours.
+app.use('/analytics/l10', require('./routes/analyticsL10'))
 app.use('/analytics/daily-snapshot', require('./routes/analyticsDailySnapshot'))
 app.use('/analytics/group-x', require('./routes/analyticsGroupX'))
 app.use('/analytics/till', require('./routes/analyticsTill'))
