@@ -232,3 +232,26 @@ test('hashKey: stable sha256 hex', () => {
 test('cleanTextInput: names with s keep their letters, line breaks become spaces', () => {
   assert.equal(cleanTextInput({ name: 'Jess\nSmith', text: 'hi' }).name, 'Jess Smith')
 })
+
+const { keyedLock, isTapback } = require('../src/services/hub/suggest')
+
+test('keyedLock: same key runs one at a time, other keys run freely', async () => {
+  const lock = keyedLock()
+  const log = []
+  const job = (k, name, ms) => lock(k, async () => { log.push(`${name}+`); await new Promise(r => setTimeout(r, ms)); log.push(`${name}-`) })
+  await Promise.all([job('a', 'A1', 30), job('a', 'A2', 1), job('b', 'B1', 1)])
+  assert.ok(log.indexOf('A1-') < log.indexOf('A2+'))
+  assert.ok(log.indexOf('B1-') < log.indexOf('A1-'))
+})
+
+test('keyedLock: a failing job does not block the next one', async () => {
+  const lock = keyedLock()
+  await assert.rejects(lock('a', async () => { throw new Error('x') }))
+  assert.equal(await lock('a', async () => 'ok'), 'ok')
+})
+
+test('isTapback: iMessage reactions sent as SMS', () => {
+  assert.equal(isTapback('Loved “see you at 5”'), true)
+  assert.equal(isTapback('Liked "ok"'), true)
+  assert.equal(isTapback('Loved the new flyer, can you send it to Salem?'), false)
+})

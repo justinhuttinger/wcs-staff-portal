@@ -252,6 +252,26 @@ function askerPersonFields(suggestion, threadMessages, ownerEmail) {
 
 const TEXT_MERGE_MS = 30 * 60 * 1000
 
+// Runs async jobs one at a time per key (e.g. one sender's burst of texts),
+// so each sees what the previous one wrote. One server instance, so in-memory.
+function keyedLock() {
+  const tails = new Map()
+  return (key, fn) => {
+    const prev = tails.get(key) || Promise.resolve()
+    const run = prev.then(fn, fn)
+    const tail = run.catch(() => {})
+    tails.set(key, tail)
+    tail.then(() => { if (tails.get(key) === tail) tails.delete(key) })
+    return run
+  }
+}
+
+// iMessage reactions that reach an Android/SMS path as text ("Loved “…”").
+const TAPBACK = /^(Liked|Loved|Laughed at|Emphasized|Disliked|Questioned) [“"]/
+function isTapback(text) {
+  return TAPBACK.test(String(text || '').trim())
+}
+
 function hashKey(key) {
   return require('crypto').createHash('sha256').update(String(key)).digest('hex')
 }
@@ -274,4 +294,4 @@ function textMergeTarget(openTextRows, phone, nowMs) {
     && nowMs - Date.parse(r.last_message_at || r.received_at) <= TEXT_MERGE_MS) || null
 }
 
-module.exports = { isAutomated, prefilter, cleanGuess, mergeAction, ownerRepliedAfter, recipientsToCc, addresses, fromName, runSuggestions, askerPersonFields, hashKey, cleanTextInput, textMergeTarget }
+module.exports = { isAutomated, prefilter, cleanGuess, mergeAction, ownerRepliedAfter, recipientsToCc, addresses, fromName, runSuggestions, askerPersonFields, hashKey, cleanTextInput, textMergeTarget, keyedLock, isTapback }
