@@ -318,4 +318,52 @@ async function exportTabsToGoogleSheet({ accessToken, title, tabs, folderId = nu
   return { id: spreadsheetId, url }
 }
 
-module.exports = { exportToGoogleSheet, exportTabsToGoogleSheet }
+/**
+ * Create a spreadsheet and apply caller-built batchUpdate requests to it.
+ *
+ * For exports whose look matters (L10), where the caller lays out every cell's
+ * text runs, colours, borders and sizes itself. Kept generic: this function
+ * knows nothing about any report, only how to create the file and send the
+ * requests.
+ *
+ *   createStyledSpreadsheet({
+ *     accessToken,
+ *     title,
+ *     sheets,     // [{ sheetId, title, rowCount, columnCount, hideGridlines? }]
+ *     requests,   // Sheets API batchUpdate requests, applied in order
+ *   }) -> { id, url }
+ */
+async function createStyledSpreadsheet({ accessToken, title, sheets, requests }) {
+  if (!accessToken) throw new Error('accessToken required')
+  if (!Array.isArray(sheets) || sheets.length === 0) throw new Error('sheets must be a non-empty array')
+
+  const create = await googleJson(SHEETS_BASE, accessToken, {
+    method: 'POST',
+    body: JSON.stringify({
+      properties: { title },
+      sheets: sheets.map(s => ({
+        properties: {
+          sheetId: s.sheetId,
+          title: s.title,
+          gridProperties: {
+            rowCount: Math.max(1, s.rowCount),
+            columnCount: Math.max(1, s.columnCount),
+            hideGridlines: !!s.hideGridlines,
+          },
+        },
+      })),
+    }),
+  })
+  const spreadsheetId = create.spreadsheetId
+  const url = create.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
+
+  if (Array.isArray(requests) && requests.length) {
+    await googleJson(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, accessToken, {
+      method: 'POST',
+      body: JSON.stringify({ requests }),
+    })
+  }
+  return { id: spreadsheetId, url }
+}
+
+module.exports = { exportToGoogleSheet, exportTabsToGoogleSheet, createStyledSpreadsheet }
