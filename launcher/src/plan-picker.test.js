@@ -90,3 +90,10 @@ test('every plan is reachable by a unique path', () => {
     seen.add(key)
   }
 })
+
+test('access-level plan types are real plan types', () => {
+  const groups = eval(/const ACCESS_LEVEL_GROUPS = (\[[^\n]*\])/.exec(src)[1])
+  const main = eval(/const PLAN_MAIN_TYPES = (\[[^\n]*\])/.exec(src)[1])
+  for (const g of groups) assert.ok(main.includes(g), g)
+  assert.deepEqual(planChoices(plans.filter(p => p.group === 'Active and Fit'), 'term'), ['All Access', 'Limited'])
+})
