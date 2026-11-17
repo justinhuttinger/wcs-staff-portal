@@ -667,6 +667,271 @@ function updateClubHomeMemo() {
   setReplacedCardsHidden(doc, true)
 }
 
+// --- Electronic Agreement Entry: plan picker + billing (WCS ABC) ---------------
+// Two ABC screens in #main (mapped live 2026-11-17, Justin):
+//  1. /eae.spr "Select an Agreement Plan": one long dropdown of every plan. We
+//     put a step picker over it (Type > Term > Card/Bank). Every plan stays
+//     reachable. Picking sets ABC's real #paymentPlan and fires its own change
+//     handler, which submits the form exactly as a manual pick does.
+//  2. /eae/create.spr Billing Info: Primary ABC Billing is locked to the
+//     plan's method (a "- CC" plan = Credit Card, "- ACH" = EFT, anything else
+//     keeps both), and the Club Account is always on and always "same as
+//     Primary ABC Billing", with its controls hidden ("no one ever changes it").
+// Plan names follow "<n>. <Type> - <Term> - <CC|ACH>", e.g.
+// "1. Single - 1 Year - ACH", "0. SAMEDAYSALE - Family - Month to Month - CC",
+// "7. PIF Single - 3 Months", "8. Single - Donation", "Z - STAFF".
+const PLAN_MAIN_TYPES = ['Single', 'Family', 'Youth', 'PIF Single', 'PIF Youth', 'Active and Fit', 'Insurance', 'Donation']
+const ABC_BILLING_CC = '2FA840F9B8C4199FE040010A88015549'
+const ABC_BILLING_EFT = '2FA840F9B8C3199FE040010A88015549'
+
+function parsePlanName(name) {
+  const raw = String(name || '').replace(/\s+/g, ' ').trim()
+  const parts = raw.replace(/^\d+\.\s*/, '').split(/\s+-\s+/).map(p => p.trim()).filter(Boolean)
+  const plan = { name: raw, sameDay: false, type: '', term: '', pay: '', group: 'Other' }
+  if (!parts.length) return plan
+  if (/^(SAMEDAYSALE|SAME DAY SALE)$/i.test(parts[0])) { plan.sameDay = true; parts.shift() }
+  const last = (parts[parts.length - 1] || '').toUpperCase()
+  if (parts.length > 1 && (last === 'CC' || last === 'ACH')) { plan.pay = last; parts.pop() }
+  plan.type = parts.shift() || ''
+  plan.term = parts.join(' - ')
+  if (/^donation$/i.test(plan.term)) { plan.term = plan.type; plan.type = 'Donation' }
+  const main = PLAN_MAIN_TYPES.find(t => t.toLowerCase() === plan.type.toLowerCase())
+  if (main) {
+    plan.group = main
+  } else {
+    // One-off plans (Gympass, Staff, Corp paid, PT non-member): list by name.
+    plan.term = raw.replace(/^[.\dZ]+\.?\s*-?\s*/i, '').trim() || raw
+  }
+  return plan
+}
+
+// "1 Year" before "Month to Month"; PIF "1 Month" < "3 Months" < "12 Months".
+function termSortKey(term) {
+  const m = /^(\d+)\s*(year|month)/i.exec(String(term || ''))
+  if (!m) return 100000
+  return Number(m[1]) * (/year/i.test(m[2]) ? 12 : 1)
+}
+
+// The choices left at a step: distinct values of `key` among `plans`, in a
+// sensible order (Type: ABC's own numbering, i.e. first appearance; Term:
+// length; Pay: card first).
+function planChoices(plans, key) {
+  const seen = []
+  for (const p of plans) if (!seen.includes(p[key])) seen.push(p[key])
+  if (key === 'group') {
+    return seen.sort((a, b) => (a === 'Other') - (b === 'Other'))
+  }
+  if (key === 'term') {
+    return seen.map((v, i) => ({ v, i })).sort((a, b) => (termSortKey(a.v) - termSortKey(b.v)) || (a.i - b.i)).map(x => x.v)
+  }
+  if (key === 'pay') return seen.sort((a, b) => ['CC', 'ACH', ''].indexOf(a) - ['CC', 'ACH', ''].indexOf(b))
+  return seen
+}
+
+function eaeDoc(re) {
+  try {
+    const frame = document.querySelector('#main')
+    const doc = frame && frame.contentDocument
+    if (doc && re.test(doc.location.pathname)) return doc
+  } catch (e) {}
+  return null
+}
+
+// Fire ABC's own jQuery change handlers (contextIsolation is off for ABC tabs,
+// so the frame's jQuery is reachable). `skipInline` leaves out an inline
+// onchange, e.g. changeAbcBilling's "Are you sure?" dialog.
+function fireAbcChange(doc, el, skipInline) {
+  const $ = doc.defaultView && doc.defaultView.jQuery
+  const inline = el.onchange
+  if (skipInline) el.onchange = null
+  try {
+    if ($) $(el).trigger('change')
+    else el.dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }))
+  } finally {
+    if (skipInline) el.onchange = inline
+  }
+}
+
+const PLAN_PICKER_CSS =
+  ':host{display:block;font-family:Roboto,Arial,sans-serif;color:#242128;}' +
+  '.card{background:#fff;border-radius:8px;padding:20px 24px;margin-bottom:16px;}' +
+  '.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;}' +
+  '.title{margin:0;font-size:18px;font-weight:700;}' +
+  '.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:28px;margin:6px 0 14px;font-size:14px;}' +
+  '.crumb{background:#ebebeb;border-radius:14px;padding:4px 10px;font-weight:600;}' +
+  '.q{margin:0 0 10px;font-size:14px;font-weight:700;}' +
+  '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;}' +
+  '.tile{border:2px solid #231f20;background:#fff;color:#231f20;border-radius:8px;padding:14px 10px;font:600 16px Roboto,Arial,sans-serif;cursor:pointer;text-align:center;}' +
+  '.tile:hover{background:#231f20;color:#fff;}' +
+  '.link{background:none;border:0;padding:0;color:#0a58ca;text-decoration:underline;font:14px Roboto,Arial,sans-serif;cursor:pointer;}' +
+  '.row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;}' +
+  '.sameday{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;cursor:pointer;user-select:none;}' +
+  '.sameday input{width:18px;height:18px;cursor:pointer;}' +
+  '.busy{font-size:15px;font-weight:600;padding:8px 0;}'
+
+const PAY_LABELS = { CC: 'Credit Card', ACH: 'Bank (ACH)', '': 'No billing method' }
+
+function updatePlanPicker() {
+  const doc = eaeDoc(/^\/eae\.spr$/i)
+  if (!doc) return
+  const select = doc.getElementById('paymentPlan')
+  const form = doc.getElementById('selectPlanForm')
+  if (!select || !form || doc.querySelector('[data-wcs-plan-picker]')) return
+  const plans = [...select.options].filter(o => o.value).map((o, i) => Object.assign(parsePlanName(o.text), { id: o.value, idx: i }))
+  if (!plans.length) return
+
+  const host = doc.createElement('div')
+  host.setAttribute('data-wcs-plan-picker', '')
+  const root = host.attachShadow({ mode: 'closed' })
+  root.innerHTML = '<style>' + PLAN_PICKER_CSS + '</style><div class="card"></div>'
+  const card = root.querySelector('.card')
+  const hasSameDay = plans.some(p => p.sameDay)
+  const state = { sameDay: false, picks: {} }
+
+  function make(tag, cls, text) {
+    const e = doc.createElement(tag)
+    if (cls) e.className = cls
+    if (text != null) e.textContent = text
+    return e
+  }
+
+  function choose(plan) {
+    card.textContent = ''
+    card.appendChild(make('div', 'busy', 'Loading ' + plan.name + '...'))
+    const category = doc.getElementById('paymentPlanCategory')
+    if (category && category.value !== 'All') category.value = 'All'
+    select.value = plan.id
+    fireAbcChange(doc, select, false)
+  }
+
+  function showAbcList(show) {
+    form.style.display = show ? '' : 'none'
+    card.style.display = show ? 'none' : ''
+  }
+
+  function render() {
+    card.textContent = ''
+    const top = make('div', 'top')
+    top.appendChild(make('h3', 'title', 'Choose a plan'))
+    const abcLink = make('button', 'link', 'Use ABC plan list')
+    abcLink.type = 'button'
+    abcLink.addEventListener('click', () => showAbcList(true))
+    top.appendChild(abcLink)
+    card.appendChild(top)
+
+    let pool = plans.filter(p => p.sameDay === state.sameDay)
+    const crumbs = make('div', 'crumbs')
+    const steps = [['group', 'Membership type'], ['term', 'Term'], ['pay', 'How will they pay?'], ['id', 'Plan']]
+    let question = null
+    for (const [key, label] of steps) {
+      if (key in state.picks) {
+        pool = pool.filter(p => p[key] === state.picks[key])
+        continue
+      }
+      const options = planChoices(pool, key)
+      if (options.length <= 1) continue
+      question = { key, label, options }
+      break
+    }
+    for (const key of ['group', 'term', 'pay']) {
+      if (state.picks[key] != null && state.picks[key] !== '') crumbs.appendChild(make('span', 'crumb', key === 'pay' ? PAY_LABELS[state.picks[key]] : state.picks[key]))
+    }
+    if (Object.keys(state.picks).length) {
+      const back = make('button', 'link', 'Start over')
+      back.type = 'button'
+      back.addEventListener('click', () => { state.picks = {}; render() })
+      crumbs.appendChild(back)
+    }
+    card.appendChild(crumbs)
+
+    if (!question) {
+      if (pool.length) choose(pool[0])
+      else { state.picks = {}; render() }
+      return
+    }
+
+    card.appendChild(make('p', 'q', question.label))
+    const grid = make('div', 'grid')
+    for (const value of question.options) {
+      let text = value
+      if (question.key === 'pay') text = PAY_LABELS[value] || value
+      if (question.key === 'id') text = (plans.find(p => p.id === value) || {}).name || value
+      const tile = make('button', 'tile', text)
+      tile.type = 'button'
+      tile.addEventListener('click', () => { state.picks[question.key] = value; render() })
+      grid.appendChild(tile)
+    }
+    card.appendChild(grid)
+
+    if (hasSameDay && question.key === 'group') {
+      const row = make('div', 'row')
+      const label = make('label', 'sameday')
+      const box = make('input')
+      box.type = 'checkbox'
+      box.checked = state.sameDay
+      box.addEventListener('change', () => { state.sameDay = box.checked; state.picks = {}; render() })
+      label.appendChild(box)
+      label.appendChild(doc.createTextNode('Same Day Sale'))
+      row.appendChild(label)
+      card.appendChild(row)
+    }
+  }
+
+  render()
+  form.parentElement.insertBefore(host, form)
+  showAbcList(false)
+}
+
+function updateAgreementBilling() {
+  const doc = eaeDoc(/^\/eae\/[a-z]+\.spr$/i)
+  if (!doc || !doc.getElementById('agreementForm')) return
+
+  // Primary ABC Billing follows the plan.
+  const planSel = doc.getElementById('paymentPlan')
+  const billing = doc.getElementById('abcBillingPaymentMethod')
+  if (planSel && billing && planSel.selectedIndex >= 0) {
+    const pay = parsePlanName(planSel.options[planSel.selectedIndex].text).pay
+    const want = pay === 'CC' ? ABC_BILLING_CC : pay === 'ACH' ? ABC_BILLING_EFT : ''
+    let has = false
+    for (const o of billing.options) {
+      const off = !!want && o.value !== want
+      if (o.hidden !== off) o.hidden = off
+      if (o.disabled !== off) o.disabled = off
+      if (o.value === want) has = true
+    }
+    if (want && has && billing.value !== want) {
+      billing.value = want
+      fireAbcChange(doc, billing, true)
+    }
+  }
+
+  // Club Account: always on, always same as Primary ABC Billing.
+  const enable = doc.getElementById('enableClubAccountCheckbox')
+  const same = doc.getElementById('clubAccountSameAbcBillingCheckbox')
+  if (!enable || !same) return
+  if (!enable.checked) { enable.checked = true; fireAbcChange(doc, enable, false) }
+  if (!same.checked) { same.checked = true; fireAbcChange(doc, same, false) }
+  const group = doc.getElementById('billingClubAccount')
+  if (group && enable.checked && same.checked && group.style.display !== 'none') {
+    group.style.display = 'none'
+    if (!doc.querySelector('[data-wcs-club-account-note]')) {
+      // ABC's own card classes (its CSS overrides inline padding on divs).
+      const note = doc.createElement('div')
+      note.setAttribute('data-wcs-club-account-note', '')
+      note.className = group.className
+      const title = doc.createElement('div')
+      title.className = 'formgrouptitle'
+      title.textContent = 'Club Account'
+      const body = doc.createElement('div')
+      body.style.cssText = 'font-size:14px;padding:0 8px;'
+      body.textContent = 'On, billed the same as Primary ABC Billing.'
+      note.appendChild(title)
+      note.appendChild(body)
+      group.parentElement.insertBefore(note, group)
+    }
+  }
+}
+
 // --- Check-in alert cues ----------------------------------------------------
 // ABC's check-in feed (right-hand panel of the main shell) adds one
 // `.checkin-card[cilid]` per check-in, with a `.datatrak-alert <severity>` tag
@@ -1381,6 +1646,11 @@ window.addEventListener('DOMContentLoaded', () => {
     refreshClubMemo()
     setInterval(refreshClubMemo, MEMO_REFRESH_MS)
     setInterval(updateClubHomeMemo, 1000)
+    // Electronic Agreement Entry: plan picker + plan-locked billing
+    setInterval(() => {
+      try { updatePlanPicker() } catch (err) { console.error('[WCS Scraper] plan picker failed', err) }
+      try { updateAgreementBilling() } catch (err) { console.error('[WCS Scraper] agreement billing failed', err) }
+    }, 500)
   }
   console.log('[WCS Scraper] Loaded on:', window.location.href)
 
