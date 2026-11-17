@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api, exportL10ToSheet, getGoogleSheetsStatus, startGoogleSheetsAuth } from '../../lib/api'
 import { useCancellableFetch } from '../../hooks/useCancellableFetch'
@@ -43,10 +43,30 @@ function fmtValue(metric, v, { signed = false } = {}) {
   return isWhole ? fmtInt(v) : Number(v).toFixed(1)
 }
 
-function tone(metric, delta) {
-  if (delta === null || delta === undefined || delta === 0) return 'text-text-muted'
+/** good | bad | neutral. Better or worse, not up or down: Lost Members rising is bad. */
+function toneKind(metric, delta) {
+  if (delta === null || delta === undefined || delta === 0) return 'neutral'
   const better = metric.lowerIsBetter ? delta < 0 : delta > 0
-  return better ? 'text-emerald-600' : 'text-wcs-red'
+  return better ? 'good' : 'bad'
+}
+
+const TONE_CLASS = { good: 'text-emerald-600', bad: 'text-wcs-red', neutral: 'text-text-muted' }
+
+function tone(metric, delta) {
+  return TONE_CLASS[toneKind(metric, delta)]
+}
+
+/**
+ * One By Club cell as text: the value, and the change under it. Shared by the
+ * table on screen and the Google Sheet, so the export prints exactly what the
+ * report prints rather than formatting the same numbers a second time.
+ */
+function clubCellText(metric, c) {
+  return {
+    main: fmtValue(metric, c.value),
+    sub: `${fmtValue(metric, c.delta, { signed: true })}${c.pct !== null && c.pct !== undefined ? ` (${fmtSignedPct(c.pct)})` : ''}`,
+    tone: toneKind(metric, c.delta),
+  }
 }
 
 function Arrow({ metric, delta }) {
@@ -178,9 +198,32 @@ function clubSheet(data, compare, cmpDef) {
     }
     return line
   })
+  return { title: exportTitle(data, cmpDef), spec: clubSpec(data, compare, cmpDef), rows: [header, ...body] }
+}
+
+function exportTitle(data, cmpDef) {
   const meta = data.meta || {}
-  const title = `WCS L10 — By Club — ${meta.start} to ${meta.end} vs ${cmpDef.label}`
-  return { title, rows: [header, ...body] }
+  return `WCS L10 — By Club — ${meta.start} to ${meta.end} vs ${cmpDef.label}`
+}
+
+function exportSubtitle(data, cmpDef) {
+  const meta = data.meta || {}
+  const span = meta.windowLabel || `${meta.start} to ${meta.end}`
+  return `${span} · change vs ${cmpDef.label.toLowerCase()}`
+}
+
+/** The styled By Club tab: the same columns, cells and colours as the table. */
+function clubSpec(data, compare, cmpDef) {
+  return {
+    heading: 'L10 — By Club',
+    subheading: exportSubtitle(data, cmpDef),
+    columns: ['Club', ...data.metrics.map(m => m.label)],
+    rows: [...data.rows, data.totals].map(r => ({
+      label: r.key === 'total' ? 'Total' : r.label,
+      total: r.key === 'total',
+      cells: data.metrics.map(m => clubCellText(m, r[compare][m.key])),
+    })),
+  }
 }
 
 // Per-user Google connection, the same one Payroll's export uses. The OAuth
@@ -228,6 +271,47 @@ function useGoogleSheets() {
   return { google, connecting, connect, refresh }
 }
 
+const BUTTON = 'px-2.5 py-1 rounded-lg text-xs font-medium bg-bg border border-border text-text-primary hover:border-wcs-red hover:text-wcs-red disabled:opacity-50'
+
+/**
+ * A PDF of the By Club table, made from the table itself, so it is the report
+ * pixel for pixel rather than a redrawing of it. html-to-image and jsPDF are
+ * loaded only when somebody exports, as the Member Map export does.
+ */
+function PdfExport({ data, cmpDef, tableRef }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  async function run() {
+    if (busy || !tableRef.current) return
+    setBusy(true)
+    setErr(null)
+    try {
+      const { exportTablePdf } = await import('./l10Export')
+      const meta = data.meta || {}
+      const vs = cmpDef.key === 'lastMonth' ? 'vs-last-month' : 'vs-6mo-avg'
+      await exportTablePdf(tableRef.current, {
+        title: 'L10 — By Club',
+        subtitle: exportSubtitle(data, cmpDef),
+        filename: `l10-by-club_${meta.start}_to_${meta.end}_${vs}.pdf`,
+      })
+    } catch (e) {
+      setErr(e?.message || 'PDF export failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      {err && <span className="text-[11px] text-amber-600">{err}</span>}
+      <button type="button" onClick={run} disabled={busy} className={BUTTON}>
+        {busy ? 'Exporting…' : 'Export PDF'}
+      </button>
+    </>
+  )
+}
+
 function SheetExport({ data, compare, cmpDef }) {
   const { google, connecting, connect, refresh } = useGoogleSheets()
   const [busy, setBusy] = useState(false)
@@ -273,7 +357,7 @@ function SheetExport({ data, compare, cmpDef }) {
       : google.loaded && !google.connected ? 'Connect Google' : 'Export to Google Sheets'
 
   return (
-    <div className="flex items-center gap-2">
+    <>
       {err && <span className="text-[11px] text-amber-600">{err}</span>}
       {lastUrl && !err && (
         <a href={lastUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-wcs-red underline">
@@ -284,21 +368,21 @@ function SheetExport({ data, compare, cmpDef }) {
         type="button"
         onClick={run}
         disabled={busy || connecting || !google.loaded}
-        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-bg border border-border text-text-primary hover:border-wcs-red hover:text-wcs-red disabled:opacity-50"
+        className={BUTTON}
       >
         {label}
       </button>
-    </div>
+    </>
   )
 }
 
-function ClubTable({ data, compare, compareShort }) {
+function ClubTable({ data, compare, compareShort, tableRef }) {
   const metrics = data.metrics
   const rows = [...data.rows, data.totals]
   const thBase = 'px-3 py-2 text-[10px] font-semibold text-text-muted uppercase tracking-wide whitespace-nowrap'
   const th = `${thBase} text-right`
   return (
-    <div className="bg-surface rounded-xl border border-border overflow-x-auto">
+    <div ref={tableRef} className="bg-surface rounded-xl border border-border overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-border">
@@ -317,15 +401,15 @@ function ClubTable({ data, compare, compareShort }) {
                 </td>
                 {metrics.map(m => {
                   const c = cmp[m.key]
+                  const t = clubCellText(m, c)
                   return (
                     <td key={m.key} className="px-3 py-1.5 text-right tabular-nums align-top">
-                      <div className={`${isTotal ? 'font-bold' : 'font-medium'} text-text-primary`}>{fmtValue(m, c.value)}</div>
+                      <div className={`${isTotal ? 'font-bold' : 'font-medium'} text-text-primary`}>{t.main}</div>
                       <div
-                        className={`text-[10px] ${tone(m, c.delta)}`}
+                        className={`text-[10px] ${TONE_CLASS[t.tone]}`}
                         title={`${compareShort}: ${fmtValue(m, c.base)}`}
                       >
-                        {fmtValue(m, c.delta, { signed: true })}
-                        {c.pct !== null && c.pct !== undefined ? ` (${fmtSignedPct(c.pct)})` : ''}
+                        {t.sub}
                       </div>
                     </td>
                   )
@@ -341,6 +425,7 @@ function ClubTable({ data, compare, compareShort }) {
 
 export default function L10({ startDate, endDate, locationSlug, category, basis }) {
   const [compare, setCompare] = useState('avg6')
+  const clubTableRef = useRef(null)
 
   const query = useMemo(() => new URLSearchParams({
     start: startDate, end: endDate, clubs: locationSlug || 'all',
@@ -395,9 +480,12 @@ export default function L10({ startDate, endDate, locationSlug, category, basis 
 
           <div className="flex items-center justify-between px-1 pt-2">
             <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wide">By Club</h3>
-            <SheetExport data={data} compare={compare} cmpDef={cmpDef} />
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <PdfExport data={data} cmpDef={cmpDef} tableRef={clubTableRef} />
+              <SheetExport data={data} compare={compare} cmpDef={cmpDef} />
+            </div>
           </div>
-          <ClubTable data={data} compare={compare} compareShort={cmpDef.short} />
+          <ClubTable data={data} compare={compare} compareShort={cmpDef.short} tableRef={clubTableRef} />
 
           <ul className="text-[11px] text-text-muted px-1 space-y-0.5 list-disc pl-5">
             {['members', 'dues', 'pos', 'total', 'compare', 'filter'].map(k => (

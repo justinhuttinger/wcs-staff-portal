@@ -126,16 +126,17 @@ router.get('/', async (req, res) => {
   }
 })
 
-// POST /analytics/l10/export-sheet  { title, rows }
+// POST /analytics/l10/export-sheet  { title, spec, rows }
 //
 // Writes the By Club table to a new Google Sheet in the caller's own Drive,
-// using the per-user Google connection Payroll's export uses.
+// using the per-user Google connection Payroll's export uses. Two tabs: By Club,
+// laid out to look like the report (lib/l10Sheet), and Data, the raw numbers.
 //
-// THE ROWS COME FROM THE PAGE, so the sheet is exactly the table on screen —
-// same window, same comparison, same clubs — rather than a second build that
-// could disagree with it. Safe to accept because the route is owner only and
-// the file lands in the owner's own Drive; the shape is still checked so a bad
-// body is a 400 and not a half-written sheet.
+// THE TABLE COMES FROM THE PAGE, so the sheet is exactly what is on screen —
+// same window, same comparison, same clubs, same formatting — rather than a
+// second build that could disagree with it. Safe to accept because the route is
+// owner only and the file lands in the owner's own Drive; the shape is still
+// checked so a bad body is a 400 and not a half-written sheet.
 const MAX_ROWS = 200
 const MAX_COLS = 120
 
@@ -147,10 +148,13 @@ function validRows(rows) {
 
 router.post('/export-sheet', async (req, res) => {
   try {
-    const { exportToGoogleSheet } = require('../services/googleSheets')
+    const { createStyledSpreadsheet } = require('../services/googleSheets')
     const { getStaffGoogleAccessToken } = require('../services/googleUserToken')
+    const { buildL10Sheet, validSpec } = require('../lib/l10Sheet')
 
+    const spec = req.body?.spec
     const rows = req.body?.rows
+    if (!validSpec(spec)) return res.status(400).json({ error: 'spec is not a valid L10 table' })
     if (!validRows(rows)) return res.status(400).json({ error: 'rows must be a 2D array of strings and numbers' })
     const title = String(req.body?.title || 'WCS L10 — By Club').slice(0, 200)
 
@@ -164,8 +168,8 @@ router.post('/export-sheet', async (req, res) => {
       throw err
     }
 
-    // The header is bolded by the helper; the Total row is the last one.
-    const result = await exportToGoogleSheet({ accessToken, title, rows, boldRowIndices: [rows.length - 1] })
+    const { sheets, requests } = buildL10Sheet(spec, rows)
+    const result = await createStyledSpreadsheet({ accessToken, title, sheets, requests })
     res.json({ url: result.url, id: result.id })
   } catch (err) {
     if (err.notConnected) {

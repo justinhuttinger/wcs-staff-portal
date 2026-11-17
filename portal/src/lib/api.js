@@ -844,10 +844,10 @@ export async function exportPayrollToSheet(params = {}) {
   })
 }
 
-export async function exportL10ToSheet({ title, rows }) {
+export async function exportL10ToSheet({ title, spec, rows }) {
   return api('/analytics/l10/export-sheet', {
     method: 'POST',
-    body: JSON.stringify({ title, rows }),
+    body: JSON.stringify({ title, spec, rows }),
   })
 }
 
