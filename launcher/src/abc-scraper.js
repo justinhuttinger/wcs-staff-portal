@@ -804,6 +804,8 @@ const PLAN_PICKER_CSS =
   '.spin{width:20px;height:20px;border-radius:50%;border:3px solid #eee;border-top-color:#ff0000;animation:spin .8s linear infinite;}' +
   '@keyframes spin{to{transform:rotate(360deg);}}'
 
+// Plan types whose second step is an access level, not a length (Justin).
+const ACCESS_LEVEL_GROUPS = ['Active and Fit', 'Insurance']
 const PAY_LABELS = { CC: 'Credit Card', ACH: 'Bank (ACH)', '': 'No billing method' }
 const PAY_SUBS = { CC: 'Dues charged to a card', ACH: 'Dues drafted from a bank', '': '' }
 const PAY_ICONS = {
@@ -907,11 +909,18 @@ function updatePlanPicker() {
     // Walk the steps; the first one with more than one option is the question.
     let pool = plans.filter(p => p.sameDay === state.sameDay)
     const auto = {}
+    // Step 2 is "Access" for Active and Fit / Insurance, "Term" otherwise.
+    const stepText = (key, name, label) => {
+      const group = 'group' in state.picks ? state.picks.group : auto.group
+      if (key === 'term' && ACCESS_LEVEL_GROUPS.includes(group)) return ['Access', 'Which access level?']
+      return [name, label]
+    }
     let question = null
-    for (const [key, name, label] of STEPS.concat([['id', 'Plan', 'Pick the plan']])) {
+    for (const [key, baseName, baseLabel] of STEPS.concat([['id', 'Plan', 'Pick the plan']])) {
       if (key in state.picks) { pool = pool.filter(p => p[key] === state.picks[key]); continue }
       const options = planChoices(pool, key)
       if (options.length <= 1) { auto[key] = options[0]; continue }
+      const [name, label] = stepText(key, baseName, baseLabel)
       question = { key, name, label, options }
       break
     }
@@ -924,7 +933,8 @@ function updatePlanPicker() {
     // Stepper: done steps show the pick and jump back when clicked.
     const steps = make('ol', 'steps')
     const qIndex = STEPS.findIndex(s => s[0] === question.key)
-    STEPS.forEach(([key, name], i) => {
+    STEPS.forEach(([key, baseName, baseLabel], i) => {
+      const [name] = stepText(key, baseName, baseLabel)
       const isNow = key === question.key
       const isDone = qIndex === -1 || i < qIndex
       const li = make('li', 'step' + (isNow ? ' now' : isDone ? ' done' : ''))
