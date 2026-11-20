@@ -80,6 +80,11 @@ function buildIdMap(source, target, opts = {}) {
   return { map, unavailable }
 }
 
+// Uploaded files (voicemail audio, attachments) live at a URL whose path holds
+// the source club's location + workflow ids. Those ids are the file's address,
+// so rewriting them breaks the link (404). Leave file URLs exactly as they are.
+const { isFileUrl } = require('./ghlWorkflowVoicemail')
+
 function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -98,6 +103,7 @@ function replaceIds(value, replacements) {
   })
 
   const walk = (v) => {
+    if (isFileUrl(v)) return v
     if (typeof v === 'string') return swap(v)
     if (Array.isArray(v)) return v.map(walk)
     if (v && typeof v === 'object') {
@@ -118,6 +124,7 @@ function findIds(value, ids) {
   const re = new RegExp(list.map(escapeRe).join('|'), 'g')
   const scan = (s) => { for (const m of s.matchAll(re)) found.set(m[0], (found.get(m[0]) || 0) + 1) }
   const walk = (v) => {
+    if (isFileUrl(v)) return
     if (typeof v === 'string') return scan(v)
     if (Array.isArray(v)) return v.forEach(walk)
     if (v && typeof v === 'object') for (const [k, c] of Object.entries(v)) { scan(k); walk(c) }

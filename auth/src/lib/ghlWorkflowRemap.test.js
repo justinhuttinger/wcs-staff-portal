@@ -87,3 +87,11 @@ test('club names are ignored when matching, and overrides fill gaps', () => {
   assert.equal(out.unmatched.length, 0)
   assert.equal(out.matched.find(m => m.category === 'users').manual, true)
 })
+
+test('replaceIds leaves uploaded file URLs alone (voicemail audio paths hold the source ids)', () => {
+  const url = `https://storage.googleapis.com/highlevel-backend.appspot.com/location/${SRC_LOC}/workflow/selfWorkflowId000001/a.mp3?alt=media&token=t`
+  const { value } = replaceIds({ attachment: { url }, other: `x/${SRC_LOC}` },
+    new Map([[SRC_LOC, TGT_LOC], ['selfWorkflowId000001', 'newWorkflowId0000001']]))
+  assert.equal(value.attachment.url, url)
+  assert.equal(value.other, `x/${TGT_LOC}`)
+})

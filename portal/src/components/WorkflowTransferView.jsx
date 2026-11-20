@@ -462,6 +462,26 @@ function PairCard({ item, club, plan, clubWorkflows, onChange }) {
           GHL did not remove: {result.notRemovedTriggers.map(t => t.name).join(', ')}. Delete {result.notRemovedTriggers.length === 1 ? 'it' : 'them'} by hand in GHL.
         </p>
       )}
+      {result?.voicemails?.length > 0 && (() => {
+        const kept = result.voicemails.filter(v => v.from !== 'source')
+        const fromBackup = kept.filter(v => v.from.startsWith('backup'))
+        const copied = result.voicemails.filter(v => v.from === 'source')
+        return (
+          <>
+            {kept.length > 0 && (
+              <p className="text-xs mt-1 text-text-muted">
+                Voicemails: kept the club's own recording on {kept.length} of {result.voicemails.length}
+                {fromBackup.length > 0 ? ` (${fromBackup.length} restored from a backup: ${fromBackup.map(v => v.key).join(', ')})` : ''}.
+              </p>
+            )}
+            {copied.length > 0 && (
+              <p className="text-xs mt-1 font-semibold text-amber-700">
+                Voicemails using the source club's recording (no working one of this club's own): {copied.map(v => v.key).join(', ')}. Re-record in GHL if it mentions the other club.
+              </p>
+            )}
+          </>
+        )
+      })()}
       {result?.triggersUntouched && (
         <p className="text-xs mt-1 text-amber-700">This file has no trigger list, so the club's triggers were left as they were.</p>
       )}
