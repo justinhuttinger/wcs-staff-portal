@@ -59,6 +59,7 @@ const STAT_GROUPS = [
   { key: 'membership', label: 'Membership' },
   { key: 'revenue', label: 'Revenue' },
   { key: 'pos', label: 'POS' },
+  { key: 'leads', label: 'Leads' },
   { key: 'tours', label: 'Tours, Trials & VIPs' },
   { key: 'dayone', label: 'Day Ones' },
   { key: 'pt', label: 'Personal Training' },
@@ -85,6 +86,23 @@ const STATS = [
   { key: 'posSnacks', label: 'Snacks', format: 'money', betterWhen: 'up', group: 'pos' },
   { key: 'posMerch', label: 'Merchandise', format: 'money', betterWhen: 'up', group: 'pos' },
   { key: 'posSupps', label: 'Supplements', format: 'money', betterWhen: 'up', group: 'pos' },
+  // LEADS. One definition, shared with Analytics > Lead Sources: a new
+  // opportunity in the Membership Pipeline, read from analytics_lead_sources,
+  // so the two reports cannot disagree. Not "new GHL contacts": about a third
+  // of those are inbound callers (often members) and check-in kiosk waivers
+  // that never enter the sales funnel. GHL numbers only, by decision: Meta's
+  // own lead count and ad spend stay on the admin Scoreboard.
+  { key: 'leads', label: 'Leads', format: 'int', betterWhen: 'up', group: 'leads' },
+  { key: 'leadsFacebook', label: 'Facebook Leads', format: 'int', betterWhen: 'up', group: 'leads' },
+  { key: 'leadsWebsite', label: 'Website Leads', format: 'int', betterWhen: 'up', group: 'leads' },
+  { key: 'leadsWalkIn', label: 'Walk-in Leads', format: 'int', betterWhen: 'up', group: 'leads' },
+  // Of the leads raised in the window, the share already won. A cohort rate,
+  // like Trial Conversion: leads from the last few days have not had their
+  // chance yet, so the current window always trails the finished one before
+  // it. Neutral colour ('flat') for that reason; a red arrow that is mostly
+  // the calendar would be read as the sales floor slipping.
+  { key: 'leadToSaleRate', label: 'Lead to Sale %', format: 'pct', betterWhen: 'flat', group: 'leads',
+    note: 'Recent leads are still closing' },
   { key: 'checkins', label: 'Check-ins', format: 'int', betterWhen: 'up', group: 'activity' },
   // Beside the total because the total is NOT comparable across windows:
   // priorMonthWindow clamps the day to the shorter month, so March against
@@ -315,6 +333,38 @@ function shapePos(rows) {
   return out
 }
 
+// analytics_lead_sources buckets -> the card keys. Anything not named here
+// (Other, No Source Recorded) counts toward the total only.
+const LEAD_BUCKETS = [
+  { key: 'leadsFacebook', source: 'Facebook' },
+  { key: 'leadsWebsite', source: 'Website' },
+  { key: 'leadsWalkIn', source: 'Walk-in / Manual' },
+]
+
+/**
+ * analytics_lead_sources rows -> { leads, leadsFacebook, ..., leadToSaleRate }.
+ * null when the rows could not be loaded, so the cards read as no data rather
+ * than as a month with no leads.
+ */
+function shapeLeads(rows) {
+  if (!Array.isArray(rows)) return null
+  let leads = 0
+  let won = 0
+  const bySource = new Map()
+  for (const r of rows) {
+    const n = num(r.leads)
+    leads += n
+    won += num(r.won)
+    bySource.set(r.source, (bySource.get(r.source) || 0) + n)
+  }
+  const out = { leads }
+  for (const b of LEAD_BUCKETS) out[b.key] = bySource.get(b.source) || 0
+  out.leadToSaleRate = rate(won, leads)
+  return out
+}
+
+const LEAD_KEYS = ['leads', ...LEAD_BUCKETS.map(b => b.key), 'leadToSaleRate']
+
 function buildClubSnapshot(current, prior, series, opts = {}) {
   const cur = shapeTotals(current.window, current.summary, current.pt)
   const was = prior ? shapeTotals(prior.window, prior.summary, prior.pt) : {}
@@ -346,6 +396,13 @@ function buildClubSnapshot(current, prior, series, opts = {}) {
   for (const k of ['posTotal', ...POS_CENTERS.map(c => c.key)]) {
     cur[k] = posNow ? posNow[k] : null
     if (prior) was[k] = posBefore ? posBefore[k] : null
+  }
+
+  const leadsNow = shapeLeads(opts.leads)
+  const leadsBefore = shapeLeads(opts.priorLeads)
+  for (const k of LEAD_KEYS) {
+    cur[k] = leadsNow ? leadsNow[k] : null
+    if (prior) was[k] = leadsBefore ? leadsBefore[k] : null
   }
 
   const stats = STATS.map(s => {
@@ -382,4 +439,4 @@ function buildClubSnapshot(current, prior, series, opts = {}) {
   }
 }
 
-module.exports = { buildClubSnapshot, shapeTotals, shapePos, seriesRow, STATS, STAT_GROUPS, POS_CENTERS }
+module.exports = { buildClubSnapshot, shapeTotals, shapePos, shapeLeads, seriesRow, STATS, STAT_GROUPS, POS_CENTERS, LEAD_KEYS }
