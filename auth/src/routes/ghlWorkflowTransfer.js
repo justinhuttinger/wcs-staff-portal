@@ -18,6 +18,7 @@ const { LOCATIONS, getLocationBySlug, getLocationById } = require('../config/ghl
 const ghl = require('../services/ghlWorkflowBackend')
 const { buildIdMap, remapPayload, normalizePayload } = require('../lib/ghlWorkflowRemap')
 const { keysIn, pickClubKey, maskKey } = require('../lib/webhookKeys')
+const { keepClubRecordings, makeIsAlive } = require('../lib/ghlWorkflowVoicemail')
 
 const router = Router()
 
@@ -169,7 +170,10 @@ function parseTarget(t) {
   // left unmatched.
   const folder = t.folder === 'keep' ? 'keep' : 'source'
   const publish = t.publish === true
-  return { loc, mode, targetWorkflowId, name, overrides, folder, publish }
+  // voicemails: 'club' (default) keeps the club's own recordings on an
+  // overwrite; 'source' sends the source's recordings instead.
+  const voicemails = t.voicemails === 'source' ? 'source' : 'club'
+  return { loc, mode, targetWorkflowId, name, overrides, folder, publish, voicemails }
 }
 
 // Names a club's records carry besides its own name, ignored when matching.
@@ -314,7 +318,26 @@ async function saveSnapshot(token, loc, workflowId, staff, reason) {
     created_by_name: staff.display_name || staff.email || null,
   }).select('id').single()
   if (error) throw new Error(`Could not save the backup snapshot: ${error.message}`)
-  return data.id
+  return { id: data.id, workflow }
+}
+
+// The club's own versions of a workflow, best first: what is live now, then
+// its backups newest first. Used to keep the club's voicemail recordings.
+async function clubVersions(loc, workflowId, current, skipSnapshotId) {
+  const versions = [{ label: 'current', workflow: current }]
+  const { data, error } = await supabaseAdmin.from('ghl_workflow_snapshots')
+    .select('id, created_at, workflow:payload->workflow')
+    .eq('location_id', loc.id).eq('workflow_id', workflowId)
+    .order('created_at', { ascending: false }).limit(15)
+  if (error) {
+    console.error('[ghlWorkflowTransfer] snapshot history:', error.message)
+    return versions
+  }
+  for (const row of data || []) {
+    if (row.id === skipSnapshotId || !row.workflow) continue
+    versions.push({ label: `backup ${String(row.created_at).slice(0, 10)}`, workflow: row.workflow })
+  }
+  return versions
 }
 
 // POST /prepare { club, items: [{ name, folderPath }], folder: 'source'|'keep' }
@@ -374,9 +397,10 @@ router.post('/push', async (req, res) => {
     const p = await plan(payload, target)
     let workflowId = target.targetWorkflowId
     let snapshotId = null
+    let current = null
     if (target.mode === 'overwrite') {
       // Never overwrite without a backup.
-      snapshotId = await saveSnapshot(token, target.loc, workflowId, req.staff, 'pre_overwrite')
+      ;({ id: snapshotId, workflow: current } = await saveSnapshot(token, target.loc, workflowId, req.staff, 'pre_overwrite'))
     } else if (target.mode === 'new') {
       workflowId = await ghl.createDraft(token, target.loc.id, p.name)
     }
@@ -389,6 +413,14 @@ router.post('/push', async (req, res) => {
       extra: { ...(srcId ? { [srcId]: workflowId } : {}), ...p.webhookKey.swaps },
       overrides: target.overrides,
     })
+    // Each club records its own voicemail drops. On an overwrite, keep the
+    // club's recording for each branch (or its newest working one from a
+    // backup, which also repairs links broken by older pushes).
+    let voicemails = []
+    if (target.mode === 'overwrite' && target.voicemails === 'club') {
+      const versions = await clubVersions(target.loc, workflowId, current, snapshotId)
+      voicemails = await keepClubRecordings(out.workflow, versions, makeIsAlive())
+    }
     const isNew = target.mode !== 'overwrite'
     // Publish only a new copy with nothing left unmatched.
     const publishBlocked = target.publish && isNew && out.unmatched.length
@@ -452,6 +484,7 @@ router.post('/push', async (req, res) => {
       triggersUntouched: written.triggersUntouched,
       unlinkedTriggerChecks: written.unlinkedTriggerChecks,
       unmatched: out.unmatched,
+      voicemails,
       folder,
       webhookKey: { status: p.webhookKey.status, target: p.webhookKey.target },
       published,
@@ -472,7 +505,7 @@ router.post('/snapshots', async (req, res) => {
   const workflowId = String(req.body?.workflowId || '')
   if (!ID_RE.test(workflowId)) return res.status(400).json({ error: 'Bad workflow id' })
   try {
-    const id = await saveSnapshot(token, loc, workflowId, req.staff, 'manual')
+    const { id } = await saveSnapshot(token, loc, workflowId, req.staff, 'manual')
     res.json({ id })
   } catch (err) {
     fail(res, err, 'Snapshot failed')
