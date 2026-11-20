@@ -119,6 +119,11 @@ export function StatCard({ stat, comparisonLabel }) {
           <span className="text-text-muted"> · {comparisonLabel}</span>
         )}
       </p>
+      {/* A caveat the server attaches to a stat, e.g. a cohort rate whose
+          current window has not finished maturing. */}
+      {stat.note && (
+        <p className="text-[10px] text-text-muted mt-0.5 truncate" title={stat.note}>{stat.note}</p>
+      )}
     </div>
   )
 }

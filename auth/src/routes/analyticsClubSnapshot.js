@@ -166,6 +166,18 @@ router.get('/', async (req, res) => {
         })).catch(() => null),
       ])
 
+      // Leads, both windows, from the function Lead Sources reads. Also after
+      // the main batch for the same statement_timeout reason as POS, and also
+      // optional: GHL being slow must not take the ABC half of the card down.
+      const [leads, priorLeads] = await Promise.all([
+        fetchAll(supabaseAdmin.rpc('analytics_lead_sources', {
+          p_start: start, p_end: end, p_clubs: allClubs ? null : slugs, p_attribution: 'real',
+        })).catch(() => null),
+        fetchAll(supabaseAdmin.rpc('analytics_lead_sources', {
+          p_start: prior.start, p_end: prior.end, p_clubs: allClubs ? null : slugs, p_attribution: 'real',
+        })).catch(() => null),
+      ])
+
       if (membersNow.error) throw new Error(membersNow.error.message)
       if (membersPrior.error) throw new Error(membersPrior.error.message)
       current.window.total_members = membersNow.data
@@ -199,6 +211,8 @@ router.get('/', async (req, res) => {
         priorTrial,
         pos,
         priorPos,
+        leads,
+        priorLeads,
       }
     })
 
@@ -213,6 +227,8 @@ router.get('/', async (req, res) => {
         priorTrial: payload.priorTrial,
         pos: payload.pos,
         priorPos: payload.priorPos,
+        leads: payload.leads,
+        priorLeads: payload.priorLeads,
         // Each window's own length, so Avg Daily Check-ins compares a 31-day
         // month against a 28-day one without the shorter month looking quiet.
         days: daysInWindow(start, end),
