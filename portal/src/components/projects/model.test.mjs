@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { filterTasks, sortTasks, groupByStatus, DEFAULT_FILTERS, describeActivity, mergeThread, boardColumns, dropOrder } from './model.js'
+import { filterTasks, sortTasks, groupByStatus, DEFAULT_FILTERS, normalizeFilters, activeFilterCount, describeActivity, mergeThread, boardColumns, dropOrder } from './model.js'
 
 const ME = 'me-id'
 const YOU = 'you-id'
@@ -17,35 +17,59 @@ const tasks = [
 const ids = list => list.map(x => x.id)
 const run = f => ids(filterTasks(tasks, { ...DEFAULT_FILTERS, ...f }, { me: ME, today }))
 
+const ALL = ['not_started', 'in_progress', 'complete', 'skipped']
+const NO_SKIP = ['not_started', 'in_progress', 'complete']
+
 test('default: my open tasks only', () => {
   assert.deepEqual(run({}), ['mine'])
 })
 
-test('all people, all statuses still hides skipped; skipped shows when picked', () => {
-  assert.deepEqual(run({ who: 'all', status: 'all' }), ['mine', 'yours', 'both', 'nobody'])
-  assert.deepEqual(run({ who: 'all', status: 'skipped' }), ['skip'])
+test('everyone with a status list; skipped only when it is in the list', () => {
+  assert.deepEqual(run({ scope: 'everyone', statuses: NO_SKIP }), ['mine', 'yours', 'both', 'nobody'])
+  assert.deepEqual(run({ scope: 'everyone', statuses: ['skipped'] }), ['skip'])
 })
 
-test('a specific person', () => {
-  assert.deepEqual(run({ who: YOU, status: 'all' }), ['yours', 'both'])
+test('everyone narrowed to people; my tasks ignores the people list', () => {
+  assert.deepEqual(run({ scope: 'everyone', people: [YOU], statuses: ALL }), ['yours', 'both'])
+  assert.deepEqual(run({ scope: 'me', people: [YOU], statuses: NO_SKIP }), ['mine', 'both'])
 })
 
 test('due filters: overdue is open-only, week is the next 7 days', () => {
-  assert.deepEqual(run({ who: 'all', due: 'overdue' }), ['mine'])
-  assert.deepEqual(run({ who: 'all', due: 'week' }), ['yours'])
-  assert.deepEqual(run({ who: 'all', status: 'all', due: 'none' }), ['both', 'nobody'])
+  assert.deepEqual(run({ scope: 'everyone', due: 'overdue' }), ['mine'])
+  assert.deepEqual(run({ scope: 'everyone', due: 'week' }), ['yours'])
+  assert.deepEqual(run({ scope: 'everyone', statuses: NO_SKIP, due: 'none' }), ['both', 'nobody'])
 })
 
-test('category, priority and search (description, case-insensitive)', () => {
-  assert.deepEqual(run({ who: 'all', category: 'cat1' }), ['nobody'])
-  assert.deepEqual(run({ who: 'all', category: 'none' }), ['mine', 'yours'])
-  assert.deepEqual(run({ who: 'all', priority: 'urgent' }), ['nobody'])
-  assert.deepEqual(run({ who: 'all', q: 'mats' }), ['nobody'])
+test('category (with none), priority list and search', () => {
+  assert.deepEqual(run({ scope: 'everyone', categories: ['cat1'] }), ['nobody'])
+  assert.deepEqual(run({ scope: 'everyone', categories: ['none'] }), ['mine', 'yours'])
+  assert.deepEqual(run({ scope: 'everyone', priorities: ['urgent', 'high'] }), ['nobody'])
+  assert.deepEqual(run({ scope: 'everyone', q: 'mats' }), ['nobody'])
 })
 
-test('sort by priority then due; due puts undated last', () => {
-  assert.deepEqual(ids(sortTasks(tasks, 'priority'))[0], 'nobody')
+test('board mode ignores the status list but hides skipped unless shown', () => {
+  const b = o => ids(filterTasks(tasks, { ...DEFAULT_FILTERS, scope: 'everyone' }, { me: ME, today, board: true, ...o }))
+  assert.deepEqual(b({}), ['mine', 'yours', 'both', 'nobody'])
+  assert.deepEqual(b({ showSkipped: true }), ['mine', 'yours', 'both', 'skip', 'nobody'])
+})
+
+test('normalizeFilters keeps valid keys and drops an old shape', () => {
+  assert.deepEqual(normalizeFilters({ who: 'all', status: 'open' }), DEFAULT_FILTERS)
+  assert.deepEqual(normalizeFilters({ scope: 'everyone', people: ['a'], due: 'week' }), { ...DEFAULT_FILTERS, scope: 'everyone', people: ['a'], due: 'week' })
+})
+
+test('activeFilterCount ignores scope and, on the board, status', () => {
+  assert.equal(activeFilterCount(DEFAULT_FILTERS), 0)
+  assert.equal(activeFilterCount({ ...DEFAULT_FILTERS, priorities: ['urgent'], due: 'week' }), 2)
+  assert.equal(activeFilterCount({ ...DEFAULT_FILTERS, statuses: ALL }, { board: true }), 0)
+})
+
+test('sorts: most urgent then due; due soonest; due latest; recently updated', () => {
+  assert.equal(ids(sortTasks(tasks, 'urgent'))[0], 'nobody')
   assert.deepEqual(ids(sortTasks(tasks, 'due')).slice(0, 2), ['mine', 'yours'])
+  assert.deepEqual(ids(sortTasks(tasks, 'due_desc')).slice(0, 2), ['yours', 'mine'])
+  const u = [t('a', { updated_at: '2026-11-20' }), t('b', { updated_at: '2026-11-22' })]
+  assert.deepEqual(ids(sortTasks(u, 'updated')), ['b', 'a'])
 })
 
 test('groupByStatus keeps board order and drops empty groups', () => {
@@ -78,12 +102,13 @@ test('mergeThread interleaves comments and history by time', () => {
   assert.deepEqual(out.map(x => x.item.id), ['a1', 'c1', 'a2'])
 })
 
-test('board: status any includes skipped; columns hide skipped unless asked', () => {
-  assert.deepEqual(run({ who: 'all', status: 'any' }), ['mine', 'yours', 'both', 'skip', 'nobody'])
+test('board columns: drag order by default, chosen sort when given, skipped hidden unless asked', () => {
   const cols = boardColumns([t('a', { sort_order: 2 }), t('b', { sort_order: 1 }), t('s', { status: 'skipped' })])
   assert.deepEqual(cols.map(c => c.value), ['not_started', 'in_progress', 'complete'])
   assert.deepEqual(cols[0].items.map(x => x.id), ['b', 'a'])
   assert.equal(boardColumns([], { showSkipped: true }).length, 4)
+  const byUrgent = boardColumns([t('a', { sort_order: 1 }), t('b', { sort_order: 2, priority: 'urgent' })], { sort: 'urgent' })
+  assert.deepEqual(byUrgent[0].items.map(x => x.id), ['b', 'a'])
 })
 
 test('dropOrder lands between neighbours, or past the ends', () => {

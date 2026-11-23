@@ -1,17 +1,9 @@
 import { useState, useRef } from 'react'
 import { PRIORITY, OPEN, boardColumns, dropOrder } from './model'
 import { dueLabel } from '../hub/dates'
+import { AvatarStack } from './Dropdown'
 
 const CARD = 'bg-surface/95 backdrop-blur-sm rounded-xl border border-border'
-
-function Initials({ name }) {
-  const text = String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
-  return (
-    <span title={name} className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-bg border border-border text-[10px] font-bold text-text-primary -ml-1.5 first:ml-0">
-      {text}
-    </span>
-  )
-}
 
 function Card({ t, nameOf, categoryName, dragging, onOpen, onDragStart, onDragEnd }) {
   const pr = PRIORITY[t.priority]
@@ -47,8 +39,7 @@ function Card({ t, nameOf, categoryName, dragging, onOpen, onDragStart, onDragEn
           )}
         </div>
         <div className="flex shrink-0">
-          {t.assignees.slice(0, 3).map(a => <Initials key={a.staff_id} name={nameOf(a.staff_id)} />)}
-          {t.assignees.length > 3 && <span className="text-[10px] text-text-muted ml-1 self-center">+{t.assignees.length - 3}</span>}
+          <AvatarStack ids={t.assignees.map(a => a.staff_id)} nameOf={nameOf} max={3} />
         </div>
       </div>
     </div>
@@ -58,8 +49,9 @@ function Card({ t, nameOf, categoryName, dragging, onOpen, onDragStart, onDragEn
 // Columns by status. Drag a card to another column (or within one) to change
 // its status and position. Touch devices: tap a card and set status in the
 // editor (browsers don't drag on touch).
-export default function TasksBoard({ tasks, showSkipped, nameOf, categoryName, onOpen, onMove }) {
-  const columns = boardColumns(tasks, { showSkipped })
+export default function TasksBoard({ tasks, showSkipped, sort = 'manual', nameOf, categoryName, onOpen, onMove }) {
+  const columns = boardColumns(tasks, { showSkipped, sort })
+  const manual = sort === 'manual'
   const [dragId, setDragId] = useState(null)
   const [drop, setDrop] = useState(null) // { status, index }
   const colRefs = useRef({})
@@ -70,6 +62,7 @@ export default function TasksBoard({ tasks, showSkipped, nameOf, categoryName, o
     try { e.dataTransfer.setData('text/plain', t.id) } catch { /* some browsers */ }
   }
   const reset = () => { setDragId(null); setDrop(null) }
+  const dragStatus = tasks.find(t => t.id === dragId)?.status
 
   // Where in this column the pointer is: index among cards other than the
   // one being dragged.
@@ -93,7 +86,9 @@ export default function TasksBoard({ tasks, showSkipped, nameOf, categoryName, o
     if (!task) return
     const others = col.items.filter(t => t.id !== id)
     const unchanged = task.status === col.value && col.items.indexOf(task) === index
-    if (unchanged) return
+    // Under a chosen sort the order inside a column is the sort's, so a drop
+    // in the same column changes nothing.
+    if (unchanged || (!manual && task.status === col.value)) return
     onMove(task, col.value, dropOrder(others, index))
   }
 
@@ -116,13 +111,13 @@ export default function TasksBoard({ tasks, showSkipped, nameOf, categoryName, o
                 const idx = others.indexOf(t)
                 return (
                   <div key={t.id}>
-                    {target && drop.index === idx && idx !== -1 && <div className="h-1 rounded bg-wcs-red/60 mb-2" />}
+                    {target && (manual || drop.status !== dragStatus) && drop.index === idx && idx !== -1 && <div className="h-1 rounded bg-wcs-red/60 mb-2" />}
                     <Card t={t} nameOf={nameOf} categoryName={categoryName} dragging={t.id === dragId}
                       onOpen={onOpen} onDragStart={onDragStart} onDragEnd={reset} />
                   </div>
                 )
               })}
-              {target && drop.index >= others.length && <div className="h-1 rounded bg-wcs-red/60" />}
+              {target && (manual || drop.status !== dragStatus) && drop.index >= others.length && <div className="h-1 rounded bg-wcs-red/60" />}
               {col.items.length === 0 && !target && (
                 <p className="text-[11px] text-text-muted text-center py-6">Drop tasks here</p>
               )}
