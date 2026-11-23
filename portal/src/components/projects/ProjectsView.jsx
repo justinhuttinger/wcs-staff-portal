@@ -180,7 +180,7 @@ export default function ProjectsView({ onBack, openTaskId }) {
   const showSort = view === 'list' || view === 'board'
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
+    <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 py-6 space-y-4">
       <div className={`${CARD} px-5 py-3.5 flex items-center gap-3`}>
         <button onClick={onBack} className="text-text-muted hover:text-text-primary text-sm">← Back</button>
         <div>
@@ -193,7 +193,7 @@ export default function ProjectsView({ onBack, openTaskId }) {
       {!data && !error && <div className={CARD}><Spinner /></div>}
 
       {data && (
-        <div className="grid grid-cols-1 lg:grid-cols-[236px_minmax(0,1fr)] gap-4 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[256px_minmax(0,1fr)] gap-4 items-start">
           {/* Sidebar */}
           <aside className={`${CARD} p-3 space-y-5 lg:sticky lg:top-4`}>
             <Button onClick={() => setEditing(null)} className="w-full">New task</Button>
