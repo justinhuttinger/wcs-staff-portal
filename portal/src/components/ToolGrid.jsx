@@ -39,6 +39,8 @@ const TILE_ICONS = {
   inventory: 'm20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z',
   media: 'M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z',
   // arrows-right-left
+  // clipboard-document-check
+  projects: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0 1 18 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3 1.5 1.5 3-3.75',
   // squares-2x2
   hub: 'M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z',
   workflowTransfer: 'M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5',
@@ -135,7 +137,7 @@ function getMotivationalMessage() {
   return MOTIVATIONAL_MESSAGES[slot % MOTIVATIONAL_MESSAGES.length]
 }
 
-export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingSection, onEventCalendar, onMemos, onInventory, onForms, onQuizzes, onNps, onAdsManager, onWorkflowTransfer, onHub, onGroupX, onFacility, onTill, onCoaching, onGhlScripts, userRole, userName, marketingAddon, marketingCaps, customReports }) {
+export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location, visibleTools, locationId, onCalendar, onTrainerAvail, onLeaderboard, onHR, onHelpCenter, onTicketsBoard, onDrive, onCommunicationNotes, onReporting, onMarketingSection, onEventCalendar, onMemos, onInventory, onForms, onQuizzes, onNps, onAdsManager, onWorkflowTransfer, onHub, onProjects, onGroupX, onFacility, onTill, onCoaching, onGhlScripts, userRole, userName, marketingAddon, marketingCaps, customReports }) {
   // DECLARED HERE, ABOVE EVERY READER. It used to sit ~200 lines further down,
   // next to the leaderboard score card that first needed it, which was fine
   // until marketingCells started reading it from further up: a `const` is in
@@ -408,6 +410,11 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
   // Each carries the same gate it would have had on the board, so More never
   // offers a screen the board itself would have withheld.
   const moreCells = [
+    // Members only; App passes the handler only to Projects members.
+    onProjects && (
+      <SvgTileButton key="projects" href="#open/projects" onClick={() => { setShowMore(false); onProjects() }}
+        iconPath={TILE_ICONS.projects} label="Projects" desc="Team tasks" />
+    ),
     // Owner-only; App passes the handler only to the owner.
     onHub && (
       <SvgTileButton key="hub" href="#open/hub" onClick={() => { setShowMore(false); onHub() }}
