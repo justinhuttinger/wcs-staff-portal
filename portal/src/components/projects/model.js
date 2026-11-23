@@ -115,6 +115,8 @@ export function describeActivity(row, { nameOf = () => 'Someone', categoryName =
     case 'title': return `${who} renamed this to "${d.to}"`
     case 'category': return d.to ? `${who} moved this to ${categoryName(d.to) || 'a category'}` : `${who} removed the category`
     case 'description': return `${who} edited the description`
+    case 'file_added': return `${who} added ${d.type === 'link' ? 'a link' : 'a file'}: ${d.name}`
+    case 'file_removed': return `${who} removed ${d.type === 'link' ? 'a link' : 'a file'}: ${d.name}`
     default: return `${who} updated this task`
   }
 }

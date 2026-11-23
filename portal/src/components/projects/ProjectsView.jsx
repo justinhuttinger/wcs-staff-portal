@@ -54,6 +54,14 @@ function TaskRow({ t, nameOf, categoryName, onOpen, onStatus }) {
           {t.comment_count}
         </span>
       )}
+      {t.file_count > 0 && (
+        <span className="hidden sm:inline-flex items-center gap-1 shrink-0 text-[11px] text-text-muted" title={`${t.file_count} file${t.file_count === 1 ? '' : 's'} or link${t.file_count === 1 ? '' : 's'}`}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
+          </svg>
+          {t.file_count}
+        </span>
+      )}
       {due && <span className={`hidden sm:inline shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${due.tone}`}>{due.text}</span>}
       <div className="hidden sm:flex shrink-0 w-24 justify-end">
         {t.assignees.slice(0, 4).map(a => <Initials key={a.staff_id} name={nameOf(a.staff_id)} />)}
@@ -110,8 +118,9 @@ export default function ProjectsView({ onBack, openTaskId }) {
   // Saved rows come back without comment_count; keep the count the list had.
   const upsert = row => setData(d => {
     const prev = d.tasks.find(t => t.id === row.id)
-    return { ...d, tasks: [{ comment_count: prev?.comment_count || 0, ...row }, ...d.tasks.filter(t => t.id !== row.id)] }
+    return { ...d, tasks: [{ comment_count: prev?.comment_count || 0, file_count: prev?.file_count || 0, ...row }, ...d.tasks.filter(t => t.id !== row.id)] }
   })
+  const setFileCount = (id, n) => setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === id ? { ...t, file_count: n } : t)) }))
   const bumpComments = id => setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === id ? { ...t, comment_count: (t.comment_count || 0) + 1 } : t)) }))
 
   const setStatus = async (t, status) => {
@@ -237,7 +246,8 @@ export default function ProjectsView({ onBack, openTaskId }) {
       {editing !== undefined && data && (
         <TaskEditor task={editing} members={data.members} categories={data.categories}
           defaultAssignee={data.me} nameOf={nameOf} categoryName={categoryName} me={data.me}
-          onCommented={() => editing && bumpComments(editing.id)} onClose={() => setEditing(undefined)}
+          onCommented={() => editing && bumpComments(editing.id)}
+          onFilesChanged={n => editing && setFileCount(editing.id, n)} onClose={() => setEditing(undefined)}
           onSaved={row => { upsert(row); setEditing(undefined) }} />
       )}
     </div>

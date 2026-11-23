@@ -67,6 +67,8 @@ test('describeActivity reads like a sentence', () => {
   assert.equal(say('priority', { to: 'urgent' }), 'Alex changed priority to Urgent')
   assert.equal(say('category', { to: 'k' }), 'Alex moved this to Marketing')
   assert.equal(describeActivity({ actor_id: null, kind: 'created' }, ctx), 'Someone created this task')
+  assert.equal(say('file_added', { name: 'Plan', type: 'link' }), 'Alex added a link: Plan')
+  assert.equal(say('file_removed', { name: 'a.pdf', type: 'file' }), 'Alex removed a file: a.pdf')
 })
 
 test('mergeThread interleaves comments and history by time', () => {

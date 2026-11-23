@@ -2,11 +2,14 @@
 // create tasks and assign them to any member. Nothing is deleted: tasks are
 // marked Skipped and can be restored. Admins manage members and categories.
 const { Router } = require('express')
+const multer = require('multer')
+const crypto = require('crypto')
 const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { isProjectsMember } = require('../services/projects/members')
 const { queueTaskEvent } = require('../services/projects/notify')
+const { cleanLink, safeFileName } = require('../services/projects/files')
 const { cleanTaskInput, statusPatch, cleanAssigneeIds, diffAssignees, activityFor, cleanCommentBody, isUuid } = require('../services/projects/taskModel')
 
 const router = Router()
@@ -91,10 +94,12 @@ async function logActivity(taskId, actorId, rows) {
   if (error) console.error('[projects] activity log failed:', error.message)
 }
 
-// Comment counts per task, for the list. Best-effort like the history.
-async function commentCounts() {
-  const { data, error } = await supabaseAdmin.from('project_task_comments').select('task_id').limit(50000)
-  if (error) { console.error('[projects] comment counts failed:', error.message); return new Map() }
+// Comment / file counts per task, for the list. Best-effort like the history.
+async function countByTask(table, onlyActive = false) {
+  let q = supabaseAdmin.from(table).select('task_id').limit(50000)
+  if (onlyActive) q = q.is('removed_at', null)
+  const { data, error } = await q
+  if (error) { console.error(`[projects] ${table} counts failed:`, error.message); return new Map() }
   const out = new Map()
   for (const r of data || []) out.set(r.task_id, (out.get(r.task_id) || 0) + 1)
   return out
@@ -195,15 +200,16 @@ router.get('/categories', authenticate, async (req, res) => {
 
 router.get('/tasks', memberOnly, async (req, res) => {
   try {
-    const [{ data: tasks, error: tErr }, { data: categories, error: cErr }, members, counts] = await Promise.all([
+    const [{ data: tasks, error: tErr }, { data: categories, error: cErr }, members, counts, files] = await Promise.all([
       supabaseAdmin.from('project_tasks').select('*').order('created_at', { ascending: false }).limit(5000),
       supabaseAdmin.from('project_categories').select('*').order('sort').order('name'),
       memberList(),
-      commentCounts(),
+      countByTask('project_task_comments'),
+      countByTask('project_task_files', true),
     ])
     if (tErr) throw tErr
     if (cErr) throw cErr
-    const rows = (await withAssignees(tasks || [])).map(t => ({ ...t, comment_count: counts.get(t.id) || 0 }))
+    const rows = (await withAssignees(tasks || [])).map(t => ({ ...t, comment_count: counts.get(t.id) || 0, file_count: files.get(t.id) || 0 }))
     res.json({ tasks: rows, categories: categories || [], members, me: req.staff.id })
   } catch (e) { sendError(res, e) }
 })
@@ -342,6 +348,102 @@ router.patch('/tasks/:id/comments/:commentId', memberOnly, async (req, res) => {
     if (upErr) throw upErr
     if (!data) return res.status(404).json({ error: 'Not found' })
     res.json({ comment: data })
+  } catch (e) { sendError(res, e) }
+})
+
+// ---- Members: files + links ------------------------------------------------
+
+const FILE_BUCKET = 'project-files'
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 10 } })
+
+let fileBucketReady = false
+async function ensureFileBucket() {
+  if (fileBucketReady) return
+  const { error } = await supabaseAdmin.storage.createBucket(FILE_BUCKET, { public: false, fileSizeLimit: '25MB' })
+  if (error && !/exist/i.test(error.message || '')) throw error
+  fileBucketReady = true
+}
+
+function uploadFiles(req, res, next) {
+  upload.array('files', 10)(req, res, err => {
+    if (!err) return next()
+    const tooBig = err.code === 'LIMIT_FILE_SIZE'
+    res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'Each file must be 25 MB or less' : 'Upload failed' })
+  })
+}
+
+async function signFile(path) {
+  const { data } = await supabaseAdmin.storage.from(FILE_BUCKET).createSignedUrl(path, 60 * 60)
+  return data?.signedUrl || null
+}
+
+// Files get a fresh 1-hour URL each time the list is read; links are as-is.
+async function withUrls(rows) {
+  return Promise.all(rows.map(async f => (f.kind === 'file' ? { ...f, url: await signFile(f.storage_path) } : f)))
+}
+
+router.get('/tasks/:id/files', memberOnly, async (req, res) => {
+  try {
+    if (!(await taskExists(req.params.id))) return res.status(404).json({ error: 'Not found' })
+    const { data, error } = await supabaseAdmin.from('project_task_files').select('*')
+      .eq('task_id', req.params.id).is('removed_at', null).order('created_at')
+    if (error) throw error
+    res.json({ files: await withUrls(data || []) })
+  } catch (e) { sendError(res, e) }
+})
+
+router.post('/tasks/:id/files', memberOnly, uploadFiles, async (req, res) => {
+  try {
+    if (!(await taskExists(req.params.id))) return res.status(404).json({ error: 'Not found' })
+    const files = req.files || []
+    if (!files.length) return res.status(400).json({ error: 'Pick a file to upload' })
+    await ensureFileBucket()
+    const rows = []
+    for (const f of files) {
+      // multer reads names as latin1; browsers send UTF-8.
+      const name = safeFileName(Buffer.from(f.originalname || 'file', 'latin1').toString('utf8'))
+      const path = `${req.params.id}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${name}`
+      const { error: upErr } = await supabaseAdmin.storage.from(FILE_BUCKET)
+        .upload(path, f.buffer, { contentType: f.mimetype || 'application/octet-stream', upsert: false })
+      if (upErr) throw upErr
+      rows.push({
+        task_id: req.params.id, kind: 'file', title: name, storage_path: path,
+        content_type: f.mimetype || null, size_bytes: f.size || null, added_by: req.staff.id,
+      })
+    }
+    const { data, error } = await supabaseAdmin.from('project_task_files').insert(rows).select('*')
+    if (error) throw error
+    await logActivity(req.params.id, req.staff.id,
+      (data || []).map(f => ({ kind: 'file_added', detail: { name: f.title, type: 'file' } })))
+    res.json({ files: await withUrls(data || []) })
+  } catch (e) { sendError(res, e) }
+})
+
+router.post('/tasks/:id/links', memberOnly, async (req, res) => {
+  try {
+    if (!(await taskExists(req.params.id))) return res.status(404).json({ error: 'Not found' })
+    const { url, title, error } = cleanLink(req.body || {})
+    if (error) return res.status(400).json({ error })
+    const { data, error: insErr } = await supabaseAdmin.from('project_task_files')
+      .insert({ task_id: req.params.id, kind: 'link', title, url, added_by: req.staff.id }).select('*').single()
+    if (insErr) throw insErr
+    await logActivity(req.params.id, req.staff.id, [{ kind: 'file_added', detail: { name: title, type: 'link' } }])
+    res.json({ file: data })
+  } catch (e) { sendError(res, e) }
+})
+
+// Remove hides the file or link; the row and the stored bytes are kept.
+router.post('/tasks/:id/files/:fileId/remove', memberOnly, async (req, res) => {
+  try {
+    if (!isUuid(req.params.fileId)) return res.status(404).json({ error: 'Not found' })
+    const { data, error } = await supabaseAdmin.from('project_task_files')
+      .update({ removed_at: new Date().toISOString(), removed_by: req.staff.id })
+      .eq('id', req.params.fileId).eq('task_id', req.params.id).is('removed_at', null)
+      .select('*').maybeSingle()
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Not found' })
+    await logActivity(req.params.id, req.staff.id, [{ kind: 'file_removed', detail: { name: data.title, type: data.kind } }])
+    res.json({ ok: true })
   } catch (e) { sendError(res, e) }
 })
 
