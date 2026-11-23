@@ -6,7 +6,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { isProjectsMember } = require('../services/projects/members')
-const { cleanTaskInput, statusPatch, cleanAssigneeIds, diffAssignees, isUuid } = require('../services/projects/taskModel')
+const { cleanTaskInput, statusPatch, cleanAssigneeIds, diffAssignees, activityFor, cleanCommentBody, isUuid } = require('../services/projects/taskModel')
 
 const router = Router()
 
@@ -80,6 +80,23 @@ async function setAssignees(taskId, wantedIds, actorId) {
     if (iErr) throw iErr
   }
   return { add, remove }
+}
+
+// History is best-effort: a failed log line never fails the task write.
+async function logActivity(taskId, actorId, rows) {
+  if (!rows.length) return
+  const { error } = await supabaseAdmin.from('project_task_activity')
+    .insert(rows.map(r => ({ task_id: taskId, actor_id: actorId, kind: r.kind, detail: r.detail || {} })))
+  if (error) console.error('[projects] activity log failed:', error.message)
+}
+
+// Comment counts per task, for the list. Best-effort like the history.
+async function commentCounts() {
+  const { data, error } = await supabaseAdmin.from('project_task_comments').select('task_id').limit(50000)
+  if (error) { console.error('[projects] comment counts failed:', error.message); return new Map() }
+  const out = new Map()
+  for (const r of data || []) out.set(r.task_id, (out.get(r.task_id) || 0) + 1)
+  return out
 }
 
 // ---- Admin: members + categories ------------------------------------------
@@ -177,14 +194,16 @@ router.get('/categories', authenticate, async (req, res) => {
 
 router.get('/tasks', memberOnly, async (req, res) => {
   try {
-    const [{ data: tasks, error: tErr }, { data: categories, error: cErr }, members] = await Promise.all([
+    const [{ data: tasks, error: tErr }, { data: categories, error: cErr }, members, counts] = await Promise.all([
       supabaseAdmin.from('project_tasks').select('*').order('created_at', { ascending: false }).limit(5000),
       supabaseAdmin.from('project_categories').select('*').order('sort').order('name'),
       memberList(),
+      commentCounts(),
     ])
     if (tErr) throw tErr
     if (cErr) throw cErr
-    res.json({ tasks: await withAssignees(tasks || []), categories: categories || [], members, me: req.staff.id })
+    const rows = (await withAssignees(tasks || [])).map(t => ({ ...t, comment_count: counts.get(t.id) || 0 }))
+    res.json({ tasks: rows, categories: categories || [], members, me: req.staff.id })
   } catch (e) { sendError(res, e) }
 })
 
@@ -214,6 +233,10 @@ router.post('/tasks', memberOnly, async (req, res) => {
     if (insErr) throw insErr
     const assignees = cleanAssigneeIds(body.assignee_ids, await memberIds())
     if (assignees.length) await setAssignees(data.id, assignees, req.staff.id)
+    await logActivity(data.id, req.staff.id, [
+      { kind: 'created' },
+      ...(assignees.length ? [{ kind: 'assigned', detail: { staff_ids: assignees } }] : []),
+    ])
     res.json({ task: await loadTask(data.id) })
   } catch (e) { sendError(res, e) }
 })
@@ -249,13 +272,67 @@ router.patch('/tasks/:id', memberOnly, async (req, res) => {
 
     const { error: upErr } = await supabaseAdmin.from('project_tasks').update(patch).eq('id', existing.id)
     if (upErr) throw upErr
+    let diff = { add: [], remove: [] }
     if (body.assignee_ids !== undefined) {
       // Current members, plus anyone already on the task who has since left
       // the members list (so they can stay on it or be taken off).
       const allowed = [...await memberIds(), ...existing.assignees.map(a => a.staff_id)]
-      await setAssignees(existing.id, cleanAssigneeIds(body.assignee_ids, allowed), req.staff.id)
+      diff = await setAssignees(existing.id, cleanAssigneeIds(body.assignee_ids, allowed), req.staff.id)
     }
+    await logActivity(existing.id, req.staff.id, activityFor(existing, patch, diff))
     res.json({ task: await loadTask(existing.id) })
+  } catch (e) { sendError(res, e) }
+})
+
+// ---- Members: comments + history -------------------------------------------
+
+async function taskExists(id) {
+  if (!isUuid(id)) return false
+  const { data } = await supabaseAdmin.from('project_tasks').select('id').eq('id', id).maybeSingle()
+  return !!data
+}
+
+// Comments and history for one task, each oldest first; the portal merges
+// them into one timeline.
+router.get('/tasks/:id/thread', memberOnly, async (req, res) => {
+  try {
+    if (!(await taskExists(req.params.id))) return res.status(404).json({ error: 'Not found' })
+    const [{ data: comments, error: cErr }, { data: activity, error: aErr }] = await Promise.all([
+      supabaseAdmin.from('project_task_comments').select('*').eq('task_id', req.params.id).order('created_at'),
+      supabaseAdmin.from('project_task_activity').select('*').eq('task_id', req.params.id).order('created_at'),
+    ])
+    if (cErr) throw cErr
+    if (aErr) throw aErr
+    res.json({ comments: comments || [], activity: activity || [] })
+  } catch (e) { sendError(res, e) }
+})
+
+// Any member can comment, assigned or not.
+router.post('/tasks/:id/comments', memberOnly, async (req, res) => {
+  try {
+    if (!(await taskExists(req.params.id))) return res.status(404).json({ error: 'Not found' })
+    const { body, error } = cleanCommentBody(req.body?.body)
+    if (error) return res.status(400).json({ error })
+    const { data, error: insErr } = await supabaseAdmin.from('project_task_comments')
+      .insert({ task_id: req.params.id, author_id: req.staff.id, body }).select('*').single()
+    if (insErr) throw insErr
+    res.json({ comment: data })
+  } catch (e) { sendError(res, e) }
+})
+
+// Authors edit their own comments. There is no delete.
+router.patch('/tasks/:id/comments/:commentId', memberOnly, async (req, res) => {
+  try {
+    if (!isUuid(req.params.commentId)) return res.status(404).json({ error: 'Not found' })
+    const { body, error } = cleanCommentBody(req.body?.body)
+    if (error) return res.status(400).json({ error })
+    const { data, error: upErr } = await supabaseAdmin.from('project_task_comments')
+      .update({ body, edited_at: new Date().toISOString() })
+      .eq('id', req.params.commentId).eq('task_id', req.params.id).eq('author_id', req.staff.id)
+      .select('*').maybeSingle()
+    if (upErr) throw upErr
+    if (!data) return res.status(404).json({ error: 'Not found' })
+    res.json({ comment: data })
   } catch (e) { sendError(res, e) }
 })
 

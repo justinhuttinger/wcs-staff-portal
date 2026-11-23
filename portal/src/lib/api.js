@@ -1839,6 +1839,9 @@ export const projects = {
     get: (id) => api(`/projects/tasks/${id}`),
     create: (body) => api('/projects/tasks', { method: 'POST', body: JSON.stringify(body) }),
     update: (id, patch) => api(`/projects/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+    thread: (id) => api(`/projects/tasks/${id}/thread`),
+    comment: (id, body) => api(`/projects/tasks/${id}/comments`, { method: 'POST', body: JSON.stringify({ body }) }),
+    editComment: (id, commentId, body) => api(`/projects/tasks/${id}/comments/${commentId}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
   },
   categories: {
     list: () => api('/projects/categories'),

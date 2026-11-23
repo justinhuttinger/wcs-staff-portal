@@ -67,4 +67,36 @@ function diffAssignees(currentIds, nextIds) {
   }
 }
 
-module.exports = { cleanTaskInput, statusPatch, cleanAssigneeIds, diffAssignees, PRIORITIES, STATUSES, isUuid }
+// History rows for one PATCH: what changed between the stored task and the
+// patch that was written, plus the assignee diff. Unchanged fields add
+// nothing. Description only records that it was edited, not the text.
+const TRACKED = ['title', 'priority', 'due_date', 'start_date']
+function activityFor(existing, patch, { add = [], remove = [] } = {}) {
+  const rows = []
+  if (patch.status !== undefined && patch.status !== existing.status) {
+    const detail = { from: existing.status, to: patch.status }
+    if (patch.status === 'skipped' && patch.skip_reason) detail.reason = patch.skip_reason
+    rows.push({ kind: 'status', detail })
+  }
+  for (const k of TRACKED) {
+    if (patch[k] !== undefined && (patch[k] || null) !== (existing[k] || null)) {
+      rows.push({ kind: k, detail: { from: existing[k] || null, to: patch[k] || null } })
+    }
+  }
+  if (patch.category_id !== undefined && (patch.category_id || null) !== (existing.category_id || null)) {
+    rows.push({ kind: 'category', detail: { from: existing.category_id || null, to: patch.category_id || null } })
+  }
+  if (patch.description !== undefined && (patch.description || null) !== (existing.description || null)) {
+    rows.push({ kind: 'description', detail: {} })
+  }
+  if (add.length) rows.push({ kind: 'assigned', detail: { staff_ids: add } })
+  if (remove.length) rows.push({ kind: 'unassigned', detail: { staff_ids: remove } })
+  return rows
+}
+
+function cleanCommentBody(body) {
+  const text = String(body == null ? '' : body).trim().slice(0, 10000)
+  return text ? { body: text } : { error: 'Comment is empty' }
+}
+
+module.exports = { cleanTaskInput, statusPatch, cleanAssigneeIds, diffAssignees, activityFor, cleanCommentBody, PRIORITIES, STATUSES, isUuid }
