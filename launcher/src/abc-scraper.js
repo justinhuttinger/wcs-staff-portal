@@ -1026,15 +1026,9 @@ function updateAgreementBilling() {
     }
   }
 
-  // Club Account: always on, always same as Primary ABC Billing.
-  const enable = doc.getElementById('enableClubAccountCheckbox')
-  const same = doc.getElementById('clubAccountSameAbcBillingCheckbox')
-  if (!enable || !same) return
-  if (!enable.checked) { enable.checked = true; fireAbcChange(doc, enable, false) }
-  if (!same.checked) { same.checked = true; fireAbcChange(doc, same, false) }
-  const group = doc.getElementById('billingClubAccount')
-  // Hidden entirely (Justin: "don't even show it").
-  if (group && enable.checked && same.checked && group.style.display !== 'none') group.style.display = 'none'
+  // Club Account is left to ABC (not forced on, not hidden). Forcing it on
+  // with "same as Primary ABC Billing" made ABC reject sales with no club
+  // account charges ("club account cannot be $0").
 }
 
 // --- Check-in alert cues ----------------------------------------------------
