@@ -2,12 +2,17 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { projects } from '../../lib/api'
 import { Button, ErrorBanner, EmptyState, Spinner, Select, TextInput } from '../adsmanager/ui'
 import TaskEditor from './TaskEditor'
+import TasksBoard from './TasksBoard'
 import { DEFAULT_FILTERS, PRIORITIES, PRIORITY, STATUSES, STATUS, OPEN, filterTasks, sortTasks, groupByStatus, isoDay } from './model'
 import { dueLabel, shortDate } from '../hub/dates'
 
 const CARD = 'bg-surface/95 backdrop-blur-sm rounded-xl border border-border'
 const SMALL = '!w-auto !py-1.5 !text-xs'
 const FILTER_KEY = 'projects-filters'
+const VIEW_KEY = 'projects-view'
+const SKIPPED_KEY = 'projects-board-skipped'
+const readLocal = (k, fallback) => { try { return localStorage.getItem(k) ?? fallback } catch { return fallback } }
+const writeLocal = (k, v) => { try { localStorage.setItem(k, v) } catch { /* ignore */ } }
 
 function loadFilters() {
   try { return { ...DEFAULT_FILTERS, ...JSON.parse(localStorage.getItem(FILTER_KEY) || '{}'), q: '' } }
@@ -69,6 +74,11 @@ export default function ProjectsView({ onBack, openTaskId }) {
   const [error, setError] = useState('')
   const [filters, setFilters] = useState(loadFilters)
   const [sort, setSort] = useState('due')
+  // List or board, and whether the board shows a Skipped column; per browser.
+  const [view, setView] = useState(() => (readLocal(VIEW_KEY, 'list') === 'board' ? 'board' : 'list'))
+  const [showSkipped, setShowSkipped] = useState(() => readLocal(SKIPPED_KEY, '0') === '1')
+  const switchView = v => { setView(v); writeLocal(VIEW_KEY, v) }
+  const toggleSkipped = on => { setShowSkipped(on); writeLocal(SKIPPED_KEY, on ? '1' : '0') }
   const [editing, setEditing] = useState(undefined) // undefined closed, null new, task edit
 
   const load = useCallback(async () => {
@@ -109,8 +119,21 @@ export default function ProjectsView({ onBack, openTaskId }) {
     try { upsert((await projects.tasks.update(t.id, { status })).task) } catch (e) { setError(e.message) }
   }
 
-  const visible = useMemo(() => sortTasks(filterTasks(data?.tasks || [], filters, { me: data?.me, today: isoDay() }), sort),
-    [data, filters, sort])
+  // The board shows every status as columns, so the status filter is the
+  // list's alone.
+  const visible = useMemo(() => {
+    const f = view === 'board' ? { ...filters, status: showSkipped ? 'any' : 'all' } : filters
+    return sortTasks(filterTasks(data?.tasks || [], f, { me: data?.me, today: isoDay() }), sort)
+  }, [data, filters, sort, view, showSkipped])
+
+  // Drag on the board: show the move at once, then save; reload on failure.
+  const moveTask = async (t, status, sort_order) => {
+    setData(d => ({ ...d, tasks: d.tasks.map(x => (x.id === t.id ? { ...x, status, sort_order } : x)) }))
+    try {
+      const body = status === t.status ? { sort_order } : { status, sort_order }
+      upsert((await projects.tasks.update(t.id, body)).task)
+    } catch (e) { setError(e.message); load() }
+  }
   const groups = useMemo(() => groupByStatus(visible), [visible])
   const filtered = JSON.stringify({ ...filters, q: '' }) !== JSON.stringify({ ...DEFAULT_FILTERS, q: '' }) || !!filters.q
 
@@ -134,6 +157,12 @@ export default function ProjectsView({ onBack, openTaskId }) {
       {data && (
         <div className={`${CARD} p-4 flex items-center gap-2 flex-wrap`}>
           <div className="flex rounded-lg border border-border overflow-hidden">
+            {[['list', 'List'], ['board', 'Board']].map(([v, label]) => (
+              <button key={v} onClick={() => switchView(v)}
+                className={`px-3 py-1.5 text-xs font-semibold ${view === v ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted hover:text-text-primary'}`}>{label}</button>
+            ))}
+          </div>
+          <div className="flex rounded-lg border border-border overflow-hidden">
             {[['me', 'My tasks'], ['all', 'Everyone']].map(([v, label]) => (
               <button key={v} onClick={() => setFilter('who', v)}
                 className={`px-3 py-1.5 text-xs font-semibold ${filters.who === v ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted hover:text-text-primary'}`}>{label}</button>
@@ -142,16 +171,25 @@ export default function ProjectsView({ onBack, openTaskId }) {
           <Select value={filters.who === 'me' || filters.who === 'all' ? '' : filters.who} className={SMALL}
             onChange={e => setFilter('who', e.target.value || 'all')}
             options={[{ value: '', label: 'Any person' }, ...data.members.map(m => ({ value: m.id, label: m.name }))]} />
-          <Select value={filters.status} onChange={e => setFilter('status', e.target.value)} className={SMALL}
-            options={[{ value: 'open', label: 'Open' }, { value: 'all', label: 'All but skipped' }, ...STATUSES.map(s => ({ value: s.value, label: s.label }))]} />
+          {view === 'list' && (
+            <Select value={filters.status} onChange={e => setFilter('status', e.target.value)} className={SMALL}
+              options={[{ value: 'open', label: 'Open' }, { value: 'all', label: 'All but skipped' }, ...STATUSES.map(s => ({ value: s.value, label: s.label }))]} />
+          )}
           <Select value={filters.priority} onChange={e => setFilter('priority', e.target.value)} className={SMALL}
             options={[{ value: '', label: 'Any priority' }, ...PRIORITIES.map(p => ({ value: p.value, label: p.label }))]} />
           <Select value={filters.category} onChange={e => setFilter('category', e.target.value)} className={SMALL}
             options={[{ value: '', label: 'All categories' }, ...data.categories.map(c => ({ value: c.id, label: c.name })), { value: 'none', label: 'No category' }]} />
           <Select value={filters.due} onChange={e => setFilter('due', e.target.value)} className={SMALL}
             options={[{ value: '', label: 'Any due date' }, { value: 'overdue', label: 'Overdue' }, { value: 'week', label: 'Due in 7 days' }, { value: 'none', label: 'No due date' }]} />
-          <Select value={sort} onChange={e => setSort(e.target.value)} className={SMALL}
-            options={[{ value: 'due', label: 'Sort: due date' }, { value: 'priority', label: 'Sort: priority' }, { value: 'newest', label: 'Sort: newest' }, { value: 'oldest', label: 'Sort: oldest' }]} />
+          {view === 'list' ? (
+            <Select value={sort} onChange={e => setSort(e.target.value)} className={SMALL}
+              options={[{ value: 'due', label: 'Sort: due date' }, { value: 'priority', label: 'Sort: priority' }, { value: 'newest', label: 'Sort: newest' }, { value: 'oldest', label: 'Sort: oldest' }]} />
+          ) : (
+            <label className="flex items-center gap-1.5 text-[11px] text-text-muted cursor-pointer">
+              <input type="checkbox" checked={showSkipped} onChange={e => toggleSkipped(e.target.checked)} className="accent-wcs-red" />
+              Show skipped
+            </label>
+          )}
           <TextInput value={filters.q} onChange={e => setFilter('q', e.target.value)} placeholder="Search" className="!w-40 !py-1.5 !text-xs ml-auto" />
           {filtered && (
             <button onClick={() => { setFilters(DEFAULT_FILTERS); try { localStorage.removeItem(FILTER_KEY) } catch { /* ignore */ } }}
@@ -166,13 +204,18 @@ export default function ProjectsView({ onBack, openTaskId }) {
             action={<Button onClick={() => setEditing(null)}>New task</Button>} />
         </div>
       )}
-      {data && data.tasks.length > 0 && groups.length === 0 && (
+      {view === 'board' && data && data.tasks.length > 0 && (
+        <TasksBoard tasks={visible} showSkipped={showSkipped} nameOf={nameOf} categoryName={categoryName}
+          onOpen={row => setEditing(row)} onMove={moveTask} />
+      )}
+
+      {view === 'list' && data && data.tasks.length > 0 && groups.length === 0 && (
         <div className={`${CARD} p-4 text-sm text-text-muted`}>
           {filters.who === 'me' ? 'Nothing assigned to you matches these filters.' : 'Nothing matches these filters.'}
         </div>
       )}
 
-      {groups.length > 0 && (
+      {view === 'list' && groups.length > 0 && (
         <div className={`${CARD} overflow-hidden divide-y divide-border`}>
           {groups.map(g => (
             <div key={g.value}>
