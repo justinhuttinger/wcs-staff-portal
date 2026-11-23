@@ -10,7 +10,10 @@ const { supabaseAdmin } = require('../services/supabase')
 const { isProjectsMember } = require('../services/projects/members')
 const { queueTaskEvent } = require('../services/projects/notify')
 const { cleanLink, safeFileName } = require('../services/projects/files')
-const { cleanTaskInput, statusPatch, cleanAssigneeIds, diffAssignees, activityFor, cleanCommentBody, isUuid } = require('../services/projects/taskModel')
+const { cleanTaskInput, statusPatch, cleanAssigneeIds, activityFor, cleanCommentBody, isUuid } = require('../services/projects/taskModel')
+const {
+  staffName, memberIds, memberList, withAssignees, loadTask, categoryExists, setAssignees, logActivity, createTask,
+} = require('../services/projects/store')
 
 const router = Router()
 
@@ -18,80 +21,9 @@ function sendError(res, e) {
   res.status(e.status && e.status >= 400 && e.status < 600 ? e.status : 500).json({ error: e.message })
 }
 
-const staffName = s => s.display_name || [s.first_name, s.last_name].filter(Boolean).join(' ') || s.email
-
 async function requireMember(req, res, next) {
   if (await isProjectsMember(req.staff?.id)) return next()
   res.status(403).json({ error: 'Not available' })
-}
-
-async function memberIds() {
-  const { data, error } = await supabaseAdmin.from('project_members').select('staff_id')
-  if (error) throw error
-  return (data || []).map(r => r.staff_id)
-}
-
-async function memberList() {
-  const ids = await memberIds()
-  if (!ids.length) return []
-  const { data, error } = await supabaseAdmin.from('staff')
-    .select('id, email, display_name, first_name, last_name, is_active').in('id', ids)
-  if (error) throw error
-  return (data || []).filter(s => s.is_active !== false)
-    .map(s => ({ id: s.id, name: staffName(s), email: s.email }))
-    .sort((a, b) => a.name.localeCompare(b.name))
-}
-
-async function withAssignees(tasks) {
-  const ids = tasks.map(t => t.id)
-  const byTask = new Map(ids.map(id => [id, []]))
-  if (ids.length) {
-    const { data, error } = await supabaseAdmin.from('project_task_assignees')
-      .select('task_id, staff_id, assigned_at, assigned_by').in('task_id', ids)
-    if (error) throw error
-    for (const a of data || []) byTask.get(a.task_id)?.push(a)
-  }
-  return tasks.map(t => ({ ...t, assignees: byTask.get(t.id) || [] }))
-}
-
-async function loadTask(id) {
-  const { data, error } = await supabaseAdmin.from('project_tasks').select('*').eq('id', id).maybeSingle()
-  if (error) throw error
-  if (!data) return null
-  return (await withAssignees([data]))[0]
-}
-
-async function categoryExists(id) {
-  if (!id) return true
-  const { data } = await supabaseAdmin.from('project_categories').select('id').eq('id', id).maybeSingle()
-  return !!data
-}
-
-// Replace the assignee set; new rows record who assigned them and when.
-async function setAssignees(taskId, wantedIds, actorId) {
-  const { data: cur, error } = await supabaseAdmin.from('project_task_assignees')
-    .select('staff_id').eq('task_id', taskId)
-  if (error) throw error
-  const { add, remove } = diffAssignees((cur || []).map(r => r.staff_id), wantedIds)
-  if (remove.length) {
-    const { error: dErr } = await supabaseAdmin.from('project_task_assignees')
-      .delete().eq('task_id', taskId).in('staff_id', remove)
-    if (dErr) throw dErr
-  }
-  if (add.length) {
-    const { error: iErr } = await supabaseAdmin.from('project_task_assignees')
-      .insert(add.map(staff_id => ({ task_id: taskId, staff_id, assigned_by: actorId })))
-    if (iErr) throw iErr
-  }
-  return { add, remove }
-}
-
-// History is best-effort: a failed log line never fails the task write.
-async function logActivity(taskId, actorId, rows) {
-  if (!rows.length) return
-  const { error } = await supabaseAdmin.from('project_task_activity')
-    .insert(rows.map(r => ({ task_id: taskId, actor_id: actorId, kind: r.kind, detail: r.detail || {} })))
-  if (error) console.error('[projects] activity log failed:', error.message)
 }
 
 // Comment / file counts per task, for the list. Best-effort like the history.
@@ -225,28 +157,7 @@ router.get('/tasks/:id', memberOnly, async (req, res) => {
 
 router.post('/tasks', memberOnly, async (req, res) => {
   try {
-    const body = req.body || {}
-    const { fields, error } = cleanTaskInput(body)
-    if (error) return res.status(400).json({ error })
-    if (!(await categoryExists(fields.category_id))) return res.status(400).json({ error: 'Unknown category' })
-    let status = {}
-    if (body.status !== undefined) {
-      const s = statusPatch(body.status, { actorId: req.staff.id, reason: body.skip_reason })
-      if (s.error) return res.status(400).json({ error: s.error })
-      status = s.patch
-    }
-    const { data, error: insErr } = await supabaseAdmin.from('project_tasks')
-      .insert({ ...fields, ...status, created_by: req.staff.id, sort_order: Date.now() }).select('*').single()
-    if (insErr) throw insErr
-    const assignees = cleanAssigneeIds(body.assignee_ids, await memberIds())
-    if (assignees.length) await setAssignees(data.id, assignees, req.staff.id)
-    await logActivity(data.id, req.staff.id, [
-      { kind: 'created' },
-      ...(assignees.length ? [{ kind: 'assigned', detail: { staff_ids: assignees } }] : []),
-    ])
-    const task = await loadTask(data.id)
-    res.json({ task })
-    if (assignees.length) queueTaskEvent({ event: 'assigned', task, actor: req.staff, added: assignees })
+    res.json({ task: await createTask(req.body || {}, req.staff) })
   } catch (e) { sendError(res, e) }
 })
 
