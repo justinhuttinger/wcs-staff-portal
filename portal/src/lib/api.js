@@ -1832,6 +1832,26 @@ export async function getMeetingNotesAuthUrl() {
 }
 
 // Hub (owner-only): private task list, categories.
+// Projects: the team task tracker (members only; Admin > Projects manages them).
+export const projects = {
+  tasks: {
+    list: () => api('/projects/tasks'),
+    get: (id) => api(`/projects/tasks/${id}`),
+    create: (body) => api('/projects/tasks', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id, patch) => api(`/projects/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  },
+  categories: {
+    list: () => api('/projects/categories'),
+    create: (body) => api('/projects/admin/categories', { method: 'POST', body: JSON.stringify(body) }),
+    update: (id, patch) => api(`/projects/admin/categories/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  },
+  members: {
+    list: () => api('/projects/admin/members'),
+    add: (staffId) => api('/projects/admin/members', { method: 'POST', body: JSON.stringify({ staff_id: staffId }) }),
+    remove: (staffId) => api(`/projects/admin/members/${staffId}`, { method: 'DELETE' }),
+  },
+}
+
 export const hub = {
   tasks: {
     list: () => api('/hub/tasks'),

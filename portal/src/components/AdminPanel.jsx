@@ -1,4 +1,5 @@
 import HubAdmin from './hub/HubAdmin'
+import ProjectsAdmin from './projects/ProjectsAdmin'
 import { useState } from 'react'
 import AdminStaffTab from './AdminStaffTab'
 import AdminTilesTab from './AdminTilesTab'
@@ -65,6 +66,7 @@ import NpsView from './nps/NpsView'
 
 const SETUP_TILES = [
   { key: 'hub', label: 'Hub', desc: 'Categories & saved people', icon: 'M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z' },
+  { key: 'projects', label: 'Projects', desc: 'Members & categories', icon: 'M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0 1 18 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3 1.5 1.5 3-3.75' },
   { key: 'staff', label: 'Staff', desc: 'Accounts & Roles', icon: 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z' },
   { key: 'import', label: 'Import Staff', desc: 'Bulk Excel Upload', icon: 'M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5' },
   { key: 'employee-roster', label: 'Employee Roster', desc: 'ABC Audit for Managers', icon: 'M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3' },
@@ -146,6 +148,7 @@ const TILE_BY_KEY = Object.fromEntries(ALL_TILES.map(t => [t.key, t]))
 // and its list of tools — no more one long scrolling list.
 const CATEGORIES = [
   { title: 'Hub', keys: ['hub'] },
+  { title: 'Projects', keys: ['projects'] },
   { title: 'Staff & HR', keys: ['staff', 'import', 'employee-roster', 'roles-v2', 'paychex'] },
   { title: 'Portal Setup', keys: ['clubs', 'tiles', 'appearance', 'layouts', 'config', 'drive-folders', 'forms', 'ticketing', 'action-links', 'references', 'portal-refresh'] },
   { title: 'Reports & KPIs', keys: ['kpi-goals', 'challenge-report', 'report-visibility', 'trends-12mo', 'speed-to-lead-audit', 'business-hours-stl', 'revenue-backfill', 'payroll-commissions'] },
@@ -204,6 +207,7 @@ export default function AdminPanel({ onBack, isElectron, onLocationChange, userR
         {activeSection === 'member-app' && <MemberAppAdmin />}
         {activeSection === 'member-notifications' && <MemberAppBroadcasts />}
         {activeSection === 'hub' && canHub && <HubAdmin />}
+        {activeSection === 'projects' && <ProjectsAdmin />}
         {activeSection === 'staff' && <AdminStaffTab />}
         {activeSection === 'import' && <BulkImportTab />}
         {activeSection === 'employee-roster' && <EmployeeRosterTab />}
