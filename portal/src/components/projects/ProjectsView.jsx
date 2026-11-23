@@ -7,7 +7,7 @@ import ProjectsCalendar from './ProjectsCalendar'
 import ProjectsGantt from './ProjectsGantt'
 import { SingleSelect, MultiSelect, Avatar, AvatarStack } from './Dropdown'
 import {
-  DEFAULT_FILTERS, PRIORITIES, PRIORITY, STATUSES, STATUS, OPEN, SORT_OPTIONS,
+  DEFAULT_FILTERS, PRIORITIES, PRIORITY, ACTIVE_STATUSES, STATUS, OPEN, SORT_OPTIONS,
   normalizeFilters, activeFilterCount, filterTasks, sortTasks, isoDay,
 } from './model'
 import { dueLabel, shortDate } from '../hub/dates'
@@ -16,7 +16,6 @@ const CARD = 'bg-surface/95 backdrop-blur-sm rounded-xl border border-border'
 const FILTER_KEY = 'projects-filters-v2'
 const VIEW_KEY = 'projects-view'
 const SORT_KEY = 'projects-sort'
-const SKIPPED_KEY = 'projects-board-skipped'
 const readLocal = (k, fallback) => { try { return localStorage.getItem(k) ?? fallback } catch { return fallback } }
 const writeLocal = (k, v) => { try { localStorage.setItem(k, v) } catch { /* ignore */ } }
 
@@ -69,10 +68,10 @@ function TaskRow({ t, nameOf, categoryName, onOpen, onStatus }) {
   const open = OPEN.includes(t.status)
   const due = open ? dueLabel(t.due_date) : null
   const pr = PRIORITY[t.priority]
-  const meta = [categoryName(t.category_id), t.status === 'skipped' && t.skip_reason ? `Skipped: ${t.skip_reason}` : null].filter(Boolean).join(' · ')
+  const meta = categoryName(t.category_id)
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-bg/60 cursor-pointer" onClick={() => onOpen(t)}>
-      <input type="checkbox" checked={t.status === 'complete'} disabled={t.status === 'skipped'}
+      <input type="checkbox" checked={t.status === 'complete'}
         title={t.status === 'complete' ? 'Reopen' : 'Mark complete'} aria-label={t.status === 'complete' ? 'Reopen' : 'Mark complete'}
         onClick={e => e.stopPropagation()}
         onChange={() => onStatus(t, t.status === 'complete' ? 'in_progress' : 'complete')}
@@ -97,9 +96,9 @@ function TaskRow({ t, nameOf, categoryName, onOpen, onStatus }) {
         <AvatarStack ids={t.assignees.map(a => a.staff_id)} nameOf={nameOf} max={3} />
       </span>
       <select value={t.status} onClick={e => e.stopPropagation()} onChange={e => onStatus(t, e.target.value)}
-        disabled={t.status === 'skipped'} title="Status" aria-label="Status"
+        title="Status" aria-label="Status"
         className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold bg-transparent ${STATUS[t.status]?.tone}`}>
-        {STATUSES.filter(s => s.value !== 'skipped' || t.status === 'skipped').map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+        {ACTIVE_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
       </select>
       <span className="hidden md:inline shrink-0 w-14 text-right text-[11px] text-text-muted" title="Assigned date">{shortDate(t.created_at)}</span>
     </div>
@@ -113,7 +112,6 @@ export default function ProjectsView({ onBack, openTaskId }) {
   const [q, setQ] = useState('')
   const [view, setView] = useState(() => (VIEWS.some(v => v.value === readLocal(VIEW_KEY, 'list')) ? readLocal(VIEW_KEY, 'list') : 'list'))
   const [sort, setSort] = useState(() => (SORT_OPTIONS.some(s => s.value === readLocal(SORT_KEY, '')) ? readLocal(SORT_KEY, '') : 'urgent'))
-  const [showSkipped, setShowSkipped] = useState(() => readLocal(SKIPPED_KEY, '0') === '1')
   const [editing, setEditing] = useState(undefined) // undefined closed, null new, task open
 
   const switchView = v => {
@@ -121,7 +119,6 @@ export default function ProjectsView({ onBack, openTaskId }) {
     if (v !== 'board' && sort === 'manual') chooseSort('urgent')
   }
   const chooseSort = v => { setSort(v); writeLocal(SORT_KEY, v) }
-  const toggleSkipped = on => { setShowSkipped(on); writeLocal(SKIPPED_KEY, on ? '1' : '0') }
   const updateFilters = patch => setFilters(f => {
     const next = { ...f, ...patch }
     writeLocal(FILTER_KEY, JSON.stringify(next))
@@ -166,10 +163,10 @@ export default function ProjectsView({ onBack, openTaskId }) {
   const moveTask = (t, status, sort_order) => change(t, status === t.status ? { sort_order } : { status, sort_order })
 
   const board = view === 'board'
-  const opts = { me: data?.me, today: isoDay(), board, showSkipped }
+  const opts = { me: data?.me, today: isoDay(), board }
   const f = { ...filters, q }
   const visible = useMemo(() => sortTasks(filterTasks(data?.tasks || [], f, opts), sort),
-    [data, filters, q, sort, board, showSkipped]) // eslint-disable-line react-hooks/exhaustive-deps
+    [data, filters, q, sort, board]) // eslint-disable-line react-hooks/exhaustive-deps
   const countFor = scope => filterTasks(data?.tasks || [], { ...f, scope, people: scope === 'me' ? null : f.people }, opts).length
   const active = activeFilterCount(filters, { board })
 
@@ -224,14 +221,9 @@ export default function ProjectsView({ onBack, openTaskId }) {
 
             <div className="space-y-2">
               <SideHeading>Filters</SideHeading>
-              {board ? (
-                <label className="flex items-center gap-2 px-2.5 text-sm text-text-primary cursor-pointer">
-                  <input type="checkbox" checked={showSkipped} onChange={e => toggleSkipped(e.target.checked)} className="accent-wcs-red" />
-                  Show skipped column
-                </label>
-              ) : (
+              {!board && (
                 <MultiSelect variant="field" label="Status" value={filters.statuses} onChange={statuses => updateFilters({ statuses })}
-                  options={STATUSES.map(s => ({ value: s.value, label: s.label }))} noun="statuses" allLabel="All" nullForAll={false} />
+                  options={ACTIVE_STATUSES.map(s => ({ value: s.value, label: s.label }))} noun="statuses" allLabel="All" nullForAll={false} />
               )}
               <MultiSelect variant="field" label="Priority" value={filters.priorities} onChange={priorities => updateFilters({ priorities })}
                 options={priorityOptions} noun="priorities" allLabel="Any" />
@@ -282,7 +274,7 @@ export default function ProjectsView({ onBack, openTaskId }) {
               </div>
             )}
             {board && data.tasks.length > 0 && (
-              <TasksBoard tasks={visible} showSkipped={showSkipped} sort={sort} nameOf={nameOf} categoryName={categoryName}
+              <TasksBoard tasks={visible} sort={sort} nameOf={nameOf} categoryName={categoryName}
                 onOpen={setEditing} onMove={moveTask} />
             )}
             {view === 'calendar' && data.tasks.length > 0 && (

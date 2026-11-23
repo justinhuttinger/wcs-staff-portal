@@ -24,9 +24,10 @@ test('default: my open tasks only', () => {
   assert.deepEqual(run({}), ['mine'])
 })
 
-test('everyone with a status list; skipped only when it is in the list', () => {
+test('everyone with a status list; skipped tasks never show', () => {
   assert.deepEqual(run({ scope: 'everyone', statuses: NO_SKIP }), ['mine', 'yours', 'both', 'nobody'])
-  assert.deepEqual(run({ scope: 'everyone', statuses: ['skipped'] }), ['skip'])
+  assert.deepEqual(run({ scope: 'everyone', statuses: ALL }), ['mine', 'yours', 'both', 'nobody'])
+  assert.deepEqual(run({ scope: 'everyone', statuses: ['skipped'] }), [])
 })
 
 test('everyone narrowed to people; my tasks ignores the people list', () => {
@@ -47,10 +48,9 @@ test('category (with none), priority list and search', () => {
   assert.deepEqual(run({ scope: 'everyone', q: 'mats' }), ['nobody'])
 })
 
-test('board mode ignores the status list but hides skipped unless shown', () => {
-  const b = o => ids(filterTasks(tasks, { ...DEFAULT_FILTERS, scope: 'everyone' }, { me: ME, today, board: true, ...o }))
-  assert.deepEqual(b({}), ['mine', 'yours', 'both', 'nobody'])
-  assert.deepEqual(b({ showSkipped: true }), ['mine', 'yours', 'both', 'skip', 'nobody'])
+test('board mode ignores the status list and still hides skipped', () => {
+  const b = ids(filterTasks(tasks, { ...DEFAULT_FILTERS, scope: 'everyone' }, { me: ME, today, board: true }))
+  assert.deepEqual(b, ['mine', 'yours', 'both', 'nobody'])
 })
 
 test('normalizeFilters keeps valid keys and drops an old shape', () => {
@@ -102,11 +102,11 @@ test('mergeThread interleaves comments and history by time', () => {
   assert.deepEqual(out.map(x => x.item.id), ['a1', 'c1', 'a2'])
 })
 
-test('board columns: drag order by default, chosen sort when given, skipped hidden unless asked', () => {
+test('board columns: three columns, drag order by default, chosen sort when given', () => {
   const cols = boardColumns([t('a', { sort_order: 2 }), t('b', { sort_order: 1 }), t('s', { status: 'skipped' })])
   assert.deepEqual(cols.map(c => c.value), ['not_started', 'in_progress', 'complete'])
   assert.deepEqual(cols[0].items.map(x => x.id), ['b', 'a'])
-  assert.equal(boardColumns([], { showSkipped: true }).length, 4)
+  assert.equal(boardColumns([]).length, 3)
   const byUrgent = boardColumns([t('a', { sort_order: 1 }), t('b', { sort_order: 2, priority: 'urgent' })], { sort: 'urgent' })
   assert.deepEqual(byUrgent[0].items.map(x => x.id), ['b', 'a'])
 })
