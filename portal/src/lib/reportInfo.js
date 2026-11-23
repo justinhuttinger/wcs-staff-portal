@@ -520,6 +520,26 @@ const REPORT_INFO = {
     ],
   },
 
+  challenge: {
+    title: 'Challenge',
+    sections: [
+      {
+        heading: 'What this is',
+        body:
+          'Everyone who bought a Transformation Challenge entry through the GHL payment links: Kick Start ($25), Challenger ($57) and All In ($97). One row per purchase, with the club, plan, phone and email.',
+      },
+      {
+        heading: 'Where it comes from',
+        body:
+          'GHL Payments, Transactions, at each club. A purchase counts when it succeeded, was not fully refunded, falls inside the season dates, and its product name contains "Transformation Challenge". Failed card attempts are left out. The plan comes from the product name, or the price if the name does not say. Phone numbers come from the GHL contact.',
+      },
+      {
+        heading: 'Seasonal',
+        body:
+          'An admin turns this report on and off, and sets the season dates, in Admin, Challenge Report. While it is off, it does not appear here.',
+      },
+    ],
+  },
   kpis: {
     title: 'KPIs',
     sections: [

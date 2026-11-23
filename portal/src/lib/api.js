@@ -1133,6 +1133,19 @@ export async function setTillFloat(location_slug, standard_float) {
   return api('/till/settings', { method: 'PUT', body: JSON.stringify({ location_slug, standard_float }) })
 }
 
+// Transformation Challenge report (seasonal; on/off in Admin -> Challenge Report).
+export async function getChallengeSettings() {
+  return api('/reports/challenge/settings')
+}
+
+export async function saveChallengeSettings(settings) {
+  return api('/reports/challenge/settings', { method: 'PUT', body: JSON.stringify(settings) })
+}
+
+export async function getChallengeReport({ refresh = false } = {}) {
+  return api('/reports/challenge' + (refresh ? '?refresh=1' : ''))
+}
+
 // Email Marketing report — GHL email campaign sends + stats (from email_stats).
 export async function getEmailMarketingCampaigns(params = {}) {
   const qs = new URLSearchParams(params).toString()

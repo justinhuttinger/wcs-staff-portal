@@ -22,6 +22,7 @@ import EmailMarketingReport from './reports/EmailMarketingReport'
 import MarketingEngagementReport from './reports/MarketingEngagementReport'
 import MarketingScoreboardReport from './reports/MarketingScoreboardReport'
 import KpiReport from './reports/KpiReport'
+import ChallengeReport from './reports/ChallengeReport'
 import OperandioReport, { OPERANDIO_SINGLE_CLUB_VIEWS } from './reports/OperandioReport'
 import ReportInfoButton from './ReportInfoButton'
 import MembershipCategoryFilter from './reports/MembershipCategoryFilter'
@@ -30,6 +31,7 @@ import ReportDetailView from './reports/ReportDetailView'
 import { roleAtLeast } from '../lib/roles'
 import { getReportInfo } from '../lib/reportInfo'
 import { hasReportDetail } from '../lib/reportDetail'
+import { getChallengeSettings } from '../lib/api'
 
 // SVG path data for each reporting tile (outline style, matches main page tiles via ToolButton)
 const REPORT_ICONS = {
@@ -59,6 +61,7 @@ const REPORT_ICONS = {
   'marketing-scoreboard': 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z',
   'marketing-engagement': 'M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z',
   kpis: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z',
+  challenge: 'M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0',
 }
 
 const ALL_REPORT_TILES = [
@@ -85,11 +88,13 @@ const ALL_REPORT_TILES = [
   { key: 'marketing-engagement', label: 'Marketing Engagement', desc: 'Email + SMS Performance' },
   { key: 'marketing-scoreboard', label: 'Scoreboard', desc: 'Leads, Carts & Joins by Day' },
   { key: 'kpis', label: 'KPIs', desc: 'Goals vs. Actuals' },
+  { key: 'challenge', label: 'Challenge', desc: 'Transformation Challenge Entries' },
 ]
 
 // Reports that sit at the very top of the nav as standalone items — no group
-// header, no dropdown. KPIs leads the list.
-const STANDALONE_REPORTS = ['kpis']
+// header, no dropdown. KPIs leads the list. Challenge is seasonal: it only
+// shows while it is turned on in Admin -> Challenge Report.
+const STANDALONE_REPORTS = ['kpis', 'challenge']
 
 // Group tiles surface fewer items at the top level. Each group holds an
 // ordered list of report keys; reports outside any group render either as
@@ -209,7 +214,18 @@ function parseHash() {
 
 export default function ReportingView({ user, onBack, location, isAdmin, onAnalytics }) {
   const userRole = user?.staff?.role || 'team_member'
+  // Seasonal Challenge report. Unknown (null) counts as on so a link straight to
+  // it still lands there; it drops out of the list once the setting says off.
+  const [challengeEnabled, setChallengeEnabled] = useState(null)
+  useEffect(() => {
+    let alive = true
+    getChallengeSettings()
+      .then(({ settings }) => { if (alive) setChallengeEnabled(!!settings?.enabled) })
+      .catch(() => { if (alive) setChallengeEnabled(false) })
+    return () => { alive = false }
+  }, [])
   const REPORT_TILES = getReportTilesForRole(userRole, user?.staff?.custom_reports, user?.visible_tools)
+    .filter(t => t.key !== 'challenge' || challengeEnabled !== false)
   // May this viewer open the rows behind a number? The records endpoint is
   // manager and above, so anyone below sees the figures exactly as before
   // rather than a click that 403s. One definition, shared by every report that
@@ -463,7 +479,7 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
       {/* Header card */}
       <div className="relative z-20 bg-surface/95 backdrop-blur-sm rounded-xl border border-border p-5 mb-6">
         {(() => {
-          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'compliance' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'marketing-scoreboard'
+          const showDateControls = activeReport !== 'pt-roster' && activeReport !== 'compliance' && activeReport !== 'payroll' && activeReport !== 'session-frequency' && activeReport !== 'meta-ads' && activeReport !== 'google-marketing' && activeReport !== 'marketing-scoreboard' && activeReport !== 'challenge'
           const showLocation = hasMultipleReportLocations
           return (
             <>
@@ -518,7 +534,7 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
                   {/* No label for single-club users: the kiosk's location is not
                       the club the report shows (that follows the signed-in
                       person), so naming it here was misleading. */}
-                  {!['kpis', 'compliance', 'till'].includes(activeReport) && showLocation && (
+                  {!['kpis', 'compliance', 'till', 'challenge'].includes(activeReport) && showLocation && (
                     <LocationMultiSelect
                       value={locationSlug}
                       onChange={setLocationSlug}
@@ -692,6 +708,9 @@ export default function ReportingView({ user, onBack, location, isAdmin, onAnaly
           )}
           {activeReport === 'kpis' && (
             <KpiReport startDate={startDate} endDate={endDate} locationSlug={locationSlug} />
+          )}
+          {activeReport === 'challenge' && (
+            <ChallengeReport locationSlug={locationSlug} />
           )}
         </>
         )}
