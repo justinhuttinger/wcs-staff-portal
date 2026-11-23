@@ -6,6 +6,7 @@ const authenticate = require('../middleware/auth')
 const { requireRole } = require('../middleware/role')
 const { supabaseAdmin } = require('../services/supabase')
 const { isProjectsMember } = require('../services/projects/members')
+const { queueTaskEvent } = require('../services/projects/notify')
 const { cleanTaskInput, statusPatch, cleanAssigneeIds, diffAssignees, activityFor, cleanCommentBody, isUuid } = require('../services/projects/taskModel')
 
 const router = Router()
@@ -237,7 +238,9 @@ router.post('/tasks', memberOnly, async (req, res) => {
       { kind: 'created' },
       ...(assignees.length ? [{ kind: 'assigned', detail: { staff_ids: assignees } }] : []),
     ])
-    res.json({ task: await loadTask(data.id) })
+    const task = await loadTask(data.id)
+    res.json({ task })
+    if (assignees.length) queueTaskEvent({ event: 'assigned', task, actor: req.staff, added: assignees })
   } catch (e) { sendError(res, e) }
 })
 
@@ -280,7 +283,10 @@ router.patch('/tasks/:id', memberOnly, async (req, res) => {
       diff = await setAssignees(existing.id, cleanAssigneeIds(body.assignee_ids, allowed), req.staff.id)
     }
     await logActivity(existing.id, req.staff.id, activityFor(existing, patch, diff))
-    res.json({ task: await loadTask(existing.id) })
+    const task = await loadTask(existing.id)
+    res.json({ task })
+    if (diff.add.length) queueTaskEvent({ event: 'assigned', task, actor: req.staff, added: diff.add })
+    if (patch.status === 'complete' && existing.status !== 'complete') queueTaskEvent({ event: 'complete', task, actor: req.staff })
   } catch (e) { sendError(res, e) }
 })
 
@@ -317,6 +323,9 @@ router.post('/tasks/:id/comments', memberOnly, async (req, res) => {
       .insert({ task_id: req.params.id, author_id: req.staff.id, body }).select('*').single()
     if (insErr) throw insErr
     res.json({ comment: data })
+    // Edits never re-notify; only a new comment does.
+    loadTask(req.params.id).then(task => queueTaskEvent({ event: 'comment', task, actor: req.staff, commentBody: body }))
+      .catch(e => console.error('[projects] comment notify failed:', e.message))
   } catch (e) { sendError(res, e) }
 })
 
