@@ -3,6 +3,7 @@ import { projects } from '../../lib/api'
 import { Button, ErrorBanner, EmptyState, Spinner, Select, TextInput } from '../adsmanager/ui'
 import TaskEditor from './TaskEditor'
 import TasksBoard from './TasksBoard'
+import ProjectsCalendar from './ProjectsCalendar'
 import { DEFAULT_FILTERS, PRIORITIES, PRIORITY, STATUSES, STATUS, OPEN, filterTasks, sortTasks, groupByStatus, isoDay } from './model'
 import { dueLabel, shortDate } from '../hub/dates'
 
@@ -75,7 +76,7 @@ export default function ProjectsView({ onBack, openTaskId }) {
   const [filters, setFilters] = useState(loadFilters)
   const [sort, setSort] = useState('due')
   // List or board, and whether the board shows a Skipped column; per browser.
-  const [view, setView] = useState(() => (readLocal(VIEW_KEY, 'list') === 'board' ? 'board' : 'list'))
+  const [view, setView] = useState(() => (['board', 'calendar'].includes(readLocal(VIEW_KEY, 'list')) ? readLocal(VIEW_KEY, 'list') : 'list'))
   const [showSkipped, setShowSkipped] = useState(() => readLocal(SKIPPED_KEY, '0') === '1')
   const switchView = v => { setView(v); writeLocal(VIEW_KEY, v) }
   const toggleSkipped = on => { setShowSkipped(on); writeLocal(SKIPPED_KEY, on ? '1' : '0') }
@@ -134,6 +135,12 @@ export default function ProjectsView({ onBack, openTaskId }) {
       upsert((await projects.tasks.update(t.id, body)).task)
     } catch (e) { setError(e.message); load() }
   }
+
+  // Drag on the calendar: a new due date (null clears it).
+  const rescheduleTask = async (t, due_date) => {
+    setData(d => ({ ...d, tasks: d.tasks.map(x => (x.id === t.id ? { ...x, due_date } : x)) }))
+    try { upsert((await projects.tasks.update(t.id, { due_date })).task) } catch (e) { setError(e.message); load() }
+  }
   const groups = useMemo(() => groupByStatus(visible), [visible])
   const filtered = JSON.stringify({ ...filters, q: '' }) !== JSON.stringify({ ...DEFAULT_FILTERS, q: '' }) || !!filters.q
 
@@ -157,7 +164,7 @@ export default function ProjectsView({ onBack, openTaskId }) {
       {data && (
         <div className={`${CARD} p-4 flex items-center gap-2 flex-wrap`}>
           <div className="flex rounded-lg border border-border overflow-hidden">
-            {[['list', 'List'], ['board', 'Board']].map(([v, label]) => (
+            {[['list', 'List'], ['board', 'Board'], ['calendar', 'Calendar']].map(([v, label]) => (
               <button key={v} onClick={() => switchView(v)}
                 className={`px-3 py-1.5 text-xs font-semibold ${view === v ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted hover:text-text-primary'}`}>{label}</button>
             ))}
@@ -171,7 +178,7 @@ export default function ProjectsView({ onBack, openTaskId }) {
           <Select value={filters.who === 'me' || filters.who === 'all' ? '' : filters.who} className={SMALL}
             onChange={e => setFilter('who', e.target.value || 'all')}
             options={[{ value: '', label: 'Any person' }, ...data.members.map(m => ({ value: m.id, label: m.name }))]} />
-          {view === 'list' && (
+          {view !== 'board' && (
             <Select value={filters.status} onChange={e => setFilter('status', e.target.value)} className={SMALL}
               options={[{ value: 'open', label: 'Open' }, { value: 'all', label: 'All but skipped' }, ...STATUSES.map(s => ({ value: s.value, label: s.label }))]} />
           )}
@@ -181,7 +188,7 @@ export default function ProjectsView({ onBack, openTaskId }) {
             options={[{ value: '', label: 'All categories' }, ...data.categories.map(c => ({ value: c.id, label: c.name })), { value: 'none', label: 'No category' }]} />
           <Select value={filters.due} onChange={e => setFilter('due', e.target.value)} className={SMALL}
             options={[{ value: '', label: 'Any due date' }, { value: 'overdue', label: 'Overdue' }, { value: 'week', label: 'Due in 7 days' }, { value: 'none', label: 'No due date' }]} />
-          {view === 'list' ? (
+          {view === 'calendar' ? null : view === 'list' ? (
             <Select value={sort} onChange={e => setSort(e.target.value)} className={SMALL}
               options={[{ value: 'due', label: 'Sort: due date' }, { value: 'priority', label: 'Sort: priority' }, { value: 'newest', label: 'Sort: newest' }, { value: 'oldest', label: 'Sort: oldest' }]} />
           ) : (
@@ -204,6 +211,10 @@ export default function ProjectsView({ onBack, openTaskId }) {
             action={<Button onClick={() => setEditing(null)}>New task</Button>} />
         </div>
       )}
+      {view === 'calendar' && data && data.tasks.length > 0 && (
+        <ProjectsCalendar tasks={visible} onOpen={row => setEditing(row)} onReschedule={rescheduleTask} />
+      )}
+
       {view === 'board' && data && data.tasks.length > 0 && (
         <TasksBoard tasks={visible} showSkipped={showSkipped} nameOf={nameOf} categoryName={categoryName}
           onOpen={row => setEditing(row)} onMove={moveTask} />
