@@ -158,19 +158,16 @@ export default function ChallengeReport({ locationSlug }) {
 
   const revenue = clubRows.reduce((s, r) => s + r.amount, 0)
   const clubLabel = club === 'all' ? 'all-clubs' : club
-  const seasonText = data.settings?.season_end
-    ? `${fmtDate(data.settings.season_start + 'T12:00:00Z')} to ${fmtDate(data.settings.season_end + 'T12:00:00Z')}`
-    : `since ${fmtDate(data.settings?.season_start + 'T12:00:00Z')}`
 
   return (
     <div className="space-y-5">
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <StatCard label="Participants" value={clubRows.length} sub={fmtMoney(revenue) + ' collected'} />
+        <StatCard label="Participants" value={clubRows.length} sub={tierCounts.other ? `incl. ${tierCounts.other} other entries` : null} />
         <StatCard label="Kick Start" value={tierCounts.kick_start} sub="$25" />
         <StatCard label="Challenger" value={tierCounts.challenger} sub="$57" />
         <StatCard label="All In" value={tierCounts.all_in} sub="$97" />
-        <StatCard label="Season" value={<span className="text-base">{seasonText}</span>} sub={tierCounts.other ? `${tierCounts.other} other entries` : 'GHL payment links'} />
+        <StatCard label="Total Collected" value={fmtMoney(revenue)} sub={club === 'all' ? 'All clubs' : (clubs.find(c => c.slug === club)?.name || '')} />
       </div>
 
       {data.failed_clubs?.length > 0 && (
