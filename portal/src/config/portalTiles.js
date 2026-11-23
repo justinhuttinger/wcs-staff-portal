@@ -89,4 +89,5 @@ export const CUSTOM_REPORT_CATALOG = [
   { key: 'email-marketing',   label: 'Email Marketing' },
   { key: 'marketing-engagement', label: 'Marketing Engagement' },
   { key: 'marketing-scoreboard', label: 'Marketing Scoreboard' },
+  { key: 'challenge',         label: 'Challenge' },
 ]
