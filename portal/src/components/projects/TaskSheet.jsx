@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { projects } from '../../lib/api'
 import { ErrorBanner } from '../adsmanager/ui'
-import { PRIORITIES, STATUSES, STATUS } from './model'
+import { PRIORITIES, ACTIVE_STATUSES, STATUS } from './model'
 import { shortDate, dueLabel } from '../hub/dates'
 import { SingleSelect, MultiSelect, Avatar, AvatarStack } from './Dropdown'
 import TaskThread from './TaskThread'
@@ -42,14 +42,11 @@ export default function TaskSheet({ task, members, categories, defaultAssignee, 
   const [saving, setSaving] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
   const [error, setError] = useState('')
-  const [skipping, setSkipping] = useState(false)
-  const [skipReason, setSkipReason] = useState('')
   const [confirmClose, setConfirmClose] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const skipped = task?.status === 'skipped'
   const dirty = JSON.stringify(form) !== JSON.stringify(initial)
 
-  const requestClose = () => { if (dirty && !skipped) setConfirmClose(true); else onClose() }
+  const requestClose = () => { if (dirty) setConfirmClose(true); else onClose() }
 
   // Escape closes the view, unless a dropdown is open (it takes the first one).
   useEffect(() => {
@@ -72,7 +69,6 @@ export default function TaskSheet({ task, members, categories, defaultAssignee, 
     try {
       const r = task ? await projects.tasks.update(task.id, body) : await projects.tasks.create(body)
       onSaved(r.task)
-      setSkipping(false); setSkipReason('')
       setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1800)
     } catch (e) { setError(e.message) } finally { setSaving(false) }
   }
@@ -92,7 +88,7 @@ export default function TaskSheet({ task, members, categories, defaultAssignee, 
     return ids.map(id => ({ value: id, label: nameOf(id), icon: <Avatar id={id} name={nameOf(id)} size={20} /> }))
   }, [members, form.assignee_ids, nameOf])
 
-  const statusOptions = STATUSES.filter(s => s.value !== 'skipped' || skipped).map(s => ({ value: s.value, label: s.label }))
+  const statusOptions = ACTIVE_STATUSES.map(s => ({ value: s.value, label: s.label }))
   const priorityOptions = PRIORITIES.map(p => ({ value: p.value, label: p.label, icon: <span className={`w-2 h-2 rounded-full ${p.dot}`} /> }))
   const categoryOptions = [{ value: '', label: 'No category' }, ...categories.map(c => ({ value: c.id, label: c.name }))]
   const due = task && ['not_started', 'in_progress'].includes(task.status) ? dueLabel(task.due_date) : null
@@ -117,21 +113,11 @@ export default function TaskSheet({ task, members, categories, defaultAssignee, 
             </span>
             <div className="ml-auto flex items-center gap-2">
               {savedFlash && <span className="text-xs font-semibold text-green-600">Saved</span>}
-              {dirty && !savedFlash && !skipped && <span className="text-xs text-text-muted">Unsaved changes</span>}
-              {task && !skipped && !skipping && (
-                <button type="button" onClick={() => setSkipping(true)} disabled={saving}
-                  className="px-3 py-1.5 rounded-lg text-sm font-semibold text-text-muted hover:text-text-primary">Skip</button>
-              )}
-              {skipped && (
-                <button type="button" onClick={() => send({ status: 'not_started' })} disabled={saving}
-                  className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-bg border border-border text-text-primary hover:bg-border/40">Restore</button>
-              )}
-              {!skipped && (
-                <button type="button" onClick={save} disabled={saving || (task && !dirty)}
-                  className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-wcs-red text-white hover:bg-wcs-red/90 disabled:bg-wcs-red/40">
-                  {saving ? 'Saving…' : task ? 'Save' : 'Create task'}
-                </button>
-              )}
+              {dirty && !savedFlash && <span className="text-xs text-text-muted">Unsaved changes</span>}
+              <button type="button" onClick={save} disabled={saving || (task && !dirty)}
+                className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-wcs-red text-white hover:bg-wcs-red/90 disabled:bg-wcs-red/40">
+                {saving ? 'Saving…' : task ? 'Save' : 'Create task'}
+              </button>
               <button type="button" onClick={requestClose} aria-label="Close"
                 className="text-text-muted hover:text-text-primary text-2xl leading-none px-1.5">×</button>
             </div>
@@ -145,27 +131,9 @@ export default function TaskSheet({ task, members, categories, defaultAssignee, 
               <button type="button" onClick={() => { setConfirmClose(false); save() }} className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-wcs-red text-white">Save</button>
             </div>
           )}
-          {skipping && (
-            <div className="rounded-lg border border-border bg-bg p-4 space-y-3">
-              <p className="text-sm font-semibold text-text-primary">Skip this task?</p>
-              <p className="text-xs text-text-muted">It's hidden from open lists but kept, and can be restored any time.</p>
-              <input value={skipReason} onChange={e => setSkipReason(e.target.value)} placeholder="Reason (optional)" autoFocus
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red/30" />
-              <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => setSkipping(false)} className="text-sm font-semibold text-text-muted hover:text-text-primary px-2">Keep it</button>
-                <button type="button" disabled={saving} onClick={() => send({ status: 'skipped', skip_reason: skipReason })}
-                  className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-bg border border-border text-text-primary">Skip task</button>
-              </div>
-            </div>
-          )}
-          {skipped && (
-            <div className="rounded-lg border border-border bg-bg px-4 py-3 text-sm text-text-muted">
-              This task was skipped{task.skip_reason ? `: ${task.skip_reason}` : '.'} Restore it to make changes.
-            </div>
-          )}
           <ErrorBanner error={error} onDismiss={() => setError('')} />
 
-          <fieldset disabled={skipped} className="space-y-5 min-w-0 disabled:opacity-60">
+          <div className="space-y-5 min-w-0">
             <textarea value={form.title} onChange={e => set('title', e.target.value)} rows={1} placeholder="Task title" autoFocus={!task}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (!saving && (dirty || !task)) save() } }}
               className="w-full resize-none bg-transparent text-2xl font-bold tracking-tight text-text-primary placeholder:text-text-muted/60 border-0 border-b border-transparent focus:border-border focus:outline-none py-1 [field-sizing:content]" />
@@ -201,7 +169,7 @@ export default function TaskSheet({ task, members, categories, defaultAssignee, 
                 placeholder="What needs to happen, links, details…"
                 className="w-full rounded-xl border border-border bg-bg px-3 py-2.5 text-sm leading-relaxed text-text-primary focus:outline-none focus:ring-2 focus:ring-wcs-red/30 resize-y" />
             </div>
-          </fieldset>
+          </div>
 
           {task
             ? <TaskFiles taskId={task.id} nameOf={nameOf} onCountChange={onFilesChanged} />

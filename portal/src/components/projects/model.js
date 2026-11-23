@@ -16,6 +16,9 @@ export const STATUSES = [
   { value: 'skipped', label: 'Skipped', tone: 'text-text-muted bg-bg border-border line-through' },
 ]
 export const STATUS = Object.fromEntries(STATUSES.map(s => [s.value, s]))
+// What people can pick. Skipped is no longer offered; any old skipped task
+// stays hidden (STATUSES keeps it so its label and history still read).
+export const ACTIVE_STATUSES = STATUSES.filter(s => s.value !== 'skipped')
 
 export const OPEN = ['not_started', 'in_progress']
 
@@ -63,14 +66,14 @@ export function isAssigned(task, staffId) {
   return (task.assignees || []).some(a => a.staff_id === staffId)
 }
 
-// `board: true` skips the status list (the board shows statuses as columns)
-// but still hides Skipped unless `showSkipped`.
-export function filterTasks(tasks, f, { me, today = isoDay(), board = false, showSkipped = false } = {}) {
+// `board: true` skips the status list (the board shows statuses as columns).
+// Skipped tasks are always hidden.
+export function filterTasks(tasks, f, { me, today = isoDay(), board = false } = {}) {
   const q = String(f.q || '').trim().toLowerCase()
   const weekEnd = addDays(today, 7)
   return (tasks || []).filter(t => {
-    if (board) { if (t.status === 'skipped' && !showSkipped) return false }
-    else if (f.statuses && !f.statuses.includes(t.status)) return false
+    if (t.status === 'skipped') return false
+    if (!board && f.statuses && !f.statuses.includes(t.status)) return false
 
     if (f.scope === 'me') { if (!isAssigned(t, me)) return false }
     else if (f.people && !f.people.some(id => isAssigned(t, id))) return false
@@ -172,10 +175,10 @@ export function mergeThread(comments = [], activity = []) {
   ].sort((x, y) => String(x.at).localeCompare(String(y.at)))
 }
 
-// Board: one column per status in board order; Skipped only when asked for.
+// Board: one column per status in board order.
 // Cards follow the chosen sort; 'manual' is the drag order (sort_order).
-export function boardColumns(tasks, { showSkipped = false, sort = 'manual' } = {}) {
-  return STATUSES.filter(s => showSkipped || s.value !== 'skipped').map(s => ({
+export function boardColumns(tasks, { sort = 'manual' } = {}) {
+  return ACTIVE_STATUSES.map(s => ({
     ...s,
     items: sortTasks(tasks.filter(t => t.status === s.value), sort),
   }))

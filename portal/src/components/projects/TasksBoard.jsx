@@ -15,7 +15,7 @@ function Card({ t, nameOf, categoryName, dragging, onOpen, onDragStart, onDragEn
       className={`rounded-lg border border-border bg-bg p-3 cursor-grab active:cursor-grabbing hover:border-text-muted/50 transition-opacity ${dragging ? 'opacity-40' : ''}`}>
       <div className="flex items-start gap-2">
         <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${pr?.dot}`} title={`${pr?.label} priority`} />
-        <p className={`text-sm font-semibold leading-snug ${t.status === 'skipped' ? 'line-through text-text-muted' : 'text-text-primary'}`}>{t.title}</p>
+        <p className={`text-sm font-semibold leading-snug text-text-primary`}>{t.title}</p>
       </div>
       {cat && <p className="text-[11px] text-text-muted mt-1 pl-4 truncate">{cat}</p>}
       <div className="flex items-center justify-between gap-2 mt-2 pl-4">
@@ -49,8 +49,8 @@ function Card({ t, nameOf, categoryName, dragging, onOpen, onDragStart, onDragEn
 // Columns by status. Drag a card to another column (or within one) to change
 // its status and position. Touch devices: tap a card and set status in the
 // editor (browsers don't drag on touch).
-export default function TasksBoard({ tasks, showSkipped, sort = 'manual', nameOf, categoryName, onOpen, onMove }) {
-  const columns = boardColumns(tasks, { showSkipped, sort })
+export default function TasksBoard({ tasks, sort = 'manual', nameOf, categoryName, onOpen, onMove }) {
+  const columns = boardColumns(tasks, { sort })
   const manual = sort === 'manual'
   const [dragId, setDragId] = useState(null)
   const [drop, setDrop] = useState(null) // { status, index }
@@ -93,7 +93,7 @@ export default function TasksBoard({ tasks, showSkipped, sort = 'manual', nameOf
   }
 
   return (
-    <div className={`grid gap-4 items-start grid-cols-1 sm:grid-cols-2 ${showSkipped ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+    <div className="grid gap-4 items-start grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
       {columns.map(col => {
         const others = col.items.filter(t => t.id !== dragId)
         const target = drop?.status === col.value
