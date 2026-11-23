@@ -2,6 +2,7 @@ const { Router } = require('express')
 const { supabaseAdmin } = require('../services/supabase')
 const authenticate = require('../middleware/auth')
 const { getVisibleTools } = require('../services/visibleTools')
+const { isProjectsMember } = require('../services/projects/members')
 const { createClient } = require('@supabase/supabase-js')
 const rateLimit = require('express-rate-limit')
 
@@ -401,7 +402,10 @@ router.get('/me', authenticate, async (req, res) => {
     can_view_reports: sl.can_view_reports,
   }))
 
-  const visible_tools = await getVisibleTools(req.staff)
+  const [visible_tools, projects_member] = await Promise.all([
+    getVisibleTools(req.staff),
+    isProjectsMember(req.staff.id),
+  ])
 
   res.json({
     staff: {
@@ -417,6 +421,7 @@ router.get('/me', authenticate, async (req, res) => {
       marketing_types: req.staff.marketing_types || null,
       custom_tiles: req.staff.custom_tiles || [],
       custom_reports: req.staff.custom_reports || [],
+      projects_member,
     },
     visible_tools,
     ...(req.impersonating ? {
