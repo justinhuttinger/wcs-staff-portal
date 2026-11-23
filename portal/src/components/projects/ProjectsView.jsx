@@ -4,6 +4,7 @@ import { Button, ErrorBanner, EmptyState, Spinner, Select, TextInput } from '../
 import TaskEditor from './TaskEditor'
 import TasksBoard from './TasksBoard'
 import ProjectsCalendar from './ProjectsCalendar'
+import ProjectsGantt from './ProjectsGantt'
 import { DEFAULT_FILTERS, PRIORITIES, PRIORITY, STATUSES, STATUS, OPEN, filterTasks, sortTasks, groupByStatus, isoDay } from './model'
 import { dueLabel, shortDate } from '../hub/dates'
 
@@ -84,7 +85,7 @@ export default function ProjectsView({ onBack, openTaskId }) {
   const [filters, setFilters] = useState(loadFilters)
   const [sort, setSort] = useState('due')
   // List or board, and whether the board shows a Skipped column; per browser.
-  const [view, setView] = useState(() => (['board', 'calendar'].includes(readLocal(VIEW_KEY, 'list')) ? readLocal(VIEW_KEY, 'list') : 'list'))
+  const [view, setView] = useState(() => (['board', 'calendar', 'gantt'].includes(readLocal(VIEW_KEY, 'list')) ? readLocal(VIEW_KEY, 'list') : 'list'))
   const [showSkipped, setShowSkipped] = useState(() => readLocal(SKIPPED_KEY, '0') === '1')
   const switchView = v => { setView(v); writeLocal(VIEW_KEY, v) }
   const toggleSkipped = on => { setShowSkipped(on); writeLocal(SKIPPED_KEY, on ? '1' : '0') }
@@ -145,6 +146,12 @@ export default function ProjectsView({ onBack, openTaskId }) {
     } catch (e) { setError(e.message); load() }
   }
 
+  // Drag on the timeline: new start and/or due date.
+  const redateTask = async (t, patch) => {
+    setData(d => ({ ...d, tasks: d.tasks.map(x => (x.id === t.id ? { ...x, ...patch } : x)) }))
+    try { upsert((await projects.tasks.update(t.id, patch)).task) } catch (e) { setError(e.message); load() }
+  }
+
   // Drag on the calendar: a new due date (null clears it).
   const rescheduleTask = async (t, due_date) => {
     setData(d => ({ ...d, tasks: d.tasks.map(x => (x.id === t.id ? { ...x, due_date } : x)) }))
@@ -173,7 +180,7 @@ export default function ProjectsView({ onBack, openTaskId }) {
       {data && (
         <div className={`${CARD} p-4 flex items-center gap-2 flex-wrap`}>
           <div className="flex rounded-lg border border-border overflow-hidden">
-            {[['list', 'List'], ['board', 'Board'], ['calendar', 'Calendar']].map(([v, label]) => (
+            {[['list', 'List'], ['board', 'Board'], ['calendar', 'Calendar'], ['gantt', 'Timeline']].map(([v, label]) => (
               <button key={v} onClick={() => switchView(v)}
                 className={`px-3 py-1.5 text-xs font-semibold ${view === v ? 'bg-wcs-red text-white' : 'bg-bg text-text-muted hover:text-text-primary'}`}>{label}</button>
             ))}
@@ -197,7 +204,7 @@ export default function ProjectsView({ onBack, openTaskId }) {
             options={[{ value: '', label: 'All categories' }, ...data.categories.map(c => ({ value: c.id, label: c.name })), { value: 'none', label: 'No category' }]} />
           <Select value={filters.due} onChange={e => setFilter('due', e.target.value)} className={SMALL}
             options={[{ value: '', label: 'Any due date' }, { value: 'overdue', label: 'Overdue' }, { value: 'week', label: 'Due in 7 days' }, { value: 'none', label: 'No due date' }]} />
-          {view === 'calendar' ? null : view === 'list' ? (
+          {view === 'calendar' || view === 'gantt' ? null : view === 'list' ? (
             <Select value={sort} onChange={e => setSort(e.target.value)} className={SMALL}
               options={[{ value: 'due', label: 'Sort: due date' }, { value: 'priority', label: 'Sort: priority' }, { value: 'newest', label: 'Sort: newest' }, { value: 'oldest', label: 'Sort: oldest' }]} />
           ) : (
@@ -220,6 +227,11 @@ export default function ProjectsView({ onBack, openTaskId }) {
             action={<Button onClick={() => setEditing(null)}>New task</Button>} />
         </div>
       )}
+      {view === 'gantt' && data && data.tasks.length > 0 && (
+        <ProjectsGantt tasks={visible} categories={data.categories} nameOf={nameOf}
+          onOpen={row => setEditing(row)} onDates={redateTask} />
+      )}
+
       {view === 'calendar' && data && data.tasks.length > 0 && (
         <ProjectsCalendar tasks={visible} onOpen={row => setEditing(row)} onReschedule={rescheduleTask} />
       )}
