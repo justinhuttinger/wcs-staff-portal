@@ -8,8 +8,8 @@ function txn(over = {}) {
   return {
     _id: 't1',
     contactId: 'c1',
-    contactName: 'michael  linn',
-    contactEmail: 'Mike@Example.com ',
+    contactName: 'jane  doe',
+    contactEmail: 'Jane@Example.com ',
     amount: 57,
     amountRefunded: 0,
     status: 'succeeded',
@@ -60,14 +60,14 @@ test('paging stops once a page reaches before the season', () => {
 
 test('row uses the contact for phone and name, transaction for email', () => {
   const club = { slug: 'clackamas', name: 'Clackamas' }
-  const row = toRow(txn(), club, { first_name: 'michael', last_name: 'linn', phone: '+15035551234' })
-  assert.equal(row.name, 'Michael Linn')
-  assert.equal(row.email, 'mike@example.com')
-  assert.equal(row.phone, '+15035551234')
+  const row = toRow(txn(), club, { first_name: 'jane', last_name: 'doe', phone: '+15035550100' })
+  assert.equal(row.name, 'Jane Doe')
+  assert.equal(row.email, 'jane@example.com')
+  assert.equal(row.phone, '+15035550100')
   assert.equal(row.tier_label, 'Challenger')
   assert.equal(row.club_slug, 'clackamas')
   const noContact = toRow(txn(), club, null)
-  assert.equal(noContact.name, 'Michael Linn')
+  assert.equal(noContact.name, 'Jane Doe')
   assert.equal(noContact.phone, '')
 })
 
