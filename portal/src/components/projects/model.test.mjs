@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { filterTasks, sortTasks, groupByStatus, DEFAULT_FILTERS, describeActivity, mergeThread } from './model.js'
+import { filterTasks, sortTasks, groupByStatus, DEFAULT_FILTERS, describeActivity, mergeThread, boardColumns, dropOrder } from './model.js'
 
 const ME = 'me-id'
 const YOU = 'you-id'
@@ -74,4 +74,20 @@ test('mergeThread interleaves comments and history by time', () => {
     [{ id: 'c1', created_at: '2026-11-23T10:00:00Z' }],
     [{ id: 'a1', created_at: '2026-11-23T09:00:00Z' }, { id: 'a2', created_at: '2026-11-23T11:00:00Z' }])
   assert.deepEqual(out.map(x => x.item.id), ['a1', 'c1', 'a2'])
+})
+
+test('board: status any includes skipped; columns hide skipped unless asked', () => {
+  assert.deepEqual(run({ who: 'all', status: 'any' }), ['mine', 'yours', 'both', 'skip', 'nobody'])
+  const cols = boardColumns([t('a', { sort_order: 2 }), t('b', { sort_order: 1 }), t('s', { status: 'skipped' })])
+  assert.deepEqual(cols.map(c => c.value), ['not_started', 'in_progress', 'complete'])
+  assert.deepEqual(cols[0].items.map(x => x.id), ['b', 'a'])
+  assert.equal(boardColumns([], { showSkipped: true }).length, 4)
+})
+
+test('dropOrder lands between neighbours, or past the ends', () => {
+  const items = [{ sort_order: 10 }, { sort_order: 20 }]
+  assert.equal(dropOrder(items, 1), 15)
+  assert.equal(dropOrder(items, 0), 10 - 1024)
+  assert.equal(dropOrder(items, 2), 20 + 1024)
+  assert.ok(dropOrder([], 0) > 0)
 })

@@ -48,7 +48,8 @@ export function filterTasks(tasks, f, { me, today = isoDay() } = {}) {
   const q = String(f.q || '').trim().toLowerCase()
   const weekEnd = addDays(today, 7)
   return (tasks || []).filter(t => {
-    if (f.status === 'open') { if (!OPEN.includes(t.status)) return false }
+    if (f.status === 'any') { /* the board: every status, skipped included */ }
+    else if (f.status === 'open') { if (!OPEN.includes(t.status)) return false }
     else if (f.status === 'all') { if (t.status === 'skipped') return false }
     else if (f.status && t.status !== f.status) return false
 
@@ -124,4 +125,27 @@ export function mergeThread(comments = [], activity = []) {
     ...comments.map(c => ({ type: 'comment', at: c.created_at, item: c })),
     ...activity.map(a => ({ type: 'activity', at: a.created_at, item: a })),
   ].sort((x, y) => String(x.at).localeCompare(String(y.at)))
+}
+
+// Board: one column per status in board order; Skipped only when asked for.
+// Cards sort by sort_order (drag position), then newest.
+export function boardColumns(tasks, { showSkipped = false } = {}) {
+  return STATUSES.filter(s => showSkipped || s.value !== 'skipped').map(s => ({
+    ...s,
+    items: tasks.filter(t => t.status === s.value)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(b.created_at).localeCompare(String(a.created_at))),
+  }))
+}
+
+// sort_order for a card dropped at `index` in a column (the column's cards
+// in order, without the dragged card). Lands between its new neighbours.
+export function dropOrder(items, index) {
+  const before = items[index - 1]
+  const after = items[index]
+  const b = before?.sort_order ?? null
+  const a = after?.sort_order ?? null
+  if (b == null && a == null) return Date.now()
+  if (b == null) return a - 1024
+  if (a == null) return b + 1024
+  return (a + b) / 2
 }
