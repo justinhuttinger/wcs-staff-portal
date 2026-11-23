@@ -123,6 +123,8 @@ export default function App() {
   const [showWorkflowTransfer, setShowWorkflowTransfer] = useState(false)
   const [showHub, setShowHub] = useState(false)
   const [showProjects, setShowProjects] = useState(false)
+  // A task to open once Projects loads (from a Chat DM's ?task= link).
+  const [projectsTaskId, setProjectsTaskId] = useState(null)
   const [showAnalytics, setShowAnalytics] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [savePrompt, setSavePrompt] = useState(null)
@@ -509,6 +511,19 @@ export default function App() {
   useEffect(() => {
     if (!user || deepLinkDone.current) return
     deepLinkDone.current = true
+    // Google Chat DMs for Projects link to /?task=<id>: open that task.
+    const params = new URLSearchParams(window.location.search)
+    const taskParam = params.get('task')
+    if (taskParam) {
+      params.delete('task')
+      const rest = params.toString()
+      history.replaceState(null, '', window.location.pathname + (rest ? '?' + rest : '') + window.location.hash)
+      if (canProjects && /^[0-9a-f-]{36}$/i.test(taskParam)) {
+        setProjectsTaskId(taskParam)
+        setShowProjects(true)
+        return
+      }
+    }
     const hash = window.location.hash
     const m = hash.match(/^#open\/([\w-]+)$/)
     if (m) {
@@ -959,7 +974,7 @@ export default function App() {
       ) : showWorkflowTransfer && canWorkflowTransfer ? (
         <WorkflowTransferView onBack={() => setShowWorkflowTransfer(false)} />
       ) : showProjects && canProjects ? (
-        <ProjectsView onBack={() => setShowProjects(false)} />
+        <ProjectsView onBack={() => { setShowProjects(false); setProjectsTaskId(null) }} openTaskId={projectsTaskId} />
       ) : showHub && canHub ? (
         <HubView onBack={() => setShowHub(false)} openTickets={openTickets}
           onOpenTickets={() => { setShowHub(false); setShowTicketsBoard(true) }} />

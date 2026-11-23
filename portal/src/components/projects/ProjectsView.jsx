@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { projects } from '../../lib/api'
 import { Button, ErrorBanner, EmptyState, Spinner, Select, TextInput } from '../adsmanager/ui'
 import TaskEditor from './TaskEditor'
@@ -64,7 +64,7 @@ function TaskRow({ t, nameOf, categoryName, onOpen, onStatus }) {
   )
 }
 
-export default function ProjectsView({ onBack }) {
+export default function ProjectsView({ onBack, openTaskId }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [filters, setFilters] = useState(loadFilters)
@@ -75,6 +75,16 @@ export default function ProjectsView({ onBack }) {
     try { setData(await projects.tasks.list()) } catch (e) { setError(e.message) }
   }, [])
   useEffect(() => { load() }, [load])
+
+  // Open the task a Chat link pointed at, once, after the list loads.
+  const openedLink = useRef(null)
+  useEffect(() => {
+    if (!data || !openTaskId || openedLink.current === openTaskId) return
+    openedLink.current = openTaskId
+    const hit = data.tasks.find(t => t.id === openTaskId)
+    if (hit) setEditing(hit)
+    else setError('That task could not be found.')
+  }, [data, openTaskId])
 
   const setFilter = (k, v) => setFilters(f => {
     const next = { ...f, [k]: v }
