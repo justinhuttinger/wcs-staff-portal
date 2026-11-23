@@ -160,13 +160,16 @@ export async function api(path, options = {}) {
   }
 
   const doFetch = () => fetchWithAuthAndRetry(path, options)
-  incrementPending()
+  // `silent: true` (background refreshes) skips the top progress bar, so a
+  // poll every few seconds doesn't flash it.
+  const silent = options.silent === true
+  if (!silent) incrementPending()
   try {
     const result = await doFetch()
     if (wantsCache) apiCache.set(path, result)
     return result
   } finally {
-    decrementPending()
+    if (!silent) decrementPending()
   }
 }
 
@@ -186,7 +189,7 @@ async function fetchWithAuthAndRetry(path, options) {
   if (impersonateId) headers['X-Impersonate-Staff-Id'] = impersonateId
 
   // Drop our custom options before passing to fetch.
-  const { cache: _cache, ...restOptions } = options
+  const { cache: _cache, silent: _silent, ...restOptions } = options
   const fetchOptions = { ...restOptions, headers }
   if (options.signal) fetchOptions.signal = options.signal
 
@@ -1835,11 +1838,11 @@ export async function getMeetingNotesAuthUrl() {
 // Projects: the team task tracker (members only; Admin > Projects manages them).
 export const projects = {
   tasks: {
-    list: () => api('/projects/tasks'),
+    list: (opts = {}) => api('/projects/tasks', opts),
     get: (id) => api(`/projects/tasks/${id}`),
     create: (body) => api('/projects/tasks', { method: 'POST', body: JSON.stringify(body) }),
     update: (id, patch) => api(`/projects/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
-    thread: (id) => api(`/projects/tasks/${id}/thread`),
+    thread: (id, opts = {}) => api(`/projects/tasks/${id}/thread`, opts),
     comment: (id, body) => api(`/projects/tasks/${id}/comments`, { method: 'POST', body: JSON.stringify({ body }) }),
     editComment: (id, commentId, body) => api(`/projects/tasks/${id}/comments/${commentId}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
     files: (id) => api(`/projects/tasks/${id}/files`),
