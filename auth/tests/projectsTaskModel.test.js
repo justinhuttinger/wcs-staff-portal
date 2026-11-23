@@ -56,3 +56,29 @@ test('diffAssignees: adds and removes', () => {
   assert.deepEqual(diffAssignees([A, B], [B, C]), { add: [C], remove: [A] })
   assert.deepEqual(diffAssignees([], [A]), { add: [A], remove: [] })
 })
+
+const { activityFor, cleanCommentBody } = require('../src/services/projects/taskModel')
+
+test('activityFor: only real changes, in a stable order', () => {
+  const existing = { status: 'not_started', title: 'A', priority: 'medium', due_date: '2026-12-01', start_date: null, category_id: null, description: 'x' }
+  const rows = activityFor(existing, {
+    status: 'in_progress', title: 'A', priority: 'high', due_date: '2026-12-05', start_date: null, category_id: null, description: 'y',
+  }, { add: [B], remove: [] })
+  assert.deepEqual(rows.map(r => r.kind), ['status', 'priority', 'due_date', 'description', 'assigned'])
+  assert.deepEqual(rows[0].detail, { from: 'not_started', to: 'in_progress' })
+  assert.deepEqual(rows[2].detail, { from: '2026-12-01', to: '2026-12-05' })
+  assert.deepEqual(rows[4].detail, { staff_ids: [B] })
+})
+
+test('activityFor: skip carries the reason; empty string equals null; nothing changed gives nothing', () => {
+  const existing = { status: 'in_progress', due_date: null, description: null }
+  assert.deepEqual(activityFor(existing, { status: 'skipped', skip_reason: 'dup' })[0].detail,
+    { from: 'in_progress', to: 'skipped', reason: 'dup' })
+  assert.deepEqual(activityFor(existing, { due_date: null, description: '' }), [])
+  assert.deepEqual(activityFor(existing, {}, { remove: [A] }), [{ kind: 'unassigned', detail: { staff_ids: [A] } }])
+})
+
+test('cleanCommentBody: trims, refuses empty', () => {
+  assert.equal(cleanCommentBody('  hi  ').body, 'hi')
+  assert.equal(cleanCommentBody('   ').error, 'Comment is empty')
+})
