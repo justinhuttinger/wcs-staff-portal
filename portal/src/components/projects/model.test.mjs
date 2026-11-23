@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { filterTasks, sortTasks, groupByStatus, DEFAULT_FILTERS } from './model.js'
+import { filterTasks, sortTasks, groupByStatus, DEFAULT_FILTERS, describeActivity, mergeThread } from './model.js'
 
 const ME = 'me-id'
 const YOU = 'you-id'
@@ -51,4 +51,27 @@ test('sort by priority then due; due puts undated last', () => {
 test('groupByStatus keeps board order and drops empty groups', () => {
   const g = groupByStatus([t('a', { status: 'complete' }), t('b')])
   assert.deepEqual(g.map(x => x.value), ['not_started', 'complete'])
+})
+
+test('describeActivity reads like a sentence', () => {
+  const names = { a: 'Alex', b: 'Jon', c: 'Paige' }
+  const ctx = { nameOf: id => names[id] || 'Former member', categoryName: id => (id === 'k' ? 'Marketing' : '') }
+  const say = (kind, detail) => describeActivity({ actor_id: 'a', kind, detail }, ctx)
+  assert.equal(say('status', { from: 'not_started', to: 'in_progress' }), 'Alex moved this to In Progress')
+  assert.equal(say('status', { from: 'in_progress', to: 'complete' }), 'Alex marked this Complete')
+  assert.equal(say('status', { from: 'in_progress', to: 'skipped', reason: 'dup' }), 'Alex skipped this task: dup')
+  assert.equal(say('status', { from: 'skipped', to: 'not_started' }), 'Alex restored this task')
+  assert.equal(say('assigned', { staff_ids: ['b', 'c'] }), 'Alex assigned Jon, Paige')
+  assert.equal(say('due_date', { from: null, to: '2026-12-05' }), 'Alex set the due date to Dec 5')
+  assert.equal(say('due_date', { from: '2026-12-05', to: null }), 'Alex cleared the due date')
+  assert.equal(say('priority', { to: 'urgent' }), 'Alex changed priority to Urgent')
+  assert.equal(say('category', { to: 'k' }), 'Alex moved this to Marketing')
+  assert.equal(describeActivity({ actor_id: null, kind: 'created' }, ctx), 'Someone created this task')
+})
+
+test('mergeThread interleaves comments and history by time', () => {
+  const out = mergeThread(
+    [{ id: 'c1', created_at: '2026-11-23T10:00:00Z' }],
+    [{ id: 'a1', created_at: '2026-11-23T09:00:00Z' }, { id: 'a2', created_at: '2026-11-23T11:00:00Z' }])
+  assert.deepEqual(out.map(x => x.item.id), ['a1', 'c1', 'a2'])
 })

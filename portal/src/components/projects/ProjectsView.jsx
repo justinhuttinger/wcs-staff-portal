@@ -41,6 +41,14 @@ function TaskRow({ t, nameOf, categoryName, onOpen, onStatus }) {
           {[categoryName(t.category_id), t.status === 'skipped' && t.skip_reason ? `Skipped: ${t.skip_reason}` : null].filter(Boolean).join(' · ') || ' '}
         </p>
       </div>
+      {t.comment_count > 0 && (
+        <span className="hidden sm:inline-flex items-center gap-1 shrink-0 text-[11px] text-text-muted" title={`${t.comment_count} comment${t.comment_count === 1 ? '' : 's'}`}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+          </svg>
+          {t.comment_count}
+        </span>
+      )}
       {due && <span className={`hidden sm:inline shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${due.tone}`}>{due.text}</span>}
       <div className="hidden sm:flex shrink-0 w-24 justify-end">
         {t.assignees.slice(0, 4).map(a => <Initials key={a.staff_id} name={nameOf(a.staff_id)} />)}
@@ -79,7 +87,12 @@ export default function ProjectsView({ onBack }) {
   const catNames = useMemo(() => new Map((data?.categories || []).map(c => [c.id, c.name])), [data])
   const categoryName = useCallback(id => (id ? catNames.get(id) || '' : ''), [catNames])
 
-  const upsert = row => setData(d => ({ ...d, tasks: [row, ...d.tasks.filter(t => t.id !== row.id)] }))
+  // Saved rows come back without comment_count; keep the count the list had.
+  const upsert = row => setData(d => {
+    const prev = d.tasks.find(t => t.id === row.id)
+    return { ...d, tasks: [{ comment_count: prev?.comment_count || 0, ...row }, ...d.tasks.filter(t => t.id !== row.id)] }
+  })
+  const bumpComments = id => setData(d => ({ ...d, tasks: d.tasks.map(t => (t.id === id ? { ...t, comment_count: (t.comment_count || 0) + 1 } : t)) }))
 
   const setStatus = async (t, status) => {
     if (status === t.status) return
@@ -170,7 +183,8 @@ export default function ProjectsView({ onBack }) {
 
       {editing !== undefined && data && (
         <TaskEditor task={editing} members={data.members} categories={data.categories}
-          defaultAssignee={data.me} nameOf={nameOf} onClose={() => setEditing(undefined)}
+          defaultAssignee={data.me} nameOf={nameOf} categoryName={categoryName} me={data.me}
+          onCommented={() => editing && bumpComments(editing.id)} onClose={() => setEditing(undefined)}
           onSaved={row => { upsert(row); setEditing(undefined) }} />
       )}
     </div>

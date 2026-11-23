@@ -3,6 +3,7 @@ import { projects } from '../../lib/api'
 import { Modal, Field, TextInput, TextArea, Select, Button, ErrorBanner } from '../adsmanager/ui'
 import { PRIORITIES, STATUSES, STATUS } from './model'
 import { shortDate } from '../hub/dates'
+import TaskThread from './TaskThread'
 
 const ACTIVE_STATUSES = STATUSES.filter(s => s.value !== 'skipped').map(s => ({ value: s.value, label: s.label }))
 
@@ -29,7 +30,7 @@ function AssigneePicker({ members, value, onChange, nameOf }) {
 }
 
 // Create or edit a task. `task` null = new (assigned to `defaultAssignee`).
-export default function TaskEditor({ task, members, categories, defaultAssignee, nameOf, onClose, onSaved }) {
+export default function TaskEditor({ task, members, categories, defaultAssignee, nameOf, categoryName, me, onCommented, onClose, onSaved }) {
   const [form, setForm] = useState({
     title: task?.title || '',
     description: task?.description || '',
@@ -144,6 +145,11 @@ export default function TaskEditor({ task, members, categories, defaultAssignee,
         )}
         {skipped && <p className="text-xs text-text-muted">Status: {STATUS.skipped.label}</p>}
       </fieldset>
+
+      {task && (
+        <TaskThread taskId={task.id} me={me} members={members} nameOf={nameOf} categoryName={categoryName}
+          onCommented={onCommented} />
+      )}
     </Modal>
   )
 }

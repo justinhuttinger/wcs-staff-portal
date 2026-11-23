@@ -86,3 +86,42 @@ export function groupByStatus(tasks) {
   return STATUSES.map(s => ({ ...s, items: tasks.filter(t => t.status === s.value) }))
     .filter(g => g.items.length)
 }
+
+// One line of history, e.g. "Alex moved this to In Progress".
+// nameOf(id) and categoryName(id) resolve current names.
+const fmtDay = iso => {
+  if (!iso) return 'none'
+  const d = new Date(iso + 'T12:00:00')
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+export function describeActivity(row, { nameOf = () => 'Someone', categoryName = () => '' } = {}) {
+  const who = row.actor_id ? nameOf(row.actor_id) : 'Someone'
+  const d = row.detail || {}
+  const names = ids => (ids || []).map(nameOf).join(', ')
+  switch (row.kind) {
+    case 'created': return `${who} created this task`
+    case 'status':
+      if (d.to === 'skipped') return `${who} skipped this task${d.reason ? `: ${d.reason}` : ''}`
+      if (d.from === 'skipped') return `${who} restored this task`
+      if (d.to === 'complete') return `${who} marked this Complete`
+      return `${who} moved this to ${STATUS[d.to]?.label || d.to}`
+    case 'assigned': return `${who} assigned ${names(d.staff_ids)}`
+    case 'unassigned': return `${who} removed ${names(d.staff_ids)}`
+    case 'due_date': return d.to ? `${who} set the due date to ${fmtDay(d.to)}` : `${who} cleared the due date`
+    case 'start_date': return d.to ? `${who} set the start date to ${fmtDay(d.to)}` : `${who} cleared the start date`
+    case 'priority': return `${who} changed priority to ${PRIORITY[d.to]?.label || d.to}`
+    case 'title': return `${who} renamed this to "${d.to}"`
+    case 'category': return d.to ? `${who} moved this to ${categoryName(d.to) || 'a category'}` : `${who} removed the category`
+    case 'description': return `${who} edited the description`
+    default: return `${who} updated this task`
+  }
+}
+
+// Comments and history in one oldest-first list.
+export function mergeThread(comments = [], activity = []) {
+  return [
+    ...comments.map(c => ({ type: 'comment', at: c.created_at, item: c })),
+    ...activity.map(a => ({ type: 'activity', at: a.created_at, item: a })),
+  ].sort((x, y) => String(x.at).localeCompare(String(y.at)))
+}
