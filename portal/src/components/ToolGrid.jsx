@@ -410,11 +410,6 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
   // Each carries the same gate it would have had on the board, so More never
   // offers a screen the board itself would have withheld.
   const moreCells = [
-    // Members only; App passes the handler only to Projects members.
-    onProjects && (
-      <SvgTileButton key="projects" href="#open/projects" onClick={() => { setShowMore(false); onProjects() }}
-        iconPath={TILE_ICONS.projects} label="Projects" desc="Team tasks" />
-    ),
     // Owner-only; App passes the handler only to the owner.
     onHub && (
       <SvgTileButton key="hub" href="#open/hub" onClick={() => { setShowMore(false); onHub() }}
@@ -542,6 +537,11 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
       .filter(k => !IN_MARKETING_FOLDER.has(k))
       .filter(k => (only === 'apps' ? APP_KEYS.has(k) : only === 'tools' ? !APP_KEYS.has(k) : true))
     const cells = grantedKeys.map(tile).filter(Boolean)
+    // Projects rides on membership, not the tile grants, and this board has
+    // no More drawer, so members get it here (on the Apps side).
+    if (onProjects && only !== 'tools') {
+      cells.push(<SvgTileButton key="projects" href="#open/projects" onClick={onProjects} iconPath={TILE_ICONS.projects} label="Projects" desc="Team tasks" />)
+    }
     // The Marketing folder rides on its contents (capabilities and the
     // forms/quizzes/ghlScripts grants), not the custom tile list.
     if (marketingCells.length > 0 && only !== 'apps' && !omitted.has('marketing')) cells.push(tile('marketing'))
@@ -769,6 +769,8 @@ export default function ToolGrid({ only, exclude, driveInTools, abcUrl, location
           {appTools.map((tool) => (
             <ToolButton key={tool.id} label={tool.label} description={tool.description} icon={tool.icon} url={tool.url} star={tool.id === 'grow' || tool.id === 'abc'} />
           ))}
+          {/* Projects (team tasks): members only; App passes the handler only to them. */}
+          {onProjects && <SvgTileButton href="#open/projects" onClick={onProjects} iconPath={TILE_ICONS.projects} label="Projects" desc="Team tasks" />}
           {/* Shared Drive — in-portal Drive browser (replaces the legacy static
               Google Drive link). It opens a portal view rather than an external
               service, so driveInTools moves it to the Tools board where it
