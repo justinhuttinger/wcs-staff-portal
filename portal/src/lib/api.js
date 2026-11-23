@@ -1842,6 +1842,14 @@ export const projects = {
     thread: (id) => api(`/projects/tasks/${id}/thread`),
     comment: (id, body) => api(`/projects/tasks/${id}/comments`, { method: 'POST', body: JSON.stringify({ body }) }),
     editComment: (id, commentId, body) => api(`/projects/tasks/${id}/comments/${commentId}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
+    files: (id) => api(`/projects/tasks/${id}/files`),
+    upload: (id, fileList) => {
+      const form = new FormData()
+      for (const f of fileList) form.append('files', f)
+      return api(`/projects/tasks/${id}/files`, { method: 'POST', body: form })
+    },
+    addLink: (id, link) => api(`/projects/tasks/${id}/links`, { method: 'POST', body: JSON.stringify(link) }),
+    removeFile: (id, fileId) => api(`/projects/tasks/${id}/files/${fileId}/remove`, { method: 'POST' }),
   },
   categories: {
     list: () => api('/projects/categories'),
