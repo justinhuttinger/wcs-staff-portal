@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { projects } from '../../lib/api'
 import { Button, ErrorBanner, EmptyState, Spinner } from '../adsmanager/ui'
 import TaskSheet from './TaskSheet'
+import useLiveRefresh from './useLiveRefresh'
 import TasksBoard from './TasksBoard'
 import ProjectsCalendar from './ProjectsCalendar'
 import ProjectsGantt from './ProjectsGantt'
@@ -131,6 +132,21 @@ export default function ProjectsView({ onBack, openTaskId }) {
   }, [])
   useEffect(() => { load() }, [load])
 
+  // Keep the list current while it's open (other people's changes show up
+  // within ~20s, at once when you come back to the tab). Quiet: no progress
+  // bar, no error banner, and skipped while one of your own saves is in
+  // flight so it never undoes an optimistic change.
+  const saving = useRef(0)
+  const refresh = useCallback(async () => {
+    if (saving.current) return
+    try {
+      const next = await projects.tasks.list({ silent: true })
+      if (saving.current) return
+      setData(prev => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
+    } catch { /* the next tick tries again */ }
+  }, [])
+  useLiveRefresh(refresh, { enabled: !!data })
+
   // Open the task a Chat link pointed at, once, after the list loads.
   const openedLink = useRef(null)
   useEffect(() => {
@@ -157,7 +173,9 @@ export default function ProjectsView({ onBack, openTaskId }) {
   // Optimistic change, then save; reload on failure.
   const change = async (t, patch) => {
     patchLocal(t.id, patch)
+    saving.current++
     try { upsert((await projects.tasks.update(t.id, patch)).task) } catch (e) { setError(e.message); load() }
+    finally { saving.current-- }
   }
   const setStatus = (t, status) => { if (status !== t.status) change(t, { status }) }
   const moveTask = (t, status, sort_order) => change(t, status === t.status ? { sort_order } : { status, sort_order })

@@ -4,6 +4,7 @@ import { ErrorBanner, Spinner } from '../adsmanager/ui'
 import { MentionComposer, MentionText } from '../admin/ticketing/mentions'
 import { describeActivity, mergeThread } from './model'
 import { Avatar } from './Dropdown'
+import useLiveRefresh from './useLiveRefresh'
 
 function when(iso) {
   return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -67,18 +68,32 @@ export default function TaskThread({ taskId, me, members, nameOf, categoryName, 
   }, [taskId])
   useEffect(() => { load() }, [load])
 
+  // New comments from others appear while the task is open (quietly; a
+  // draft being typed is separate state and is never touched).
+  const busy = useRef(false)
+  const quiet = useCallback(async () => {
+    if (busy.current) return
+    try {
+      const next = await projects.tasks.thread(taskId, { silent: true })
+      if (busy.current) return
+      setThread(prev => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
+    } catch { /* next tick */ }
+  }, [taskId])
+  useLiveRefresh(quiet, { ms: 10000, enabled: !!thread })
+
   const items = useMemo(() => (thread ? mergeThread(thread.comments, showHistory ? thread.activity : []) : []), [thread, showHistory])
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }) }, [items.length])
 
   const post = async () => {
     if (!draft.trim() || posting) return
     setPosting(true); setError('')
+    busy.current = true
     try {
       const { comment } = await projects.tasks.comment(taskId, draft)
       setThread(t => ({ ...t, comments: [...t.comments, comment] }))
       setDraft('')
       onCommented?.()
-    } catch (e) { setError(e.message) } finally { setPosting(false) }
+    } catch (e) { setError(e.message) } finally { setPosting(false); busy.current = false }
   }
 
   const saveEdit = async (c, body) => {
