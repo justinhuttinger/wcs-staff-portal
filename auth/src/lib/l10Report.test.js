@@ -71,3 +71,20 @@ test('net members across zero has a delta but no percentage', () => {
   assert.equal(out.totals.lastMonth.net.delta, -10)
   assert.equal(out.totals.lastMonth.net.pct, null)
 })
+
+test('PT Day Ones: set / show / close per club and in total, compared like any count', () => {
+  const d1 = (set, show, close) => [{ club_number: '1', set_to_date: set, show_count: show, close_count: 0, total_close_count: close }]
+  const windows = Array.from({ length: 7 }, (_, i) => ({ ...win(i), dayOnes: i === 0 ? d1(20, 12, 5) : d1(10, 6, 2) }))
+  const out = buildL10(windows, { clubs, slugForClubNumber })
+  const salem = out.rows.find(r => r.key === 'salem')
+  assert.equal(salem.current.dayOneSet, 20)
+  assert.equal(salem.current.dayOneShow, 12)
+  // Close is the Total Sale count, not the first-visit one.
+  assert.equal(salem.current.dayOneClose, 5)
+  assert.equal(salem.lastMonth.dayOneSet.delta, 10)
+  assert.equal(out.totals.avg6.dayOneClose.base, 2)
+  assert.ok(out.metrics.find(m => m.key === 'dayOnes').stages.length === 3)
+  // A metric between the membership lines and the revenue lines.
+  const keys = out.metrics.map(m => m.key)
+  assert.ok(keys.indexOf('dayOnes') > keys.indexOf('net') && keys.indexOf('dayOnes') < keys.indexOf('dues'))
+})

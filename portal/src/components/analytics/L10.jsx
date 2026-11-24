@@ -22,6 +22,13 @@ import { zebra, HOVER_TINT } from './tableTints'
 // club picker seven times.
 //
 // Colour means BETTER or WORSE, never up or down: Lost Members going up is red.
+//
+// PT DAY ONES ARE ONE COLUMN, NOT THREE. Set, Show and Close are drawn as one
+// bar in three shades of one hue — Set the lightest and longest, Close the
+// darkest and shortest, nested from the left — because they are one funnel,
+// each stage a subset of the one before. A thinner, fainter bar under it is the
+// comparison period on the same scale, so the change is visible as a shape
+// before it is read as numbers.
 // ---------------------------------------------------------------------------
 
 const COMPARES = [
@@ -62,11 +69,109 @@ function tone(metric, delta) {
  * report prints rather than formatting the same numbers a second time.
  */
 function clubCellText(metric, c) {
+  if (metric.format === 'funnel') {
+    // c here is the whole compare block; the stages live under their own keys.
+    const cells = stageCells(metric, c)
+    const main = cells.map(x => fmtValue(COUNT, x.value)).join(' · ')
+    const sub = cells.map(x => fmtValue(COUNT, x.delta, { signed: true })).join(' · ')
+    return {
+      main,
+      sub,
+      tone: 'neutral',
+      mainRuns: cells.map((x, i) => ({ text: (i ? ' · ' : '') + fmtValue(COUNT, x.value), color: x.key })),
+      subRuns: cells.map((x, i) => ({ text: (i ? ' · ' : '') + fmtValue(COUNT, x.delta, { signed: true }), tone: toneKind(COUNT, x.delta) })),
+    }
+  }
   return {
     main: fmtValue(metric, c.value),
     sub: `${fmtValue(metric, c.delta, { signed: true })}${c.pct !== null && c.pct !== undefined ? ` (${fmtSignedPct(c.pct)})` : ''}`,
     tone: toneKind(metric, c.delta),
   }
+}
+
+// Three shades of one blue, light to dark, so Set / Show / Close read as stages
+// of one thing rather than three unrelated series.
+const STAGE_COLORS = { dayOneSet: '#c7dbf5', dayOneShow: '#6fa3e6', dayOneClose: '#1f5fae' }
+const COUNT = { format: 'int' }
+
+/** Stage values out of a compare() block: { [stageKey]: { value, base, delta } }. */
+function stageCells(metric, cmp) {
+  return metric.stages.map(st => ({ ...st, ...(cmp?.[st.key] || {}) }))
+}
+
+const rate = (part, whole) => (whole ? `${Math.round((part / whole) * 100)}%` : '—')
+
+function funnelTitle(cells) {
+  const [set, show, close] = cells.map(c => c.value || 0)
+  return `Set ${fmtValue(COUNT, set)} · Show ${fmtValue(COUNT, show)} (${rate(show, set)} of set) · Close ${fmtValue(COUNT, close)} (${rate(close, show)} of shows)`
+}
+
+/** One nested bar. `scale` is the value that fills the track. */
+function StageBar({ values, scale, thin = false }) {
+  const w = v => `${scale ? Math.max(0, Math.min(100, (v / scale) * 100)) : 0}%`
+  return (
+    <div className={`relative w-full ${thin ? 'h-1.5 opacity-45' : 'h-3'} rounded-sm bg-bg overflow-hidden`}>
+      {Object.keys(STAGE_COLORS).map(k => (
+        <div
+          key={k}
+          className="absolute inset-y-0 left-0 rounded-sm"
+          style={{ width: w(values[k] || 0), background: STAGE_COLORS[k] }}
+        />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * The PT Day Ones cell: this period's bar, the comparison's thin bar, the three
+ * counts keyed by colour, and each count's change.
+ */
+function FunnelBlock({ metric, cmp, scale, bold = false, size = 'sm', compareLabel }) {
+  const cells = stageCells(metric, cmp)
+  const now = Object.fromEntries(cells.map(c => [c.key, c.value || 0]))
+  const base = Object.fromEntries(cells.map(c => [c.key, c.base || 0]))
+  const s = scale || Math.max(now.dayOneSet, base.dayOneSet, 1)
+  const big = size === 'lg'
+  return (
+    <div className="min-w-[150px] space-y-1" title={funnelTitle(cells)}>
+      <StageBar values={now} scale={s} />
+      <StageBar values={base} scale={s} thin />
+      <div className={`flex items-center justify-end gap-2 tabular-nums ${big ? 'text-sm' : ''} ${bold ? 'font-bold' : 'font-medium'} text-text-primary`}>
+        {cells.map(c => (
+          <span key={c.key} className="inline-flex items-center gap-1 whitespace-nowrap">
+            <span aria-hidden="true" className="inline-block w-2 h-2 rounded-sm" style={{ background: STAGE_COLORS[c.key] }} />
+            <span className="sr-only">{c.label}</span>
+            {fmtValue(COUNT, c.value)}
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center justify-end gap-2 tabular-nums text-[10px]">
+        {cells.map(c => (
+          <span key={c.key} className={`whitespace-nowrap ${tone(COUNT, c.delta)}`}>
+            {fmtValue(COUNT, c.delta, { signed: true })}
+          </span>
+        ))}
+      </div>
+      {compareLabel && (
+        <p className="text-[10px] text-text-muted tabular-nums text-right">
+          {compareLabel} {cells.map(c => fmtValue(COUNT, c.base)).join(' · ')}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function StageLegend() {
+  return (
+    <span className="inline-flex items-center gap-2 normal-case tracking-normal font-medium">
+      {[['dayOneSet', 'Set'], ['dayOneShow', 'Show'], ['dayOneClose', 'Close']].map(([k, l]) => (
+        <span key={k} className="inline-flex items-center gap-1">
+          <span aria-hidden="true" className="inline-block w-2 h-2 rounded-sm" style={{ background: STAGE_COLORS[k] }} />
+          {l}
+        </span>
+      ))}
+    </span>
+  )
 }
 
 function Arrow({ metric, delta }) {
@@ -81,6 +186,19 @@ function Arrow({ metric, delta }) {
 }
 
 function Tile({ metric, cmp, compareLabel }) {
+  if (metric.format === 'funnel') {
+    return (
+      <div className="bg-surface rounded-xl border border-border px-3 py-2 col-span-2">
+        <div className="flex items-center justify-between gap-2 text-[10px] font-semibold text-text-muted uppercase tracking-wide">
+          {metric.label}
+          <StageLegend />
+        </div>
+        <div className="mt-1.5">
+          <FunnelBlock metric={metric} cmp={cmp} size="lg" bold compareLabel={compareLabel} />
+        </div>
+      </div>
+    )
+  }
   const c = cmp?.[metric.key]
   if (!c) return null
   return (
@@ -137,6 +255,31 @@ function Scorecard({ data, compare, compareLabel }) {
           {lines.map((line, i) => {
             const c = cmp[line.key]
             const m = line.metric
+            if (m.format === 'funnel') {
+              const cells = stageCells(m, cmp)
+              const triple = vals => vals.map(v => fmtValue(COUNT, v)).join(' · ')
+              return (
+                <tr key={line.key} className={`group border-b border-border/60 ${zebra(i)} ${HOVER_TINT}`}>
+                  <td className="px-3 py-2 text-left whitespace-nowrap font-semibold text-text-primary">
+                    {line.label}
+                    <div className="text-[10px] font-medium text-text-muted mt-0.5"><StageLegend /></div>
+                  </td>
+                  <td className="px-3 py-2 text-right"><FunnelBlock metric={m} cmp={cmp} bold /></td>
+                  <td className="px-3 py-2 text-right tabular-nums text-text-muted whitespace-nowrap">{triple(cells.map(x => x.base))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold whitespace-nowrap">
+                    {cells.map((x, j) => (
+                      <span key={x.key} className={tone(COUNT, x.delta)}>{j ? ' · ' : ''}{fmtValue(COUNT, x.delta, { signed: true })}</span>
+                    ))}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-text-muted">—</td>
+                  {history.map((h, j) => (
+                    <td key={j} className="px-3 py-2 text-right tabular-nums text-text-muted whitespace-nowrap" title={funnelTitle(m.stages.map(st => ({ ...st, value: h[st.key] })))}>
+                      {triple(m.stages.map(st => h[st.key]))}
+                    </td>
+                  ))}
+                </tr>
+              )
+            }
             return (
               <tr key={line.key} className={`group border-b border-border/60 ${zebra(i)} ${HOVER_TINT}`}>
                 <td className={`px-3 py-2 text-left whitespace-nowrap ${line.sub ? 'pl-8 text-text-muted' : 'font-semibold text-text-primary'}`}>
@@ -181,6 +324,10 @@ function Scorecard({ data, compare, compareLabel }) {
 function clubSheet(data, compare, cmpDef) {
   const cols = []
   for (const m of data.metrics) {
+    if (m.stages) {
+      for (const st of m.stages) cols.push({ key: st.key, label: `Day Ones ${st.label}` })
+      continue
+    }
     cols.push({ key: m.key, label: m.label })
     if (m.parts) for (const p of m.parts) cols.push({ key: `pos:${p}`, label: `POS ${p}` })
   }
@@ -217,11 +364,11 @@ function clubSpec(data, compare, cmpDef) {
   return {
     heading: 'L10 — By Club',
     subheading: exportSubtitle(data, cmpDef),
-    columns: ['Club', ...data.metrics.map(m => m.label)],
+    columns: ['Club', ...data.metrics.map(m => (m.stages ? `${m.label} (Set · Show · Close)` : m.label))],
     rows: [...data.rows, data.totals].map(r => ({
       label: r.key === 'total' ? 'Total' : r.label,
       total: r.key === 'total',
-      cells: data.metrics.map(m => clubCellText(m, r[compare][m.key])),
+      cells: data.metrics.map(m => clubCellText(m, m.format === 'funnel' ? r[compare] : r[compare][m.key])),
     })),
   }
 }
@@ -379,6 +526,11 @@ function SheetExport({ data, compare, cmpDef }) {
 function ClubTable({ data, compare, compareShort, tableRef }) {
   const metrics = data.metrics
   const rows = [...data.rows, data.totals]
+  // One scale for every club's Day One bar, so a club's bar can be compared
+  // with the next club's, not only with its own comparison. The Total row is
+  // drawn to its own scale — on the clubs' scale it would run off the track.
+  const funnelScale = data.rows.reduce((mx, r) => Math.max(
+    mx, r[compare]?.dayOneSet?.value || 0, r[compare]?.dayOneSet?.base || 0), 1)
   const thBase = 'px-3 py-2 text-[10px] font-semibold text-text-muted uppercase tracking-wide whitespace-nowrap'
   const th = `${thBase} text-right`
   return (
@@ -387,7 +539,12 @@ function ClubTable({ data, compare, compareShort, tableRef }) {
         <thead>
           <tr className="border-b border-border">
             <th className={`${thBase} text-left sticky left-0 bg-surface`}>Club</th>
-            {metrics.map(m => <th key={m.key} className={th}>{m.label}</th>)}
+            {metrics.map(m => (
+              <th key={m.key} className={th}>
+                {m.label}
+                {m.format === 'funnel' && <div className="mt-0.5 text-[10px] text-text-muted"><StageLegend /></div>}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -400,6 +557,13 @@ function ClubTable({ data, compare, compareShort, tableRef }) {
                   {isTotal ? 'Total' : r.label}
                 </td>
                 {metrics.map(m => {
+                  if (m.format === 'funnel') {
+                    return (
+                      <td key={m.key} className="px-3 py-1.5 text-right align-top">
+                        <FunnelBlock metric={m} cmp={cmp} scale={isTotal ? null : funnelScale} bold={isTotal} />
+                      </td>
+                    )
+                  }
                   const c = cmp[m.key]
                   const t = clubCellText(m, c)
                   return (
@@ -470,7 +634,7 @@ export default function L10({ startDate, endDate, locationSlug, category, basis 
             {meta?.windowLabel || `${meta?.start} to ${meta?.end}`} against {cmpDef.label.toLowerCase()}: {compareRange}.
           </p>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-9 gap-2">
             {data.metrics.map(m => (
               <Tile key={m.key} metric={m} cmp={data.totals[compare]} compareLabel={cmpDef.short} />
             ))}
@@ -488,7 +652,7 @@ export default function L10({ startDate, endDate, locationSlug, category, basis 
           <ClubTable data={data} compare={compare} compareShort={cmpDef.short} tableRef={clubTableRef} />
 
           <ul className="text-[11px] text-text-muted px-1 space-y-0.5 list-disc pl-5">
-            {['members', 'dues', 'pos', 'total', 'compare', 'filter'].map(k => (
+            {['members', 'dayOnes', 'dues', 'pos', 'total', 'compare', 'filter'].map(k => (
               meta?.notes?.[k] ? <li key={k}>{meta.notes[k]}</li> : <Fragment key={k} />
             ))}
           </ul>
