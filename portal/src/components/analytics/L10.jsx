@@ -23,12 +23,9 @@ import { zebra, HOVER_TINT } from './tableTints'
 //
 // Colour means BETTER or WORSE, never up or down: Lost Members going up is red.
 //
-// PT DAY ONES ARE ONE COLUMN, NOT THREE. Set, Show and Close are drawn as one
-// bar in three shades of one hue — Set the lightest and longest, Close the
-// darkest and shortest, nested from the left — because they are one funnel,
-// each stage a subset of the one before. A thinner, fainter bar under it is the
-// comparison period on the same scale, so the change is visible as a shape
-// before it is read as numbers.
+// PT DAY ONES ARE ONE COLUMN, NOT THREE: Set · Show · Close as three numbers in
+// one cell, each keyed by a shade of one hue, with each one's change under it.
+// Numbers only — a bar version was tried and taken out at the owner's request.
 // ---------------------------------------------------------------------------
 
 const COMPARES = [
@@ -106,37 +103,18 @@ function funnelTitle(cells) {
   return `Set ${fmtValue(COUNT, set)} · Show ${fmtValue(COUNT, show)} (${rate(show, set)} of set) · Close ${fmtValue(COUNT, close)} (${rate(close, show)} of shows)`
 }
 
-/** One nested bar. `scale` is the value that fills the track. */
-function StageBar({ values, scale, thin = false }) {
-  const w = v => `${scale ? Math.max(0, Math.min(100, (v / scale) * 100)) : 0}%`
-  return (
-    <div className={`relative w-full ${thin ? 'h-1.5 opacity-45' : 'h-3'} rounded-sm bg-bg overflow-hidden`}>
-      {Object.keys(STAGE_COLORS).map(k => (
-        <div
-          key={k}
-          className="absolute inset-y-0 left-0 rounded-sm"
-          style={{ width: w(values[k] || 0), background: STAGE_COLORS[k] }}
-        />
-      ))}
-    </div>
-  )
-}
-
 /**
- * The PT Day Ones cell: this period's bar, the comparison's thin bar, the three
- * counts keyed by colour, and each count's change.
+ * The PT Day Ones cell: the three counts keyed by colour, and each count's
+ * change under it.
  */
-function FunnelBlock({ metric, cmp, scale, bold = false, size = 'sm', compareLabel }) {
+function FunnelBlock({ metric, cmp, bold = false, size = 'sm', compareLabel, align = 'end' }) {
   const cells = stageCells(metric, cmp)
-  const now = Object.fromEntries(cells.map(c => [c.key, c.value || 0]))
-  const base = Object.fromEntries(cells.map(c => [c.key, c.base || 0]))
-  const s = scale || Math.max(now.dayOneSet, base.dayOneSet, 1)
   const big = size === 'lg'
+  const justify = align === 'start' ? 'justify-start' : 'justify-end'
+  const textAlign = align === 'start' ? 'text-left' : 'text-right'
   return (
-    <div className="min-w-[150px] space-y-1" title={funnelTitle(cells)}>
-      <StageBar values={now} scale={s} />
-      <StageBar values={base} scale={s} thin />
-      <div className={`flex items-center justify-end gap-2 tabular-nums ${big ? 'text-sm' : ''} ${bold ? 'font-bold' : 'font-medium'} text-text-primary`}>
+    <div className="space-y-0.5" title={funnelTitle(cells)}>
+      <div className={`flex items-center ${justify} gap-2 tabular-nums ${big ? 'text-sm' : ''} ${bold ? 'font-bold' : 'font-medium'} text-text-primary`}>
         {cells.map(c => (
           <span key={c.key} className="inline-flex items-center gap-1 whitespace-nowrap">
             <span aria-hidden="true" className="inline-block w-2 h-2 rounded-sm" style={{ background: STAGE_COLORS[c.key] }} />
@@ -145,7 +123,7 @@ function FunnelBlock({ metric, cmp, scale, bold = false, size = 'sm', compareLab
           </span>
         ))}
       </div>
-      <div className="flex items-center justify-end gap-2 tabular-nums text-[10px]">
+      <div className={`flex items-center ${justify} gap-2 tabular-nums text-[10px]`}>
         {cells.map(c => (
           <span key={c.key} className={`whitespace-nowrap ${tone(COUNT, c.delta)}`}>
             {fmtValue(COUNT, c.delta, { signed: true })}
@@ -153,7 +131,7 @@ function FunnelBlock({ metric, cmp, scale, bold = false, size = 'sm', compareLab
         ))}
       </div>
       {compareLabel && (
-        <p className="text-[10px] text-text-muted tabular-nums text-right">
+        <p className={`text-[10px] text-text-muted tabular-nums ${textAlign}`}>
           {compareLabel} {cells.map(c => fmtValue(COUNT, c.base)).join(' · ')}
         </p>
       )}
@@ -188,13 +166,10 @@ function Arrow({ metric, delta }) {
 function Tile({ metric, cmp, compareLabel }) {
   if (metric.format === 'funnel') {
     return (
-      <div className="bg-surface rounded-xl border border-border px-3 py-2 col-span-2">
-        <div className="flex items-center justify-between gap-2 text-[10px] font-semibold text-text-muted uppercase tracking-wide">
-          {metric.label}
-          <StageLegend />
-        </div>
-        <div className="mt-1.5">
-          <FunnelBlock metric={metric} cmp={cmp} size="lg" bold compareLabel={compareLabel} />
+      <div className="bg-surface rounded-xl border border-border px-3 py-2">
+        <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">{metric.label}</p>
+        <div className="mt-0.5">
+          <FunnelBlock metric={metric} cmp={cmp} size="lg" bold compareLabel={compareLabel} align="start" />
         </div>
       </div>
     )
@@ -526,11 +501,6 @@ function SheetExport({ data, compare, cmpDef }) {
 function ClubTable({ data, compare, compareShort, tableRef }) {
   const metrics = data.metrics
   const rows = [...data.rows, data.totals]
-  // One scale for every club's Day One bar, so a club's bar can be compared
-  // with the next club's, not only with its own comparison. The Total row is
-  // drawn to its own scale — on the clubs' scale it would run off the track.
-  const funnelScale = data.rows.reduce((mx, r) => Math.max(
-    mx, r[compare]?.dayOneSet?.value || 0, r[compare]?.dayOneSet?.base || 0), 1)
   const thBase = 'px-3 py-2 text-[10px] font-semibold text-text-muted uppercase tracking-wide whitespace-nowrap'
   const th = `${thBase} text-right`
   return (
@@ -560,7 +530,7 @@ function ClubTable({ data, compare, compareShort, tableRef }) {
                   if (m.format === 'funnel') {
                     return (
                       <td key={m.key} className="px-3 py-1.5 text-right align-top">
-                        <FunnelBlock metric={m} cmp={cmp} scale={isTotal ? null : funnelScale} bold={isTotal} />
+                        <FunnelBlock metric={m} cmp={cmp} bold={isTotal} />
                       </td>
                     )
                   }
@@ -634,7 +604,7 @@ export default function L10({ startDate, endDate, locationSlug, category, basis 
             {meta?.windowLabel || `${meta?.start} to ${meta?.end}`} against {cmpDef.label.toLowerCase()}: {compareRange}.
           </p>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-9 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
             {data.metrics.map(m => (
               <Tile key={m.key} metric={m} cmp={data.totals[compare]} compareLabel={cmpDef.short} />
             ))}
