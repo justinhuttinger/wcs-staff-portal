@@ -69,10 +69,10 @@ router.get('/', async (req, res) => {
     const clubNumbers = allClubs ? null : slugs.map(s => CLUB_BY_SLUG[s].clubNumber)
     const revenueClubs = allClubs ? null : slugs
 
-    const cacheKey = ['analytics:l10', start, end, slugs.slice().sort().join('+'), category, basis].join('|')
+    const cacheKey = ['analytics:l10:v2', start, end, slugs.slice().sort().join('+'), category, basis].join('|')
 
     const raw = await wrapSWR(cacheKey, FRESH_MS, STALE_MS, () => Promise.all(windows.map(async w => {
-      const [membership, revenue] = await Promise.all([
+      const [membership, revenue, dayOnes] = await Promise.all([
         fetchAll(supabaseAdmin.rpc('analytics_net_membership', {
           p_start: w.start,
           p_end: w.end,
@@ -85,8 +85,13 @@ router.get('/', async (req, res) => {
         fetchAll(supabaseAdmin.rpc('analytics_revenue_by_club', {
           p_start: w.start, p_end: w.end, p_clubs: revenueClubs,
         })),
+        // PT Scorecard's own function, so Set / Show / Close here are the
+        // numbers that report shows for the same window.
+        fetchAll(supabaseAdmin.rpc('analytics_pt_scorecard', {
+          p_start: w.start, p_end: w.end, p_clubs: clubNumbers, p_exclude: true,
+        })),
       ])
-      return { ...w, membership, revenue }
+      return { ...w, membership, revenue, dayOnes }
     })))
 
     const built = buildL10(raw, {
@@ -117,6 +122,7 @@ router.get('/', async (req, res) => {
           pos: 'POS Revenue is goods only: Snacks, Drinks, Merchandise and Supplements. Dues and training paid at the desk stay in their own lines.',
           total: 'Total Revenue is every profit center with refunds and chargebacks netted in, so it is not the sum of the lines above it.',
           members: 'Member counts follow Net Membership: new members as of their join date, lost members under the conditional membership rule.',
+          dayOnes: 'PT Day Ones match the PT Scorecard. Set: Day Ones scheduled in the window, up to today. Show: of those, completed. Close: of those, a sale on the outcome form or a PT purchase in ABC within 30 days.',
         },
       },
     })

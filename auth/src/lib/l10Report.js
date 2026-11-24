@@ -22,6 +22,17 @@
 //             training rung up at the desk stay in their own lines.
 //   Total     every profit center, refunds and chargebacks included, so it is
 //             what actually landed. It is NOT the sum of the lines above.
+//
+// PT DAY ONES ARE ONE METRIC WITH THREE STAGES, drawn as one bar in three
+// shades rather than three columns (asked for: one row, not a ton). Counts come
+// from analytics_pt_scorecard, the PT Scorecard's own function, so the two
+// reports cannot disagree:
+//   Set    Day Ones scheduled in the window, up to today
+//   Show   of those, completed
+//   Close  of those, a Total Sale — marked Sale on the outcome form, OR the
+//          member bought PT in ABC within 30 days (migration 229)
+// Each stage is a plain count underneath, so it averages and compares exactly
+// like New Members does.
 
 const POS_CATEGORIES = ['Snacks', 'Drinks', 'Merchandise', 'Supplements']
 const PT_CATEGORIES = ['Training']
@@ -44,6 +55,16 @@ const METRICS = [
   { key: 'newMembers', label: 'New Members', format: 'int' },
   { key: 'lostMembers', label: 'Lost Members', format: 'int', lowerIsBetter: true },
   { key: 'net', label: 'Net Members', format: 'int', signed: true },
+  {
+    key: 'dayOnes',
+    label: 'PT Day Ones',
+    format: 'funnel',
+    stages: [
+      { key: 'dayOneSet', label: 'Set' },
+      { key: 'dayOneShow', label: 'Show' },
+      { key: 'dayOneClose', label: 'Close' },
+    ],
+  },
   { key: 'dues', label: 'Dues Revenue', format: 'money' },
   { key: 'pt', label: 'PT Revenue', format: 'money' },
   { key: 'pos', label: 'POS Revenue', format: 'money', parts: POS_CATEGORIES },
@@ -61,7 +82,10 @@ function pctChange(now, base) {
 }
 
 function emptyBucket() {
-  const b = { newMembers: 0, lostMembers: 0, dues: 0, pt: 0, pos: 0, total: 0, posParts: {} }
+  const b = {
+    newMembers: 0, lostMembers: 0, dayOneSet: 0, dayOneShow: 0, dayOneClose: 0,
+    dues: 0, pt: 0, pos: 0, total: 0, posParts: {},
+  }
   for (const c of POS_CATEGORIES) b.posParts[c] = 0
   return b
 }
@@ -72,8 +96,9 @@ function emptyBucket() {
  * @param membership  analytics_net_membership(segment 'club') rows
  * @param revenue     analytics_revenue_by_club rows
  * @param slugForClubNumber  club_number -> slug
+ * @param dayOnes     analytics_pt_scorecard rows
  */
-function bucketWindow(membership, revenue, slugForClubNumber) {
+function bucketWindow(membership, revenue, slugForClubNumber, dayOnes) {
   const out = {}
   const get = slug => (out[slug] = out[slug] || emptyBucket())
 
@@ -83,6 +108,15 @@ function bucketWindow(membership, revenue, slugForClubNumber) {
     const b = get(slug)
     b.newMembers += num(r.new_members)
     b.lostMembers += num(r.lost_members)
+  }
+
+  for (const r of dayOnes || []) {
+    const slug = slugForClubNumber(r.club_number)
+    if (!slug) continue
+    const b = get(slug)
+    b.dayOneSet += num(r.set_to_date)
+    b.dayOneShow += num(r.show_count)
+    b.dayOneClose += num(r.total_close_count)
   }
 
   for (const r of revenue || []) {
@@ -106,6 +140,9 @@ function sumBuckets(list) {
     if (!b) continue
     t.newMembers += b.newMembers
     t.lostMembers += b.lostMembers
+    t.dayOneSet += b.dayOneSet
+    t.dayOneShow += b.dayOneShow
+    t.dayOneClose += b.dayOneClose
     t.dues += b.dues
     t.pt += b.pt
     t.pos += b.pos
@@ -120,6 +157,9 @@ function flatten(b) {
     newMembers: b.newMembers,
     lostMembers: b.lostMembers,
     net: b.newMembers - b.lostMembers,
+    dayOneSet: b.dayOneSet,
+    dayOneShow: b.dayOneShow,
+    dayOneClose: b.dayOneClose,
     dues: r2(b.dues),
     pt: r2(b.pt),
     pos: r2(b.pos),
@@ -165,7 +205,7 @@ function buildL10(windows, opts = {}) {
   const clubs = opts.clubs || []
   const slugFor = opts.slugForClubNumber || (() => null)
 
-  const bucketed = windows.map(w => bucketWindow(w.membership, w.revenue, slugFor))
+  const bucketed = windows.map(w => bucketWindow(w.membership, w.revenue, slugFor, w.dayOnes))
 
   function lineFor(pick) {
     const series = bucketed.map(pick).map(flatten)

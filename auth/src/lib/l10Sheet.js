@@ -34,6 +34,9 @@ const C = {
   bad: hex('#e53e3e'), // wcs-red
 }
 const TONE = { good: C.good, bad: C.bad, neutral: C.muted }
+// PT Day Ones: the three stage shades the report uses (L10.jsx STAGE_COLORS).
+// The lightest is darkened for text, or "Set" would be unreadable on white.
+const STAGE = { dayOneSet: hex('#8fb6e8'), dayOneShow: hex('#4f8fdf'), dayOneClose: hex('#1f5fae'), ink: C.ink }
 const FONT = 'Inter'
 
 const STYLED = 0
@@ -45,6 +48,16 @@ const TOP = 3
 const LIMITS = { columns: 30, rows: 50, text: 80 }
 
 const str = (v, max = LIMITS.text) => typeof v === 'string' && v.length <= max
+const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k)
+
+// Optional per-part colouring, for the PT Day Ones cell. The runs must spell
+// out exactly the text they colour, or the offsets would land mid-number.
+function validRuns(runs, whole, key, palette) {
+  if (runs === undefined) return true
+  if (!Array.isArray(runs) || runs.length === 0 || runs.length > 6) return false
+  if (!runs.every(r => r && str(r.text) && has(palette, r[key]))) return false
+  return runs.map(r => r.text).join('') === whole
+}
 
 /** Is this the shape the page sends? A bad body is a 400, never half a sheet. */
 function validSpec(spec) {
@@ -56,7 +69,9 @@ function validSpec(spec) {
   if (!Array.isArray(rows) || rows.length < 1 || rows.length > LIMITS.rows) return false
   return rows.every(r => r && str(r.label) && Array.isArray(r.cells) && r.cells.length === cols.length - 1
     && r.cells.every(c => c && str(c.main) && (c.sub === undefined || str(c.sub))
-      && (c.tone === undefined || Object.prototype.hasOwnProperty.call(TONE, c.tone))))
+      && (c.tone === undefined || has(TONE, c.tone))
+      && validRuns(c.mainRuns, c.main, 'color', STAGE)
+      && validRuns(c.subRuns, c.sub, 'tone', TONE)))
 }
 
 function text(value, format, align = 'LEFT') {
@@ -97,13 +112,39 @@ function valueCell(cell, bold, bg) {
       wrapStrategy: 'WRAP',
       padding: { left: 10, right: 10, top: 4, bottom: 4 },
     },
-    textFormatRuns: sub
-      ? [
-          { startIndex: 0, format: { fontFamily: FONT, fontSize: 10, bold, foregroundColor: C.ink } },
-          { startIndex: main.length + 1, format: { fontFamily: FONT, fontSize: 8, bold: false, foregroundColor: TONE[cell.tone] || C.muted } },
-        ]
-      : undefined,
+    textFormatRuns: runsFor(cell, bold),
   }
+}
+
+// Text runs for a two-line cell. Offsets are UTF-16 code units, which is what
+// JavaScript string lengths already count.
+function runsFor(cell, bold) {
+  const main = cell.main
+  const sub = cell.sub || ''
+  if (!sub && !cell.mainRuns) return undefined
+  const out = []
+  if (cell.mainRuns) {
+    let at = 0
+    for (const r of cell.mainRuns) {
+      out.push({ startIndex: at, format: { fontFamily: FONT, fontSize: 10, bold, foregroundColor: STAGE[r.color] } })
+      at += r.text.length
+    }
+  } else {
+    out.push({ startIndex: 0, format: { fontFamily: FONT, fontSize: 10, bold, foregroundColor: C.ink } })
+  }
+  if (sub) {
+    const start = main.length + 1
+    if (cell.subRuns) {
+      let at = start
+      for (const r of cell.subRuns) {
+        out.push({ startIndex: at, format: { fontFamily: FONT, fontSize: 8, bold: false, foregroundColor: TONE[r.tone] } })
+        at += r.text.length
+      }
+    } else {
+      out.push({ startIndex: start, format: { fontFamily: FONT, fontSize: 8, bold: false, foregroundColor: TONE[cell.tone] || C.muted } })
+    }
+  }
+  return out
 }
 
 const solid = (color, style = 'SOLID') => ({ style, color })

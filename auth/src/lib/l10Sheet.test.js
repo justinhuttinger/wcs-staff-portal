@@ -48,3 +48,18 @@ test('zebra starts tinted, headers are upper case, the Total row is bold and rul
   assert.equal(sheets[0].hideGridlines, true)
   assert.deepEqual(sheets.map(s => s.title), ['By Club', 'Data'])
 })
+
+test('the Day Ones cell colours each count by stage and each change by tone', () => {
+  const cell = {
+    main: '20 · 12 · 5', sub: '+10 · -1 · +3', tone: 'neutral',
+    mainRuns: [{ text: '20', color: 'dayOneSet' }, { text: ' · 12', color: 'dayOneShow' }, { text: ' · 5', color: 'dayOneClose' }],
+    subRuns: [{ text: '+10', tone: 'good' }, { text: ' · -1', tone: 'bad' }, { text: ' · +3', tone: 'good' }],
+  }
+  const s2 = { ...spec, columns: ['Club', 'PT Day Ones'], rows: [{ label: 'Salem', cells: [cell] }] }
+  assert.ok(validSpec(s2))
+  // Runs that do not spell the text are refused rather than mis-coloured.
+  assert.ok(!validSpec({ ...s2, rows: [{ label: 'Salem', cells: [{ ...cell, mainRuns: [{ text: '2', color: 'dayOneSet' }] }] }] }))
+  const runs = buildL10Sheet(s2, data).requests[0].updateCells.rows[4].values[1].textFormatRuns
+  assert.deepEqual(runs.map(r => r.startIndex), [0, 2, 7, 12, 15, 20])
+  assert.ok(runs[4].format.foregroundColor.red > 0.8, 'the falling show count is red')
+})
