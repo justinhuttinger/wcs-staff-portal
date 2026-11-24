@@ -404,9 +404,9 @@ function PdfExport({ data, cmpDef, tableRef }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
-  async function run() {
+  async function run(orientation) {
     if (busy || !tableRef.current) return
-    setBusy(true)
+    setBusy(orientation)
     setErr(null)
     try {
       const { exportTablePdf } = await import('./l10Export')
@@ -415,7 +415,8 @@ function PdfExport({ data, cmpDef, tableRef }) {
       await exportTablePdf(tableRef.current, {
         title: 'L10 — By Club',
         subtitle: exportSubtitle(data, cmpDef),
-        filename: `l10-by-club_${meta.start}_to_${meta.end}_${vs}.pdf`,
+        filename: `l10-by-club_${meta.start}_to_${meta.end}_${vs}_${orientation}.pdf`,
+        orientation,
       })
     } catch (e) {
       setErr(e?.message || 'PDF export failed')
@@ -427,8 +428,11 @@ function PdfExport({ data, cmpDef, tableRef }) {
   return (
     <>
       {err && <span className="text-[11px] text-amber-600">{err}</span>}
-      <button type="button" onClick={run} disabled={busy} className={BUTTON}>
-        {busy ? 'Exporting…' : 'Export PDF'}
+      <button type="button" onClick={() => run('landscape')} disabled={!!busy} className={BUTTON} title="Whole table on one landscape page">
+        {busy === 'landscape' ? 'Exporting…' : 'PDF · Landscape'}
+      </button>
+      <button type="button" onClick={() => run('portrait')} disabled={!!busy} className={BUTTON} title="Columns split across two portrait pages">
+        {busy === 'portrait' ? 'Exporting…' : 'PDF · Portrait'}
       </button>
     </>
   )
